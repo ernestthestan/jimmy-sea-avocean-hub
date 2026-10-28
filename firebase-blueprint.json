@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "ScheduleEvent": {
+      "title": "ScheduleEvent",
+      "description": "Fan schedule event for Jimmy, Sea, and Avocean",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "endDate": { "type": "string" },
+        "time": { "type": "string" },
+        "timezone": { "type": "string" },
+        "location": { "type": "string" },
+        "locationUrl": { "type": "string" },
+        "posterUrl": { "type": "string" },
+        "members": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "category": { "type": "string" },
+        "link": { "type": "string" },
+        "description": { "type": "string" },
+        "hashtags": { "type": "string" },
+        "watchPlatforms": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["title", "date", "members"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global hub settings, banner configurations, and member options",
+      "type": "object",
+      "properties": {
+        "greeting": { "type": "string" },
+        "bannerTitle": { "type": "string" },
+        "bannerTitleSize": { "type": "string" },
+        "bannerSubtitle": { "type": "string" },
+        "bannerSubtitleSize": { "type": "string" },
+        "bannerImageUrl": { "type": "string" },
+        "bannerPhotos": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "bannerFit": { "type": "string" },
+        "bannerHeight": { "type": "string" },
+        "bannerPreset": { "type": "string" },
+        "websiteIcon": { "type": "string" },
+        "ownerPin": { "type": "string" },
+        "adminPin": { "type": "string" },
+        "timeFormat": { "type": "string" },
+        "members": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "FanMessage": {
+      "title": "FanMessage",
+      "description": "Message left by fan/viewer for Admins and Owner",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderName": { "type": "string" },
+        "eventTitle": { "type": "string" },
+        "eventDate": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["message", "createdAt"]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "Live fan presence heartbeat session for real-time online count",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "lastSeen": { "type": "number" }
+      },
+      "required": ["sessionId", "lastSeen"]
+    },
+    "SiteStats": {
+      "title": "SiteStats",
+      "description": "Global aggregated site visits and counters",
+      "type": "object",
+      "properties": {
+        "totalVisits": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/events/{eventId}": {
+      "schema": "ScheduleEvent",
+      "description": "Collection of all schedule events"
+    },
+    "/settings/global": {
+      "schema": "AppSettings",
+      "description": "Global configuration document for hub"
+    },
+    "/fan_messages/{messageId}": {
+      "schema": "FanMessage",
+      "description": "Fan messages submitted via Leave a Message"
+    },
+    "/presence/{sessionId}": {
+      "schema": "Presence",
+      "description": "Live active viewer presence heartbeats"
+    },
+    "/stats/global": {
+      "schema": "SiteStats",
+      "description": "Total visits and site stats"
+    }
+  }
+}

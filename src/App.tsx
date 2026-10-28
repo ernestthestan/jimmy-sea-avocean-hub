@@ -59,6 +59,19 @@ import {
   Activity,
   Users
 } from 'lucide-react';
+import {
+  testFirestoreConnection,
+  startLivePresenceTracking,
+  subscribeToEvents,
+  saveEventToFirestore,
+  deleteEventFromFirestore,
+  subscribeToSettings,
+  saveSettingsToFirestore,
+  subscribeToFanMessages,
+  sendFanMessageToFirestore,
+  updateFanMessageInFirestore,
+  deleteFanMessageFromFirestore
+} from './lib/firestoreSync';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -1031,38 +1044,57 @@ export default function App() {
     showToast(`Accent theme updated to ${ACCENT_THEMES[choice].name}!`);
   };
 
-  // --- Visitor & Online Fan Stats (Visible to Admin & Owner) ---
+  // --- Real-Time Firestore Presence, Visitor Count & Cloud Sync ---
   const [visitorStats, setVisitorStats] = useState<{ totalVisits: number; liveViewers: number }>(() => {
     try {
       const raw = localStorage.getItem('avocean_visitor_stats_v1');
       if (raw) {
         const parsed = JSON.parse(raw);
         return {
-          totalVisits: (parsed.totalVisits || 4820) + 1,
-          liveViewers: Math.floor(Math.random() * 11) + 24
+          totalVisits: parsed.totalVisits || 4821,
+          liveViewers: parsed.liveViewers || 1
         };
       }
     } catch {}
     return {
       totalVisits: 4821,
-      liveViewers: 28
+      liveViewers: 1
     };
   });
 
+  // Verify connection to Firestore on boot
   useEffect(() => {
-    try {
-      localStorage.setItem('avocean_visitor_stats_v1', JSON.stringify(visitorStats));
-    } catch {}
-  }, [visitorStats.totalVisits]);
+    testFirestoreConnection();
+  }, []);
 
+  // Real-Time Online Presence & Total Visits from Firestore
   useEffect(() => {
-    const timer = setInterval(() => {
-      setVisitorStats((prev) => ({
+    const unsubscribe = startLivePresenceTracking((liveStats) => {
+      setVisitorStats(liveStats);
+      try {
+        localStorage.setItem('avocean_visitor_stats_v1', JSON.stringify(liveStats));
+      } catch {}
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-Time Events Sync from Firestore across all devices
+  useEffect(() => {
+    const unsubscribe = subscribeToEvents(SAMPLE_EVENTS, (cloudEvents) => {
+      setEvents(cloudEvents);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-Time Settings & Banner Sync from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToSettings(DEFAULT_SETTINGS, (cloudSettings) => {
+      setSettings((prev) => ({
         ...prev,
-        liveViewers: Math.max(14, prev.liveViewers + (Math.floor(Math.random() * 5) - 2))
+        ...cloudSettings
       }));
-    }, 25000);
-    return () => clearInterval(timer);
+    });
+    return () => unsubscribe();
   }, []);
 
   // --- "Leave a message" State (Viewers submit; only Admin & Owner can read) ---
@@ -1087,6 +1119,16 @@ export default function App() {
     ];
   });
 
+  // Real-Time Fan Messages Sync from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToFanMessages((cloudMsgs) => {
+      if (cloudMsgs && cloudMsgs.length > 0) {
+        setFanMessages(cloudMsgs);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(fanMessages));
@@ -1104,7 +1146,7 @@ export default function App() {
     return fanMessages.filter((m) => !m.isRead).length;
   }, [fanMessages]);
 
-  const handleSendFanMessage = (e: React.FormEvent) => {
+  const handleSendFanMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!msgContent.trim() && !msgEventTitle.trim()) return;
 
@@ -1120,6 +1162,9 @@ export default function App() {
     };
 
     setFanMessages((prev) => [newMsg, ...prev]);
+    // Save to Firestore cloud database
+    sendFanMessageToFirestore(newMsg).catch((err) => console.warn('Could not sync message to Firestore:', err));
+
     setMessageSubmitted(true);
     setTimeout(() => {
       setMessageSubmitted(false);
@@ -1141,19 +1186,22 @@ export default function App() {
     if (msg.sourceUrl) setFormLink(msg.sourceUrl);
     if (msg.message) setFormDescription(msg.message);
     // Mark as read
-    setFanMessages((prev) =>
-      prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m))
-    );
+    handleMarkMessageRead(msg.id);
     showToast('Event details pre-filled from message!');
   };
 
   const handleMarkMessageRead = (id: string) => {
+    const target = fanMessages.find((m) => m.id === id);
+    if (target) {
+      updateFanMessageInFirestore(id, { isRead: !target.isRead }).catch(() => {});
+    }
     setFanMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, isRead: !m.isRead } : m))
     );
   };
 
   const handleDeleteMessage = (id: string) => {
+    deleteFanMessageFromFirestore(id).catch(() => {});
     setFanMessages((prev) => prev.filter((m) => m.id !== id));
     showToast('Message removed');
   };
@@ -1201,6 +1249,7 @@ export default function App() {
       bannerImageUrl: updatedList[0]
     };
     setSettings(updatedSettings);
+    saveSettingsToFirestore(updatedSettings).catch((err) => console.warn('Could not sync banner to Firestore:', err));
     setNewBannerUrlInput('');
     showToast('Banner photo added!');
   };
@@ -1214,6 +1263,7 @@ export default function App() {
       bannerImageUrl: updatedList[0] || ''
     };
     setSettings(updatedSettings);
+    saveSettingsToFirestore(updatedSettings).catch((err) => console.warn('Could not sync banner to Firestore:', err));
     setCurrentBannerIndex(0);
     showToast('Photo removed from banner');
   };
@@ -1221,12 +1271,14 @@ export default function App() {
   const handleUpdateBannerFit = (fit: 'cover' | 'contain') => {
     const updated: AppSettings = { ...settings, bannerFit: fit };
     setSettings(updated);
+    saveSettingsToFirestore(updated).catch((err) => console.warn('Could not sync banner fit to Firestore:', err));
     showToast(`Banner fit updated to ${fit === 'contain' ? 'Fit Entire Photo' : 'Fill Area'}`);
   };
 
   const handleUpdateBannerHeight = (height: 'compact' | 'medium' | 'tall' | 'auto') => {
     const updated: AppSettings = { ...settings, bannerHeight: height };
     setSettings(updated);
+    saveSettingsToFirestore(updated).catch((err) => console.warn('Could not sync banner height to Firestore:', err));
     showToast(`Banner height set to ${height}`);
   };
 
@@ -1706,6 +1758,9 @@ export default function App() {
         : [...prev, newEvent];
     });
 
+    // Sync to Firestore Cloud Database
+    saveEventToFirestore(newEvent).catch((err) => console.warn('Could not sync event to Firestore:', err));
+
     if (detailEvent && detailEvent.id === newEvent.id) {
       setDetailEvent(newEvent);
     }
@@ -1728,6 +1783,9 @@ export default function App() {
       return;
     }
     setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+    // Sync deletion to Firestore Cloud Database
+    deleteEventFromFirestore(eventId).catch((err) => console.warn('Could not delete event from Firestore:', err));
+
     if (detailEvent && detailEvent.id === eventId) {
       setDetailEvent(null);
     }
@@ -1974,6 +2032,7 @@ export default function App() {
     };
     setSettings(updatedSettings);
     localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
+    saveSettingsToFirestore(updatedSettings).catch((err) => console.warn('Could not sync settings to Firestore:', err));
     setSettingsModalOpen(false);
     showToast('Banner, Website Icon & Settings updated!');
   };
