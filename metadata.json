@@ -1,0 +1,8 @@
+{
+  "name": "Remix Jimmy Sea Avocean Schedules Calendar",
+  "description": "An interactive fan schedule and event calendar for Jimmy, Sea, and Avocean.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

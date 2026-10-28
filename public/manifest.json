@@ -1,0 +1,16 @@
+{
+  "short_name": "JimmySea Hub",
+  "name": "JIMMY SEA AVOCEAN HUB",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0B132B",
+  "theme_color": "#0B132B",
+  "display": "standalone",
+  "orientation": "portrait"
+}
