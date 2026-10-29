@@ -10,6 +10,7 @@
         "date": { "type": "string" },
         "endDate": { "type": "string" },
         "time": { "type": "string" },
+        "endTime": { "type": "string" },
         "timezone": { "type": "string" },
         "location": { "type": "string" },
         "locationUrl": { "type": "string" },

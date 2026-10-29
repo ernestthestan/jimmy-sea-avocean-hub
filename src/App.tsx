@@ -112,6 +112,7 @@ export interface ScheduleEvent {
   date: string; // Start date YYYY-MM-DD
   endDate?: string; // Optional end date YYYY-MM-DD for multi-day events
   time?: string;
+  endTime?: string; // Optional end time HH:mm
   timezone?: string;
   location?: string;
   locationUrl?: string; // Google Maps link
@@ -407,6 +408,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     date: '2026-11-03',
     endDate: '2026-11-05',
     time: '16:00',
+    endTime: '20:00',
     timezone: 'BKK',
     location: 'UNION HALL, UNION MALL',
     locationUrl: 'https://maps.google.com/?q=Union+Hall+Union+Mall+Bangkok',
@@ -426,6 +428,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     date: '2026-10-30',
     endDate: '2026-10-31',
     time: '18:00',
+    endTime: '20:30',
     timezone: 'BKK',
     location: 'Siam Paragon, Bangkok',
     locationUrl: 'https://maps.google.com/?q=Siam+Paragon+Bangkok',
@@ -732,18 +735,45 @@ const convertEventTimeAndDate = (
   };
 };
 
-// Format event time and timezone in 12-hour format (e.g. "6:00 PM BKK")
+// Calculate duration string e.g. "2 hrs duration" or "1h 30m duration"
+const getEventTimeDurationLabel = (startTime?: string, endTime?: string): string | null => {
+  if (!startTime || !endTime) return null;
+  const [sh, sm] = parseHourAndMinute(startTime);
+  const [eh, em] = parseHourAndMinute(endTime);
+  let diffMin = (eh * 60 + em) - (sh * 60 + sm);
+  if (diffMin <= 0) {
+    diffMin += 24 * 60; // Overnight
+  }
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m duration`;
+  }
+  if (hours > 0) {
+    return `${hours} hr${hours > 1 ? 's' : ''} duration`;
+  }
+  return `${mins} mins duration`;
+};
+
+// Format event time and timezone in 12-hour format (e.g. "6:00 PM – 8:00 PM BKK" or "6:00 PM BKK")
 const formatEventTime = (ev: ScheduleEvent, prefer12h: boolean = true) => {
-  if (!ev.time) return null;
-  const formatted = prefer12h ? formatTime12h(ev.time) : ev.time;
+  if (!ev.time && !ev.endTime) return null;
+  const startFmt = ev.time ? (prefer12h ? formatTime12h(ev.time) : ev.time) : '';
+  const endFmt = ev.endTime ? (prefer12h ? formatTime12h(ev.endTime) : ev.endTime) : '';
+  let timeRange = '';
+  if (startFmt && endFmt) {
+    timeRange = `${startFmt} – ${endFmt}`;
+  } else {
+    timeRange = startFmt || endFmt;
+  }
   const tz = ev.timezone ? (ev.timezone === 'CST_US' ? 'CST' : ev.timezone) : '';
   if (tz) {
-    if (formatted.toLowerCase().includes(tz.toLowerCase())) {
-      return formatted;
+    if (timeRange.toLowerCase().includes(tz.toLowerCase())) {
+      return timeRange;
     }
-    return `${formatted} ${tz}`;
+    return `${timeRange} ${tz}`;
   }
-  return formatted;
+  return timeRange;
 };
 
 // Generate 1-Click Google Calendar URL
@@ -757,8 +787,18 @@ const createGoogleCalendarUrl = (ev: ScheduleEvent) => {
 
   const endTargetDateStr = ev.endDate && ev.endDate > ev.date ? ev.endDate : ev.date;
   const [endYear, endMonth, endDay] = endTargetDateStr.split('-').map(Number);
-  const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
-  const endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, m || 0));
+  
+  let endDate: Date;
+  if (ev.endTime) {
+    const [endH, endM] = parseHourAndMinute(ev.endTime);
+    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, endH - fromOffset, endM || 0));
+    if (endDate <= startDate) {
+      endDate = new Date(endDate.getTime() + 24 * 3600 * 1000);
+    }
+  } else {
+    const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
+    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, m || 0));
+  }
 
   const formatUtc = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
 
@@ -786,8 +826,18 @@ const downloadIcsFile = (ev: ScheduleEvent, reminderMinutes: number = 15) => {
 
   const endTargetDateStr = ev.endDate && ev.endDate > ev.date ? ev.endDate : ev.date;
   const [endYear, endMonth, endDay] = endTargetDateStr.split('-').map(Number);
-  const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
-  const endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, m || 0));
+  
+  let endDate: Date;
+  if (ev.endTime) {
+    const [endH, endM] = parseHourAndMinute(ev.endTime);
+    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, endH - fromOffset, endM || 0));
+    if (endDate <= startDate) {
+      endDate = new Date(endDate.getTime() + 24 * 3600 * 1000);
+    }
+  } else {
+    const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
+    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, m || 0));
+  }
 
   const formatUtc = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
   const nowUtc = formatUtc(new Date());
@@ -1356,42 +1406,61 @@ export default function App() {
   const [formEndDate, setFormEndDate] = useState<string>('');
   const [formIsMultiDay, setFormIsMultiDay] = useState<boolean>(false);
   const [formTime, setFormTime] = useState<string>(() => (is12Hour ? '6:00 PM' : '18:00'));
+  const [formEndTime, setFormEndTime] = useState<string>('');
   const [formTimezone, setFormTimezone] = useState<string>('BKK');
   const [customTimezone, setCustomTimezone] = useState<string>('');
   const [showTimeAdjuster, setShowTimeAdjuster] = useState<boolean>(true);
+  const [timeAdjusterTarget, setTimeAdjusterTarget] = useState<'start' | 'end'>('start');
 
-  // Extract parsed hour & minute from formTime for live interactive scroll wheel
-  const [formHour24, formMinute] = useMemo(() => {
-    return parseHourAndMinute(formTime);
-  }, [formTime]);
+  // Currently focused time string for the scroll wheel & stepper
+  const currentTimeForAdjuster = useMemo(() => {
+    if (timeAdjusterTarget === 'start') {
+      return formTime || (is12Hour ? '6:00 PM' : '18:00');
+    }
+    return formEndTime || formTime || (is12Hour ? '8:00 PM' : '20:00');
+  }, [timeAdjusterTarget, formTime, formEndTime, is12Hour]);
 
-  const formHour12 = useMemo(() => {
-    const h = formHour24 % 12;
+  // Extract parsed hour & minute from active adjuster target
+  const [adjHour24, adjMinute] = useMemo(() => {
+    return parseHourAndMinute(currentTimeForAdjuster);
+  }, [currentTimeForAdjuster]);
+
+  const adjHour12 = useMemo(() => {
+    const h = adjHour24 % 12;
     return h === 0 ? 12 : h;
-  }, [formHour24]);
+  }, [adjHour24]);
 
-  const formPeriod = useMemo(() => {
-    return formHour24 >= 12 ? 'PM' : 'AM';
-  }, [formHour24]);
+  const adjPeriod = useMemo(() => {
+    return adjHour24 >= 12 ? 'PM' : 'AM';
+  }, [adjHour24]);
+
+  // Set time value to the currently active target (start or end)
+  const setTargetTimeValue = (val: string) => {
+    if (timeAdjusterTarget === 'start') {
+      setFormTime(val);
+    } else {
+      setFormEndTime(val);
+    }
+  };
 
   // Scroll wheel / button adjuster for Hour
   const handleAdjustHour = (delta: number) => {
-    const nextH24 = (formHour24 + delta + 24) % 24;
-    const mStr = String(formMinute).padStart(2, '0');
+    const nextH24 = (adjHour24 + delta + 24) % 24;
+    const mStr = String(adjMinute).padStart(2, '0');
     if (is12Hour) {
       const p = nextH24 >= 12 ? 'PM' : 'AM';
       let h12 = nextH24 % 12;
       if (h12 === 0) h12 = 12;
-      setFormTime(`${h12}:${mStr} ${p}`);
+      setTargetTimeValue(`${h12}:${mStr} ${p}`);
     } else {
-      setFormTime(`${String(nextH24).padStart(2, '0')}:${mStr}`);
+      setTargetTimeValue(`${String(nextH24).padStart(2, '0')}:${mStr}`);
     }
   };
 
   // Scroll wheel / button adjuster for Minute (steps by delta, e.g. +/- 5)
   const handleAdjustMinute = (delta: number) => {
-    let nextM = formMinute + delta;
-    let nextH24 = formHour24;
+    let nextM = adjMinute + delta;
+    let nextH24 = adjHour24;
     if (nextM >= 60) {
       nextM = nextM % 60;
       nextH24 = (nextH24 + 1) % 24;
@@ -1404,20 +1473,38 @@ export default function App() {
       const p = nextH24 >= 12 ? 'PM' : 'AM';
       let h12 = nextH24 % 12;
       if (h12 === 0) h12 = 12;
-      setFormTime(`${h12}:${mStr} ${p}`);
+      setTargetTimeValue(`${h12}:${mStr} ${p}`);
     } else {
-      setFormTime(`${String(nextH24).padStart(2, '0')}:${mStr}`);
+      setTargetTimeValue(`${String(nextH24).padStart(2, '0')}:${mStr}`);
     }
   };
 
   // Toggle AM / PM in 12-Hour mode
   const handleSetAmPm = (target: 'AM' | 'PM') => {
-    if (formPeriod === target) return;
-    const nextH24 = (formHour24 + 12) % 24;
+    if (adjPeriod === target) return;
+    const nextH24 = (adjHour24 + 12) % 24;
     let h12 = nextH24 % 12;
     if (h12 === 0) h12 = 12;
-    const mStr = String(formMinute).padStart(2, '0');
-    setFormTime(`${h12}:${mStr} ${target}`);
+    const mStr = String(adjMinute).padStart(2, '0');
+    setTargetTimeValue(`${h12}:${mStr} ${target}`);
+  };
+
+  // Quick preset helper to calculate end time by adding duration hours to start time
+  const handleSetEndDuration = (hours: number) => {
+    const [startH, startM] = parseHourAndMinute(formTime || (is12Hour ? '6:00 PM' : '18:00'));
+    const totalMinutes = startH * 60 + startM + Math.round(hours * 60);
+    const endH24 = Math.floor(totalMinutes / 60) % 24;
+    const endM = totalMinutes % 60;
+    const mStr = String(endM).padStart(2, '0');
+    if (is12Hour) {
+      const p = endH24 >= 12 ? 'PM' : 'AM';
+      let h12 = endH24 % 12;
+      if (h12 === 0) h12 = 12;
+      setFormEndTime(`${h12}:${mStr} ${p}`);
+    } else {
+      setFormEndTime(`${String(endH24).padStart(2, '0')}:${mStr}`);
+    }
+    setTimeAdjusterTarget('end');
   };
   const [formLocation, setFormLocation] = useState<string>('');
   const [formLocationUrl, setFormLocationUrl] = useState<string>('');
@@ -1786,6 +1873,8 @@ export default function App() {
     setFormEndDate('');
     setFormIsMultiDay(false);
     setFormTime(is12Hour ? '6:00 PM' : '18:00');
+    setFormEndTime('');
+    setTimeAdjusterTarget('start');
     setFormTimezone('BKK');
     setCustomTimezone('');
     setFormLocation('');
@@ -1836,7 +1925,17 @@ export default function App() {
       parsedTime = is12Hour ? '6:00 PM' : '18:00';
     }
 
+    let parsedEndTime = ev.endTime || '';
+    if (parsedEndTime) {
+      if (is12Hour) {
+        parsedEndTime = formatTime12h(parsedEndTime);
+      }
+    }
+
     setFormTime(parsedTime);
+    setFormEndTime(parsedEndTime);
+    setTimeAdjusterTarget('start');
+
     const matched = ALL_TIMEZONES.find((t) => t.code === parsedTz);
     if (matched) {
       setFormTimezone(matched.code);
@@ -1880,6 +1979,7 @@ export default function App() {
       date: formDate,
       endDate: resolvedEndDate || undefined,
       time: formTime.trim(),
+      endTime: formEndTime.trim() ? formEndTime.trim() : undefined,
       timezone: resolvedTimezone,
       location: formLocation.trim(),
       locationUrl: formLocationUrl.trim(),
@@ -2280,13 +2380,26 @@ export default function App() {
 
   const reminderConversion = useMemo(() => {
     if (!reminderEvent) return null;
-    return convertEventTimeAndDate(
+    const startConv = convertEventTimeAndDate(
       reminderEvent.time || '18:00',
       reminderEvent.timezone || 'BKK',
       reminderUserTz,
       reminderEvent.date,
       is12Hour
     );
+    const endConv = reminderEvent.endTime
+      ? convertEventTimeAndDate(
+          reminderEvent.endTime,
+          reminderEvent.timezone || 'BKK',
+          reminderUserTz,
+          reminderEvent.endDate || reminderEvent.date,
+          is12Hour
+        )
+      : null;
+    return {
+      start: startConv,
+      end: endConv
+    };
   }, [reminderEvent, reminderUserTz, is12Hour]);
 
   // Render Full Event View (Matching Screenshot 2 - shows all details immediately!)
@@ -2309,10 +2422,15 @@ export default function App() {
                 🗓️ {getEventDaysCount(ev.date, ev.endDate)}-Day Event
               </span>
             )}
-            {ev.time && (
-              <span className="text-xs font-bold text-[#334155] dark:text-slate-300 flex items-center gap-1">
+            {(ev.time || ev.endTime) && (
+              <span className="text-xs font-bold text-[#334155] dark:text-slate-300 flex items-center gap-1.5 flex-wrap">
                 <Clock className="w-3.5 h-3.5 text-purple-500" />
                 <span>{formatEventTime(ev, is12Hour)}</span>
+                {getEventTimeDurationLabel(ev.time, ev.endTime) && (
+                  <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300 bg-purple-100/70 dark:bg-purple-950/70 px-2 py-0.5 rounded-full">
+                    {getEventTimeDurationLabel(ev.time, ev.endTime)}
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -2499,7 +2617,12 @@ export default function App() {
                           {getEventDaysCount(ev.date, ev.endDate)}-Day Event
                         </span>
                       )}
-                      <span>Starts {formatEventTime(ev, is12Hour) || 'TBA'}</span>
+                      <span>{ev.endTime ? 'Time: ' : 'Starts '}{formatEventTime(ev, is12Hour) || 'TBA'}</span>
+                      {getEventTimeDurationLabel(ev.time, ev.endTime) && (
+                        <span className="text-[11px] font-bold text-purple-600 dark:text-purple-300">
+                          ({getEventTimeDurationLabel(ev.time, ev.endTime)})
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -3319,7 +3442,7 @@ export default function App() {
                           : 'bg-white dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                       }`}
                     >
-                      <span>{evItem.time || 'TBA'}</span>
+                      <span>{formatEventTime(evItem, is12Hour) || 'TBA'}</span>
                       <span>·</span>
                       <span className="max-w-[140px] truncate">{evItem.title}</span>
                     </button>
@@ -3556,17 +3679,19 @@ export default function App() {
                   <div>
                     <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Original event schedule:</span>
                     <span className="font-bold text-[#1A3668] dark:text-white">
-                      {reminderEvent.time || '18:00'} {reminderEvent.timezone || 'BKK'}
+                      {formatEventTime(reminderEvent, is12Hour) || 'TBA'}
                     </span>
                   </div>
                   <div className="sm:text-right">
                     <span className="text-[11px] text-purple-700 dark:text-purple-300 font-bold block">Your converted local time:</span>
                     <span className="font-extrabold text-[#7C3AED] dark:text-purple-300 text-sm">
-                      {reminderConversion.time} {reminderUserTz}
+                      {reminderConversion.end
+                        ? `${reminderConversion.start.time} – ${reminderConversion.end.time} ${reminderUserTz}`
+                        : `${reminderConversion.start.time} ${reminderUserTz}`}
                     </span>
-                    {reminderConversion.dayShift && (
+                    {reminderConversion.start.dayShift && (
                       <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold ml-1">
-                        {reminderConversion.dayShift}
+                        {reminderConversion.start.dayShift}
                       </span>
                     )}
                   </div>
@@ -4028,9 +4153,9 @@ export default function App() {
                 )}
               </div>
 
-              {/* Time & Timezone Selection with Typing + Scroll Wheel Stepper */}
+              {/* Time & Timezone Selection with Start Time, End Time & Interactive Scroll Wheel */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-[#526586] dark:text-slate-400">
                     Time & Timezone ({is12Hour ? '12-Hour AM/PM' : '24-Hour'})
                   </label>
@@ -4044,75 +4169,201 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="relative w-1/2">
-                    <input
-                      type="text"
-                      value={formTime}
-                      onChange={(e) => setFormTime(e.target.value)}
-                      placeholder={is12Hour ? 'e.g. 6:00 PM' : 'e.g. 18:00'}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-8 py-2 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowTimeAdjuster(!showTimeAdjuster)}
-                      title="Toggle Time Scroll Wheel / Adjuster"
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer p-0.5"
-                    >
-                      <Clock className="w-4 h-4" />
-                    </button>
+                {/* Start Time, End Time & Timezone Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  {/* Start Time Input */}
+                  <div className="sm:col-span-4">
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                      Start Time *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formTime}
+                        onFocus={() => setTimeAdjusterTarget('start')}
+                        onChange={(e) => {
+                          setFormTime(e.target.value);
+                          setTimeAdjusterTarget('start');
+                        }}
+                        placeholder={is12Hour ? 'e.g. 6:00 PM' : 'e.g. 18:00'}
+                        className={`w-full rounded-xl border bg-white dark:bg-slate-800 pl-3 pr-8 py-2 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none transition-colors ${
+                          timeAdjusterTarget === 'start' && showTimeAdjuster
+                            ? 'border-purple-500 ring-1 ring-purple-300/40'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTimeAdjusterTarget('start');
+                          setShowTimeAdjuster(true);
+                        }}
+                        title="Adjust Start Time with Scroll Wheel"
+                        className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer p-0.5 transition-colors ${
+                          timeAdjusterTarget === 'start' && showTimeAdjuster
+                            ? 'text-purple-600 dark:text-purple-400'
+                            : 'text-slate-400 hover:text-purple-600'
+                        }`}
+                      >
+                        <Clock className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
-                  <select
-                    value={formTimezone}
-                    onChange={(e) => setFormTimezone(e.target.value)}
-                    className="w-1/2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 cursor-pointer"
-                  >
-                    <optgroup label="Popular Fan Zones">
-                      {ALL_TIMEZONES.filter((t) => t.category === 'Popular Fan Zones').map((tz) => (
-                        <option key={tz.code} value={tz.code}>
-                          {tz.label} ({tz.offset})
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Asia & Pacific">
-                      {ALL_TIMEZONES.filter((t) => t.category === 'Asia & Pacific').map((tz) => (
-                        <option key={tz.code} value={tz.code}>
-                          {tz.label} ({tz.offset})
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Americas">
-                      {ALL_TIMEZONES.filter((t) => t.category === 'Americas').map((tz) => (
-                        <option key={tz.code} value={tz.code}>
-                          {tz.label} ({tz.offset})
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Europe, Africa & Middle East">
-                      {ALL_TIMEZONES.filter((t) => t.category === 'Europe & Africa').map((tz) => (
-                        <option key={tz.code} value={tz.code}>
-                          {tz.label} ({tz.offset})
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Custom">
-                      <option value="CUSTOM">Custom Timezone...</option>
-                    </optgroup>
-                  </select>
+                  {/* End Time Input (Optional) */}
+                  <div className="sm:col-span-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                        End Time (Optional)
+                      </label>
+                      {formEndTime && (
+                        <button
+                          type="button"
+                          onClick={() => setFormEndTime('')}
+                          className="text-[10px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formEndTime}
+                        onFocus={() => setTimeAdjusterTarget('end')}
+                        onChange={(e) => {
+                          setFormEndTime(e.target.value);
+                          setTimeAdjusterTarget('end');
+                        }}
+                        placeholder={is12Hour ? 'e.g. 8:00 PM' : 'e.g. 20:00'}
+                        className={`w-full rounded-xl border bg-white dark:bg-slate-800 pl-3 pr-8 py-2 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none transition-colors ${
+                          timeAdjusterTarget === 'end' && showTimeAdjuster
+                            ? 'border-purple-500 ring-1 ring-purple-300/40'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTimeAdjusterTarget('end');
+                          setShowTimeAdjuster(true);
+                          if (!formEndTime) {
+                            handleSetEndDuration(2);
+                          }
+                        }}
+                        title="Adjust End Time with Scroll Wheel"
+                        className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer p-0.5 transition-colors ${
+                          timeAdjusterTarget === 'end' && showTimeAdjuster
+                            ? 'text-purple-600 dark:text-purple-400'
+                            : 'text-slate-400 hover:text-purple-600'
+                        }`}
+                      >
+                        <Clock className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Timezone Dropdown */}
+                  <div className="sm:col-span-4">
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                      Timezone
+                    </label>
+                    <select
+                      value={formTimezone}
+                      onChange={(e) => setFormTimezone(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 cursor-pointer"
+                    >
+                      <optgroup label="Popular Fan Zones">
+                        {ALL_TIMEZONES.filter((t) => t.category === 'Popular Fan Zones').map((tz) => (
+                          <option key={tz.code} value={tz.code}>
+                            {tz.label} ({tz.offset})
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Asia & Pacific">
+                        {ALL_TIMEZONES.filter((t) => t.category === 'Asia & Pacific').map((tz) => (
+                          <option key={tz.code} value={tz.code}>
+                            {tz.label} ({tz.offset})
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Americas">
+                        {ALL_TIMEZONES.filter((t) => t.category === 'Americas').map((tz) => (
+                          <option key={tz.code} value={tz.code}>
+                            {tz.label} ({tz.offset})
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Europe, Africa & Middle East">
+                        {ALL_TIMEZONES.filter((t) => t.category === 'Europe & Africa').map((tz) => (
+                          <option key={tz.code} value={tz.code}>
+                            {tz.label} ({tz.offset})
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Custom">
+                        <option value="CUSTOM">Custom Timezone...</option>
+                      </optgroup>
+                    </select>
+                  </div>
                 </div>
 
-                {/* Interactive Time Scroll Wheel & Stepper */}
+                {/* Interactive Time Scroll Wheel & Stepper with Start/End Target Switcher */}
                 {showTimeAdjuster && (
-                  <div className="mt-2.5 p-3 rounded-2xl bg-purple-50/70 dark:bg-slate-800/80 border border-purple-100 dark:border-slate-700 animate-in fade-in duration-150">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-purple-900 dark:text-purple-300 mb-2">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                        <span>Scroll Wheel & Time Adjuster</span>
-                      </span>
-                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        {is12Hour ? '12-Hour Mode' : '24-Hour Mode'} · Type or Roll Wheel
-                      </span>
+                  <div className="mt-2.5 p-3 sm:p-3.5 rounded-2xl bg-purple-50/70 dark:bg-slate-800/80 border border-purple-100 dark:border-slate-700 animate-in fade-in duration-150">
+                    {/* Top Switcher: Which time is being adjusted with the wheel */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-purple-100 dark:border-slate-700">
+                      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white/90 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setTimeAdjusterTarget('start')}
+                          className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            timeAdjusterTarget === 'start'
+                              ? 'bg-purple-600 text-white shadow-2xs'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-purple-600'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span>Start: {formatTime12h(formTime)}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTimeAdjusterTarget('end');
+                            if (!formEndTime) handleSetEndDuration(2);
+                          }}
+                          className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            timeAdjusterTarget === 'end'
+                              ? 'bg-purple-600 text-white shadow-2xs'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-purple-600'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span>End: {formEndTime ? formatTime12h(formEndTime) : 'Set End'}</span>
+                        </button>
+                      </div>
+
+                      {/* Quick Duration Buttons (Set end time relative to start time) */}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mr-0.5">
+                          Set Duration:
+                        </span>
+                        {[1, 1.5, 2, 3, 4].map((hrs) => (
+                          <button
+                            key={hrs}
+                            type="button"
+                            onClick={() => handleSetEndDuration(hrs)}
+                            className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-slate-200 dark:border-slate-600 text-[#1A3668] dark:text-white cursor-pointer shadow-2xs active:scale-95 transition-all"
+                            title={`Set end time to +${hrs} hr${hrs > 1 ? 's' : ''} after start time`}
+                          >
+                            +{hrs}h
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="text-center mb-1 text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                      Adjusting <strong>{timeAdjusterTarget === 'start' ? 'Start Time' : 'End Time'}</strong>: Roll mouse wheel or click up/down
                     </div>
 
                     <div className="flex items-center justify-center gap-3 select-none py-1">
@@ -4135,7 +4386,7 @@ export default function App() {
                           title="Roll mouse wheel here to scroll hour"
                         >
                           <span className="text-xl font-black text-[#1A3668] dark:text-white leading-none">
-                            {is12Hour ? formHour12 : String(formHour24).padStart(2, '0')}
+                            {is12Hour ? adjHour12 : String(adjHour24).padStart(2, '0')}
                           </span>
                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                             Hour
@@ -4172,7 +4423,7 @@ export default function App() {
                           title="Roll mouse wheel here to scroll minutes"
                         >
                           <span className="text-xl font-black text-[#1A3668] dark:text-white leading-none">
-                            {String(formMinute).padStart(2, '0')}
+                            {String(adjMinute).padStart(2, '0')}
                           </span>
                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                             Min
@@ -4195,7 +4446,7 @@ export default function App() {
                             type="button"
                             onClick={() => handleSetAmPm('AM')}
                             className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                              formPeriod === 'AM'
+                              adjPeriod === 'AM'
                                 ? 'bg-purple-600 text-white shadow-xs scale-105'
                                 : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-purple-50'
                             }`}
@@ -4206,7 +4457,7 @@ export default function App() {
                             type="button"
                             onClick={() => handleSetAmPm('PM')}
                             className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                              formPeriod === 'PM'
+                              adjPeriod === 'PM'
                                 ? 'bg-purple-600 text-white shadow-xs scale-105'
                                 : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-purple-50'
                             }`}
@@ -4220,37 +4471,51 @@ export default function App() {
                     {/* Quick Preset Pills */}
                     <div className="mt-3 pt-2.5 border-t border-purple-100 dark:border-slate-700">
                       <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
-                        Quick Times:
+                        Quick Times for {timeAdjusterTarget === 'start' ? 'Start' : 'End'}:
                       </span>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {(is12Hour
                           ? ['10:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:30 PM']
                           : ['10:00', '12:00', '14:00', '16:00', '18:00', '19:00', '20:00', '21:30']
-                        ).map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setFormTime(preset)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                              formTime.toLowerCase().startsWith(preset.toLowerCase())
-                                ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
-                                : 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-purple-50'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
+                        ).map((preset) => {
+                          const activeVal = timeAdjusterTarget === 'start' ? formTime : formEndTime;
+                          return (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setTargetTimeValue(preset)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                                activeVal.toLowerCase().startsWith(preset.toLowerCase())
+                                  ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                                  : 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-purple-50'
+                              }`}
+                            >
+                              {preset}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
                 )}
 
-                {formTime && (
-                  <div className="mt-1.5 text-[11px] font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1.5 px-1">
-                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                {/* Live Formatted Summary Line */}
+                {(formTime || formEndTime) && (
+                  <div className="mt-2 text-[11.5px] font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-2 px-1 flex-wrap">
+                    <Clock className="w-3.5 h-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
                     <span>
-                      Displays as: <strong className="font-extrabold">{formatTime12h(formTime)} {formTimezone !== 'CUSTOM' ? formTimezone : customTimezone}</strong>
+                      Displays as:{' '}
+                      <strong className="font-extrabold text-[#1A3668] dark:text-white">
+                        {formatTime12h(formTime)}
+                        {formEndTime ? ` – ${formatTime12h(formEndTime)}` : ''}{' '}
+                        {formTimezone !== 'CUSTOM' ? formTimezone : customTimezone || 'UTC'}
+                      </strong>
                     </span>
+                    {getEventTimeDurationLabel(formTime, formEndTime) && (
+                      <span className="text-[10px] font-extrabold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">
+                        ✨ {getEventTimeDurationLabel(formTime, formEndTime)}
+                      </span>
+                    )}
                   </div>
                 )}
 
