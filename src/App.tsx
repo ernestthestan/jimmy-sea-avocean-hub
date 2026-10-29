@@ -941,13 +941,45 @@ export default function App() {
   const [passcodeError, setPasscodeError] = useState<string>('');
   const [showPasscodeField, setShowPasscodeField] = useState<boolean>(false);
 
-  // Calendar State (Default to Friday, 30 October 2026 matching requested view)
-  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date(2026, 9, 1));
-  const [selectedDateStr, setSelectedDateStr] = useState<string>('2026-10-30');
+  // Visitor's Detected Local Timezone (e.g. "Asia/Bangkok", "America/New_York", "Europe/London")
+  const userLocalTimezone = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+    } catch {
+      return 'Local';
+    }
+  }, []);
+
+  // Real-time Today's date string (YYYY-MM-DD) based strictly on visitor's local timezone
+  const [todayDateStr, setTodayDateStr] = useState<string>(() => {
+    const now = new Date();
+    return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  });
+
+  // Calendar State: Defaults dynamically to current month & today in user's timezone
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(() => {
+    const now = new Date();
+    return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  });
   const [showWeekOnly, setShowWeekOnly] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'calendar' | 'list'>('calendar');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDayActiveEventId, setSelectedDayActiveEventId] = useState<string | null>(null);
+
+  // Automatically update today's date string when midnight passes in user's timezone
+  useEffect(() => {
+    const updateTodayIfRolledOver = () => {
+      const now = new Date();
+      const current = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+      setTodayDateStr((prev) => (prev !== current ? current : prev));
+    };
+    const interval = setInterval(updateTodayIfRolledOver, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, []);
 
   // Settings & Events State
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -1579,11 +1611,13 @@ export default function App() {
   };
 
   const handleJumpToToday = () => {
-    const todayYear = 2026;
-    const todayMonth = 9; // October (0-indexed)
-    const todayDay = 28;
-    setCurrentMonthDate(new Date(todayYear, todayMonth, 1));
-    setSelectedDateStr(toDateKey(todayYear, todayMonth, todayDay));
+    const now = new Date();
+    const currentTodayStr = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+    setTodayDateStr(currentTodayStr);
+    setCurrentMonthDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedDateStr(currentTodayStr);
+    setSelectedDayActiveEventId(null);
+    showToast(`Jumped to Today: ${formatDetailFullDate(currentTodayStr)} (${userLocalTimezone})`);
   };
 
   // Build Calendar Grid for Current Month
@@ -3021,9 +3055,11 @@ export default function App() {
                   </button>
                   <button
                     onClick={handleJumpToToday}
-                    className="h-10 sm:h-11 px-4 sm:px-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs text-xs sm:text-sm font-black text-[#1A3668] dark:text-white cursor-pointer"
+                    title={`Jump to Today (${todayDateStr} · ${userLocalTimezone})`}
+                    className="h-10 sm:h-11 px-4 sm:px-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs text-xs sm:text-sm font-black text-[#1A3668] dark:text-white cursor-pointer inline-flex items-center gap-2"
                   >
-                    Today
+                    <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
+                    <span>Today</span>
                   </button>
                 </div>
               </div>
@@ -3043,10 +3079,11 @@ export default function App() {
                   <div key={wIdx} className="grid grid-cols-7 items-start">
                     {week.map((cell, cIdx) => {
                       if (!cell) {
-                        return <div key={`empty-${cIdx}`} className="h-[64px] sm:h-[74px] md:h-[82px]" />;
+                        return <div key={`empty-${cIdx}`} className="h-[68px] sm:h-[78px] md:h-[86px]" />;
                       }
 
                       const isSelected = cell.dateStr === selectedDateStr;
+                      const isToday = cell.dateStr === todayDateStr;
                       const dayEvents = eventsByDate[cell.dateStr] || [];
 
                       const dayMemberIds = Array.from(
@@ -3062,14 +3099,28 @@ export default function App() {
                             setSelectedDateStr(cell.dateStr);
                             setSelectedDayActiveEventId(null);
                           }}
-                          className="flex flex-col items-center justify-start py-1 group cursor-pointer focus:outline-none min-h-[64px] sm:min-h-[74px] md:min-h-[82px]"
+                          className={`flex flex-col items-center justify-start py-1 px-0.5 sm:px-1 group cursor-pointer focus:outline-none min-h-[68px] sm:min-h-[78px] md:min-h-[86px] rounded-2xl transition-all relative ${
+                            isToday
+                              ? 'bg-[#E0F2FE] dark:bg-sky-950/70 border-2 border-sky-300 dark:border-sky-600 shadow-xs'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border-2 border-transparent'
+                          }`}
                         >
+                          {/* Today Micro Label */}
+                          {isToday && (
+                            <span className="text-[8px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-300 -mt-0.5 mb-0.5">
+                              TODAY
+                            </span>
+                          )}
+
+                          {/* Day Number Badge: Purple if Selected, Blue if Today (when another date is selected), Default otherwise */}
                           <div
                             style={isSelected ? { backgroundColor: currentAccent.colorHex } : {}}
-                            className={`w-11 h-11 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-full flex items-center justify-center text-sm sm:text-base md:text-lg transition-all ${
+                            className={`w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center text-sm sm:text-base md:text-lg transition-all ${
                               isSelected
-                                ? 'text-white font-black shadow-lg scale-110 ring-3 ring-purple-400/40'
-                                : 'text-[#1A3668] dark:text-slate-300 font-extrabold group-hover:bg-slate-100 dark:group-hover:bg-slate-800'
+                                ? 'text-white font-black shadow-lg scale-105 ring-3 ring-purple-400/40'
+                                : isToday
+                                  ? 'bg-sky-500 dark:bg-sky-600 text-white font-black shadow-xs ring-2 ring-sky-300 dark:ring-sky-500'
+                                  : 'text-[#1A3668] dark:text-slate-300 font-extrabold group-hover:bg-slate-100 dark:group-hover:bg-slate-800'
                             }`}
                           >
                             {cell.day}
