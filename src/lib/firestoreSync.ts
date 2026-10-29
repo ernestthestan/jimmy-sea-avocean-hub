@@ -145,6 +145,29 @@ export function startLivePresenceTracking(
 }
 
 /**
+ * Deeply sanitizes objects before sending to Firestore by removing any undefined keys
+ * which cause Firestore setDoc/updateDoc to throw "Unsupported field value: undefined" errors.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        clean[key] = sanitizeForFirestore(value);
+      }
+    }
+    return clean as any;
+  }
+  return data;
+}
+
+/**
  * 2. REAL-TIME CALENDAR EVENTS SYNC
  */
 export function subscribeToEvents(
@@ -152,29 +175,42 @@ export function subscribeToEvents(
   onUpdate: (events: ScheduleEvent[]) => void
 ) {
   const eventsCol = collection(db, 'events');
+  const metaDocRef = doc(db, 'settings', 'events_meta');
 
-  // Initial check & seed if empty
-  getDocs(eventsCol)
-    .then((snap) => {
-      if (snap.empty && initialSampleEvents.length > 0) {
-        // Seed initial sample events so everyone has the official fan schedule
-        initialSampleEvents.forEach((ev) => {
-          setDoc(doc(db, 'events', ev.id), ev).catch(() => {});
-        });
+  // Check if events have ever been initialized.
+  // Once initialized, an empty events list is a valid user choice and NEVER gets re-seeded.
+  getDoc(metaDocRef)
+    .then(async (metaSnap) => {
+      if (!metaSnap.exists()) {
+        try {
+          const eventsSnap = await getDocs(eventsCol);
+          if (eventsSnap.empty && initialSampleEvents.length > 0) {
+            for (const ev of initialSampleEvents) {
+              const clean = sanitizeForFirestore(ev);
+              await setDoc(doc(db, 'events', ev.id), clean).catch(() => {});
+            }
+          }
+          await setDoc(metaDocRef, {
+            seeded: true,
+            initializedAt: new Date().toISOString()
+          }).catch(() => {});
+        } catch (e) {
+          console.warn('Events initialization error:', e);
+        }
       }
     })
-    .catch((err) => console.warn('Could not check events collection:', err));
+    .catch((err) => console.warn('Could not check events meta doc:', err));
 
   const unsubscribe = onSnapshot(
     eventsCol,
     (snapshot) => {
-      if (snapshot.empty) return;
       const loaded: ScheduleEvent[] = [];
       snapshot.forEach((docSnap) => {
         loaded.push(docSnap.data() as ScheduleEvent);
       });
       // Sort chronologically by date
       loaded.sort((a, b) => a.date.localeCompare(b.date));
+      // Notify listeners even when loaded is empty (e.g. user deleted all events)
       onUpdate(loaded);
     },
     (error) => {
@@ -187,10 +223,11 @@ export function subscribeToEvents(
 
 export async function saveEventToFirestore(ev: ScheduleEvent): Promise<void> {
   const eventRef = doc(db, 'events', ev.id);
-  await setDoc(eventRef, {
+  const clean = sanitizeForFirestore({
     ...ev,
     updatedAt: new Date().toISOString()
   });
+  await setDoc(eventRef, clean);
 }
 
 export async function deleteEventFromFirestore(eventId: string): Promise<void> {
@@ -239,14 +276,11 @@ export function subscribeToSettings(
 
 export async function saveSettingsToFirestore(settings: AppSettings): Promise<void> {
   const settingsDocRef = doc(db, 'settings', 'global');
-  await setDoc(
-    settingsDocRef,
-    {
-      ...settings,
-      updatedAt: new Date().toISOString()
-    },
-    { merge: true }
-  );
+  const clean = sanitizeForFirestore({
+    ...settings,
+    updatedAt: new Date().toISOString()
+  });
+  await setDoc(settingsDocRef, clean, { merge: true });
 }
 
 /**
@@ -274,12 +308,14 @@ export function subscribeToFanMessages(onUpdate: (messages: FanMessage[]) => voi
 
 export async function sendFanMessageToFirestore(msg: FanMessage): Promise<void> {
   const msgRef = doc(db, 'fan_messages', msg.id);
-  await setDoc(msgRef, msg);
+  const clean = sanitizeForFirestore(msg);
+  await setDoc(msgRef, clean);
 }
 
 export async function updateFanMessageInFirestore(id: string, updates: Partial<FanMessage>): Promise<void> {
   const msgRef = doc(db, 'fan_messages', id);
-  await updateDoc(msgRef, updates);
+  const clean = sanitizeForFirestore(updates);
+  await updateDoc(msgRef, clean);
 }
 
 export async function deleteFanMessageFromFirestore(id: string): Promise<void> {

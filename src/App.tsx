@@ -1082,9 +1082,19 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToEvents(SAMPLE_EVENTS, (cloudEvents) => {
       setEvents(cloudEvents);
+      try {
+        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(cloudEvents));
+      } catch {}
     });
     return () => unsubscribe();
   }, []);
+
+  // Ensure detailEvent is always valid and does not reference a deleted event
+  useEffect(() => {
+    if (detailEvent && !events.some((e) => e.id === detailEvent.id)) {
+      setDetailEvent(events.length > 0 ? events[0] : null);
+    }
+  }, [events, detailEvent]);
 
   // Real-Time Settings & Banner Sync from Firestore
   useEffect(() => {
@@ -1737,7 +1747,7 @@ export default function App() {
       id: editingEvent ? editingEvent.id : `ev-${Date.now()}`,
       title: formTitle.trim(),
       date: formDate,
-      endDate: resolvedEndDate,
+      endDate: resolvedEndDate || undefined,
       time: formTime.trim(),
       timezone: resolvedTimezone,
       location: formLocation.trim(),
@@ -1753,9 +1763,13 @@ export default function App() {
 
     setEvents((prev) => {
       const exists = prev.some((item) => item.id === newEvent.id);
-      return exists
+      const updated = exists
         ? prev.map((item) => (item.id === newEvent.id ? newEvent : item))
         : [...prev, newEvent];
+      try {
+        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
     });
 
     // Sync to Firestore Cloud Database
@@ -1773,7 +1787,7 @@ export default function App() {
   };
 
   // Delete Event (Owner Only)
-  const handleDeleteEvent = (eventId: string) => {
+  const handleDeleteEvent = async (eventId: string) => {
     if (!isOwner) {
       if (isAdmin) {
         showToast('Admins can only add and edit events. Only the Owner can delete events.');
@@ -1782,12 +1796,21 @@ export default function App() {
       }
       return;
     }
-    setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+    const updated = events.filter((ev) => ev.id !== eventId);
+    setEvents(updated);
+    try {
+      localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
+    } catch {}
+
     // Sync deletion to Firestore Cloud Database
-    deleteEventFromFirestore(eventId).catch((err) => console.warn('Could not delete event from Firestore:', err));
+    try {
+      await deleteEventFromFirestore(eventId);
+    } catch (err) {
+      console.warn('Could not delete event from Firestore:', err);
+    }
 
     if (detailEvent && detailEvent.id === eventId) {
-      setDetailEvent(null);
+      setDetailEvent(updated.length > 0 ? updated[0] : null);
     }
     showToast('Event removed from schedule');
   };

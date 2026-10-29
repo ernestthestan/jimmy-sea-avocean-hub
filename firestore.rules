@@ -7,8 +7,8 @@ service cloud.firestore {
       allow write: if true;
     }
 
-    // Global Hub Settings & Banner Customization: Publicly readable; editable by authorized admins/owner
-    match /settings/global {
+    // Hub Settings, Metadata & Banner Customization: Publicly readable; editable by authorized admins/owner
+    match /settings/{settingId} {
       allow read: if true;
       allow write: if true;
     }
