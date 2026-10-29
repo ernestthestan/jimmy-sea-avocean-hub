@@ -70,7 +70,8 @@ import {
   subscribeToFanMessages,
   sendFanMessageToFirestore,
   updateFanMessageInFirestore,
-  deleteFanMessageFromFirestore
+  deleteFanMessageFromFirestore,
+  type LiveStats
 } from './lib/firestoreSync';
 
 // --- Type Definitions ---
@@ -651,7 +652,8 @@ const formatTime12h = (timeStr?: string): string => {
 const parseHourAndMinute = (timeStr?: string): [number, number] => {
   if (!timeStr) return [18, 0];
   const trimmed = timeStr.trim();
-  const match12 = trimmed.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  // 1. Matches "6:00 PM", "18:00", "06:30 am", etc.
+  const match12 = trimmed.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
   if (match12) {
     let h = parseInt(match12[1], 10);
     const m = parseInt(match12[2], 10);
@@ -660,6 +662,16 @@ const parseHourAndMinute = (timeStr?: string): [number, number] => {
     if (mer === 'AM' && h === 12) h = 0;
     return [isNaN(h) ? 18 : h, isNaN(m) ? 0 : m];
   }
+  // 2. Matches hour only with AM/PM e.g. "6 PM", "6PM", "11am"
+  const matchHourOnlyAmPm = trimmed.match(/^(\d{1,2})\s*(AM|PM)/i);
+  if (matchHourOnlyAmPm) {
+    let h = parseInt(matchHourOnlyAmPm[1], 10);
+    const mer = matchHourOnlyAmPm[2].toUpperCase();
+    if (mer === 'PM' && h < 12) h += 12;
+    if (mer === 'AM' && h === 12) h = 0;
+    return [isNaN(h) ? 18 : h, 0];
+  }
+  // 3. Simple colon e.g. "18:00"
   if (trimmed.includes(':')) {
     const [h, m] = trimmed.split(':').map(Number);
     return [isNaN(h) ? 18 : h, isNaN(m) ? 0 : m];
@@ -1077,20 +1089,23 @@ export default function App() {
   };
 
   // --- Real-Time Firestore Presence, Visitor Count & Cloud Sync ---
-  const [visitorStats, setVisitorStats] = useState<{ totalVisits: number; liveViewers: number }>(() => {
+  // --- Real-Time Firestore Presence, Daily Visits & Cloud Sync ---
+  const [visitorStats, setVisitorStats] = useState<LiveStats>(() => {
     try {
-      const raw = localStorage.getItem('avocean_visitor_stats_v1');
+      const raw = localStorage.getItem('avocean_visitor_stats_v2');
       if (raw) {
         const parsed = JSON.parse(raw);
         return {
-          totalVisits: parsed.totalVisits || 4821,
-          liveViewers: parsed.liveViewers || 1
+          liveViewers: parsed.liveViewers || 1,
+          todayVisits: typeof parsed.todayVisits === 'number' ? parsed.todayVisits : 1,
+          totalVisits: typeof parsed.totalVisits === 'number' ? parsed.totalVisits : 28
         };
       }
     } catch {}
     return {
-      totalVisits: 4821,
-      liveViewers: 1
+      liveViewers: 1,
+      todayVisits: 1,
+      totalVisits: 28
     };
   });
 
@@ -1099,12 +1114,12 @@ export default function App() {
     testFirestoreConnection();
   }, []);
 
-  // Real-Time Online Presence & Total Visits from Firestore
+  // Real-Time Online Presence & Daily Refreshing Visits from Firestore
   useEffect(() => {
     const unsubscribe = startLivePresenceTracking((liveStats) => {
       setVisitorStats(liveStats);
       try {
-        localStorage.setItem('avocean_visitor_stats_v1', JSON.stringify(liveStats));
+        localStorage.setItem('avocean_visitor_stats_v2', JSON.stringify(liveStats));
       } catch {}
     });
     return () => unsubscribe();
@@ -1340,9 +1355,70 @@ export default function App() {
   const [formDate, setFormDate] = useState<string>('2026-10-28');
   const [formEndDate, setFormEndDate] = useState<string>('');
   const [formIsMultiDay, setFormIsMultiDay] = useState<boolean>(false);
-  const [formTime, setFormTime] = useState<string>('18:00');
+  const [formTime, setFormTime] = useState<string>(() => (is12Hour ? '6:00 PM' : '18:00'));
   const [formTimezone, setFormTimezone] = useState<string>('BKK');
   const [customTimezone, setCustomTimezone] = useState<string>('');
+  const [showTimeAdjuster, setShowTimeAdjuster] = useState<boolean>(true);
+
+  // Extract parsed hour & minute from formTime for live interactive scroll wheel
+  const [formHour24, formMinute] = useMemo(() => {
+    return parseHourAndMinute(formTime);
+  }, [formTime]);
+
+  const formHour12 = useMemo(() => {
+    const h = formHour24 % 12;
+    return h === 0 ? 12 : h;
+  }, [formHour24]);
+
+  const formPeriod = useMemo(() => {
+    return formHour24 >= 12 ? 'PM' : 'AM';
+  }, [formHour24]);
+
+  // Scroll wheel / button adjuster for Hour
+  const handleAdjustHour = (delta: number) => {
+    const nextH24 = (formHour24 + delta + 24) % 24;
+    const mStr = String(formMinute).padStart(2, '0');
+    if (is12Hour) {
+      const p = nextH24 >= 12 ? 'PM' : 'AM';
+      let h12 = nextH24 % 12;
+      if (h12 === 0) h12 = 12;
+      setFormTime(`${h12}:${mStr} ${p}`);
+    } else {
+      setFormTime(`${String(nextH24).padStart(2, '0')}:${mStr}`);
+    }
+  };
+
+  // Scroll wheel / button adjuster for Minute (steps by delta, e.g. +/- 5)
+  const handleAdjustMinute = (delta: number) => {
+    let nextM = formMinute + delta;
+    let nextH24 = formHour24;
+    if (nextM >= 60) {
+      nextM = nextM % 60;
+      nextH24 = (nextH24 + 1) % 24;
+    } else if (nextM < 0) {
+      nextM = (nextM + 60) % 60;
+      nextH24 = (nextH24 - 1 + 24) % 24;
+    }
+    const mStr = String(nextM).padStart(2, '0');
+    if (is12Hour) {
+      const p = nextH24 >= 12 ? 'PM' : 'AM';
+      let h12 = nextH24 % 12;
+      if (h12 === 0) h12 = 12;
+      setFormTime(`${h12}:${mStr} ${p}`);
+    } else {
+      setFormTime(`${String(nextH24).padStart(2, '0')}:${mStr}`);
+    }
+  };
+
+  // Toggle AM / PM in 12-Hour mode
+  const handleSetAmPm = (target: 'AM' | 'PM') => {
+    if (formPeriod === target) return;
+    const nextH24 = (formHour24 + 12) % 24;
+    let h12 = nextH24 % 12;
+    if (h12 === 0) h12 = 12;
+    const mStr = String(formMinute).padStart(2, '0');
+    setFormTime(`${h12}:${mStr} ${target}`);
+  };
   const [formLocation, setFormLocation] = useState<string>('');
   const [formLocationUrl, setFormLocationUrl] = useState<string>('');
   const [formPosterUrl, setFormPosterUrl] = useState<string>('');
@@ -1709,7 +1785,7 @@ export default function App() {
     setFormDate(defaultDate);
     setFormEndDate('');
     setFormIsMultiDay(false);
-    setFormTime('18:00');
+    setFormTime(is12Hour ? '6:00 PM' : '18:00');
     setFormTimezone('BKK');
     setCustomTimezone('');
     setFormLocation('');
@@ -1721,6 +1797,7 @@ export default function App() {
     setFormDescription('');
     setFormHashtags('#JimmySea #Avocean');
     setFormWatchPlatforms([]);
+    setShowTimeAdjuster(true);
     setEventModalOpen(true);
   };
 
@@ -1751,6 +1828,14 @@ export default function App() {
     }
     if (!parsedTz) parsedTz = 'BKK';
 
+    if (parsedTime) {
+      if (is12Hour) {
+        parsedTime = formatTime12h(parsedTime);
+      }
+    } else {
+      parsedTime = is12Hour ? '6:00 PM' : '18:00';
+    }
+
     setFormTime(parsedTime);
     const matched = ALL_TIMEZONES.find((t) => t.code === parsedTz);
     if (matched) {
@@ -1760,6 +1845,7 @@ export default function App() {
       setFormTimezone('CUSTOM');
       setCustomTimezone(parsedTz);
     }
+    setShowTimeAdjuster(true);
 
     setFormLocation(ev.location || '');
     setFormLocationUrl(ev.locationUrl || '');
@@ -2553,19 +2639,20 @@ export default function App() {
             </button>
           )}
 
-          {/* Admin & Owner Only: Live Viewers & Total Website Visits Stats */}
-          {canEditEvents && (
-            <div className="hidden sm:inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>{visitorStats.liveViewers} online</span>
-              <span className="text-slate-300 dark:text-slate-600">·</span>
-              <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
-              <span>{visitorStats.totalVisits.toLocaleString()} visits</span>
-            </div>
-          )}
+          {/* Live Viewers & Today's Visits Stats */}
+          <div
+            className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
+            title={`${visitorStats.liveViewers} online now · ${visitorStats.todayVisits.toLocaleString()} visits today (${visitorStats.totalVisits.toLocaleString()} all-time)`}
+          >
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>{visitorStats.liveViewers} online</span>
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+            <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
+          </div>
 
           {/* Role Status Pills */}
           {isOwner && (
@@ -3941,19 +4028,41 @@ export default function App() {
                 )}
               </div>
 
-              {/* Time & Timezone Selection */}
+              {/* Time & Timezone Selection with Typing + Scroll Wheel Stepper */}
               <div>
-                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                  Time & Timezone (12-Hour AM/PM)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-[#526586] dark:text-slate-400">
+                    Time & Timezone ({is12Hour ? '12-Hour AM/PM' : '24-Hour'})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowTimeAdjuster(!showTimeAdjuster)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    <span>{showTimeAdjuster ? 'Hide Wheel' : 'Open Scroll Wheel'}</span>
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={formTime}
-                    onChange={(e) => setFormTime(e.target.value)}
-                    placeholder="e.g. 18:00 or 6:00 PM"
-                    className="w-1/2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
+                  <div className="relative w-1/2">
+                    <input
+                      type="text"
+                      value={formTime}
+                      onChange={(e) => setFormTime(e.target.value)}
+                      placeholder={is12Hour ? 'e.g. 6:00 PM' : 'e.g. 18:00'}
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-8 py-2 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTimeAdjuster(!showTimeAdjuster)}
+                      title="Toggle Time Scroll Wheel / Adjuster"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer p-0.5"
+                    >
+                      <Clock className="w-4 h-4" />
+                    </button>
+                  </div>
+
                   <select
                     value={formTimezone}
                     onChange={(e) => setFormTimezone(e.target.value)}
@@ -3992,6 +4101,149 @@ export default function App() {
                     </optgroup>
                   </select>
                 </div>
+
+                {/* Interactive Time Scroll Wheel & Stepper */}
+                {showTimeAdjuster && (
+                  <div className="mt-2.5 p-3 rounded-2xl bg-purple-50/70 dark:bg-slate-800/80 border border-purple-100 dark:border-slate-700 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-purple-900 dark:text-purple-300 mb-2">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>Scroll Wheel & Time Adjuster</span>
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        {is12Hour ? '12-Hour Mode' : '24-Hour Mode'} · Type or Roll Wheel
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-3 select-none py-1">
+                      {/* HOUR WHEEL & STEPPER */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustHour(1)}
+                          className="w-10 h-6 rounded-t-lg bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 cursor-pointer active:scale-95 transition-all shadow-2xs"
+                          title="Increase Hour (or roll mouse wheel up)"
+                        >
+                          <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                        <div
+                          onWheel={(e) => {
+                            e.preventDefault();
+                            handleAdjustHour(e.deltaY < 0 ? 1 : -1);
+                          }}
+                          className="w-14 h-12 bg-white dark:bg-slate-900 border-x border-slate-200 dark:border-slate-600 flex flex-col items-center justify-center cursor-ns-resize shadow-inner group transition-colors hover:border-purple-400"
+                          title="Roll mouse wheel here to scroll hour"
+                        >
+                          <span className="text-xl font-black text-[#1A3668] dark:text-white leading-none">
+                            {is12Hour ? formHour12 : String(formHour24).padStart(2, '0')}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                            Hour
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustHour(-1)}
+                          className="w-10 h-6 rounded-b-lg bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 cursor-pointer active:scale-95 transition-all shadow-2xs"
+                          title="Decrease Hour (or roll mouse wheel down)"
+                        >
+                          <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                      </div>
+
+                      <span className="text-2xl font-black text-slate-400 dark:text-slate-500 pb-2">:</span>
+
+                      {/* MINUTE WHEEL & STEPPER */}
+                      <div className="flex flex-col items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustMinute(5)}
+                          className="w-10 h-6 rounded-t-lg bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 cursor-pointer active:scale-95 transition-all shadow-2xs"
+                          title="+5 Minutes (or roll mouse wheel up)"
+                        >
+                          <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                        <div
+                          onWheel={(e) => {
+                            e.preventDefault();
+                            handleAdjustMinute(e.deltaY < 0 ? 5 : -5);
+                          }}
+                          className="w-14 h-12 bg-white dark:bg-slate-900 border-x border-slate-200 dark:border-slate-600 flex flex-col items-center justify-center cursor-ns-resize shadow-inner group transition-colors hover:border-purple-400"
+                          title="Roll mouse wheel here to scroll minutes"
+                        >
+                          <span className="text-xl font-black text-[#1A3668] dark:text-white leading-none">
+                            {String(formMinute).padStart(2, '0')}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                            Min
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustMinute(-5)}
+                          className="w-10 h-6 rounded-b-lg bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 cursor-pointer active:scale-95 transition-all shadow-2xs"
+                          title="-5 Minutes (or roll mouse wheel down)"
+                        >
+                          <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                      </div>
+
+                      {/* AM / PM SELECTOR (Only rendered in 12-Hour mode) */}
+                      {is12Hour && (
+                        <div className="flex flex-col gap-1.5 ml-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSetAmPm('AM')}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                              formPeriod === 'AM'
+                                ? 'bg-purple-600 text-white shadow-xs scale-105'
+                                : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-purple-50'
+                            }`}
+                          >
+                            AM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetAmPm('PM')}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                              formPeriod === 'PM'
+                                ? 'bg-purple-600 text-white shadow-xs scale-105'
+                                : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-purple-50'
+                            }`}
+                          >
+                            PM
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quick Preset Pills */}
+                    <div className="mt-3 pt-2.5 border-t border-purple-100 dark:border-slate-700">
+                      <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+                        Quick Times:
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {(is12Hour
+                          ? ['10:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:30 PM']
+                          : ['10:00', '12:00', '14:00', '16:00', '18:00', '19:00', '20:00', '21:30']
+                        ).map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setFormTime(preset)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                              formTime.toLowerCase().startsWith(preset.toLowerCase())
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                                : 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-purple-50'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {formTime && (
                   <div className="mt-1.5 text-[11px] font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1.5 px-1">

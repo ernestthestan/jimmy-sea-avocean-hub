@@ -24,42 +24,82 @@ export async function testFirestoreConnection() {
   }
 }
 
-// Generate persistent session ID for live presence heartbeats
-const SESSION_ID = (() => {
+export interface LiveStats {
+  liveViewers: number;
+  todayVisits: number;
+  totalVisits: number;
+}
+
+// Generate persistent device visitor ID (shared across multiple tabs on same device)
+const VISITOR_ID = (() => {
   try {
-    let sid = sessionStorage.getItem('avocean_presence_session_id');
-    if (!sid) {
-      sid = `fan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      sessionStorage.setItem('avocean_presence_session_id', sid);
+    let vid = localStorage.getItem('avocean_visitor_device_id_v2');
+    if (!vid) {
+      vid = `fan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem('avocean_visitor_device_id_v2', vid);
     }
-    return sid;
+    return vid;
   } catch {
     return `fan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
 })();
 
+// Helper to get local YYYY-MM-DD
+const getLocalDateKey = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 /**
- * 1. LIVE ONLINE PRESENCE & REAL TOTAL VISITS TRACKING
+ * 1. LIVE ONLINE PRESENCE & DAILY REFRESHING VISITS TRACKING
+ * - Online: Real active heartbeat within 35 seconds (1 count per unique device).
+ * - Visits: Tracks visits for TODAY that automatically refreshes each day at midnight.
  */
 export function startLivePresenceTracking(
-  onStatsUpdate: (stats: { liveViewers: number; totalVisits: number }) => void
+  onStatsUpdate: (stats: LiveStats) => void
 ) {
   let isCleanedUp = false;
+  const todayKey = getLocalDateKey();
 
-  // A. Register visit count once per browser session
+  // A. Register visit for TODAY once per device per day
   try {
-    const hasCountedSession = sessionStorage.getItem('avocean_visit_counted');
-    if (!hasCountedSession) {
-      sessionStorage.setItem('avocean_visit_counted', 'true');
+    const lastCountedDate = localStorage.getItem('avocean_visit_date_v2');
+    if (lastCountedDate !== todayKey) {
+      localStorage.setItem('avocean_visit_date_v2', todayKey);
       const statsDocRef = doc(db, 'stats', 'global');
-      setDoc(
-        statsDocRef,
-        {
-          totalVisits: increment(1),
-          lastUpdated: new Date().toISOString()
-        },
-        { merge: true }
-      ).catch((err) => console.warn('Could not increment global visit counter:', err));
+      getDoc(statsDocRef)
+        .then((snap) => {
+          const data = snap.exists() ? snap.data() : null;
+          const isSameDay = data && data.currentDate === todayKey;
+          if (isSameDay) {
+            setDoc(
+              statsDocRef,
+              {
+                todayVisits: increment(1),
+                totalVisits: increment(1),
+                currentDate: todayKey,
+                lastUpdated: new Date().toISOString()
+              },
+              { merge: true }
+            ).catch(() => {});
+          } else {
+            // New day rollover: Start todayVisits at 1 for the new day
+            setDoc(
+              statsDocRef,
+              {
+                todayVisits: 1,
+                totalVisits: increment(1),
+                currentDate: todayKey,
+                lastUpdated: new Date().toISOString()
+              },
+              { merge: true }
+            ).catch(() => {});
+          }
+        })
+        .catch((err) => console.warn('Could not update daily visit counter:', err));
     }
   } catch (err) {
     console.warn('Session visit check error:', err);
@@ -69,66 +109,97 @@ export function startLivePresenceTracking(
   const sendHeartbeat = async () => {
     if (isCleanedUp) return;
     try {
-      const presenceRef = doc(db, 'presence', SESSION_ID);
+      const presenceRef = doc(db, 'presence', VISITOR_ID);
       await setDoc(
         presenceRef,
         {
-          sessionId: SESSION_ID,
+          visitorId: VISITOR_ID,
           lastSeen: Date.now()
         },
         { merge: true }
       );
-    } catch (err) {
+    } catch {
       // Ignore transient network errors
     }
   };
 
   // Immediate heartbeat on mount
   sendHeartbeat();
-  const heartbeatInterval = setInterval(sendHeartbeat, 20000); // every 20 seconds
+  const heartbeatInterval = setInterval(sendHeartbeat, 15000); // Heartbeat every 15s
 
-  // Clean up presence on tab close/unload
+  // Clean up presence on tab close or navigation
   const cleanupPresence = () => {
     try {
-      const presenceRef = doc(db, 'presence', SESSION_ID);
+      const presenceRef = doc(db, 'presence', VISITOR_ID);
       deleteDoc(presenceRef).catch(() => {});
     } catch {}
   };
-  window.addEventListener('beforeunload', cleanupPresence);
 
-  // C. Listen to live stats (real active presence sessions in the last 45 seconds + total visits)
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      cleanupPresence();
+    } else {
+      sendHeartbeat();
+    }
+  };
+
+  window.addEventListener('beforeunload', cleanupPresence);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  // C. Listen to live stats (real active presence + daily visits)
   let unsubscribePresence: (() => void) | null = null;
   let unsubscribeStats: (() => void) | null = null;
 
   let currentLiveCount = 1;
-  let currentTotalVisits = 4821;
+  let currentTodayVisits = 1;
+  let currentTotalVisits = 28;
 
   try {
     const statsDocRef = doc(db, 'stats', 'global');
     unsubscribeStats = onSnapshot(statsDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (typeof data.totalVisits === 'number') {
-          currentTotalVisits = Math.max(data.totalVisits, 1);
-          onStatsUpdate({ liveViewers: currentLiveCount, totalVisits: currentTotalVisits });
-        }
+        const currentTodayKey = getLocalDateKey();
+        const isToday = data.currentDate === currentTodayKey;
+        currentTodayVisits = isToday && typeof data.todayVisits === 'number' ? Math.max(1, data.todayVisits) : 1;
+        currentTotalVisits = typeof data.totalVisits === 'number' ? Math.max(1, data.totalVisits) : currentTodayVisits;
+        onStatsUpdate({
+          liveViewers: currentLiveCount,
+          todayVisits: currentTodayVisits,
+          totalVisits: currentTotalVisits
+        });
       }
     });
 
     const presenceColRef = collection(db, 'presence');
     unsubscribePresence = onSnapshot(presenceColRef, (snapshot) => {
       const now = Date.now();
-      const cutoff = now - 45000; // active within last 45s
+      const cutoff = now - 35000; // Active within last 35 seconds
       let activeCount = 0;
+      const staleIds: string[] = [];
+
       snapshot.forEach((d) => {
         const data = d.data();
         if (data.lastSeen && data.lastSeen > cutoff) {
           activeCount++;
+        } else if (data.lastSeen && data.lastSeen < now - 90000) {
+          staleIds.push(d.id);
         }
       });
-      // Ensure at least 1 (the current viewer)
+
+      // Prune stale presence records older than 90 seconds
+      if (staleIds.length > 0) {
+        staleIds.slice(0, 5).forEach((id) => {
+          deleteDoc(doc(db, 'presence', id)).catch(() => {});
+        });
+      }
+
       currentLiveCount = Math.max(1, activeCount);
-      onStatsUpdate({ liveViewers: currentLiveCount, totalVisits: currentTotalVisits });
+      onStatsUpdate({
+        liveViewers: currentLiveCount,
+        todayVisits: currentTodayVisits,
+        totalVisits: currentTotalVisits
+      });
     });
   } catch (err) {
     console.warn('Real-time stats listener error:', err);
@@ -138,6 +209,7 @@ export function startLivePresenceTracking(
     isCleanedUp = true;
     clearInterval(heartbeatInterval);
     window.removeEventListener('beforeunload', cleanupPresence);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
     cleanupPresence();
     if (unsubscribePresence) unsubscribePresence();
     if (unsubscribeStats) unsubscribeStats();

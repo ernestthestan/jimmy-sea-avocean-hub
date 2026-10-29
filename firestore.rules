@@ -25,8 +25,8 @@ service cloud.firestore {
       allow write: if true;
     }
 
-    // Global Aggregate Stats: Publicly readable and updatable for visit counting
-    match /stats/global {
+    // Global Aggregate & Daily Stats: Publicly readable and updatable for visit counting
+    match /stats/{statId} {
       allow read: if true;
       allow write: if true;
     }
