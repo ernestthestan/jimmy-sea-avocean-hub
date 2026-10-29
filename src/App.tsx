@@ -988,13 +988,13 @@ export default function App() {
   const [events, setEvents] = useState<ScheduleEvent[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_EVENTS_KEY);
-      if (saved) {
+      if (saved !== null) {
         return JSON.parse(saved);
       }
     } catch (e) {
       console.warn('Could not load events from storage', e);
     }
-    return SAMPLE_EVENTS;
+    return [];
   });
 
   const [activeMemberIds, setActiveMemberIds] = useState<string[]>(['jimmy', 'sea', 'avocean']);
@@ -1399,6 +1399,7 @@ export default function App() {
     } catch (e) {
       console.warn('Could not save time format', e);
     }
+    saveSettingsToFirestore(updated).catch(() => {});
     showToast(`Time format switched to ${nextFormat === '12h' ? '12-Hour AM/PM' : '24-Hour'}`);
   };
 
@@ -1516,8 +1517,13 @@ export default function App() {
     }
 
     const updated = newOwnerPinInput.trim();
-    setSettings((prev) => ({ ...prev, ownerPin: updated }));
+    const updatedSettings: AppSettings = { ...settings, ownerPin: updated };
+    setSettings(updatedSettings);
     setDraftOwnerPin(updated);
+    try {
+      localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
+    } catch {}
+    saveSettingsToFirestore(updatedSettings).catch(() => {});
     setChangePasscodeModalOpen(false);
     setCurrentOwnerPinCheck('');
     setNewOwnerPinInput('');
@@ -1539,8 +1545,13 @@ export default function App() {
     }
 
     const updated = newAdminPinInput.trim();
-    setSettings((prev) => ({ ...prev, adminPin: updated }));
+    const updatedSettings: AppSettings = { ...settings, adminPin: updated };
+    setSettings(updatedSettings);
     setDraftAdminPin(updated);
+    try {
+      localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
+    } catch {}
+    saveSettingsToFirestore(updatedSettings).catch(() => {});
     setChangePasscodeModalOpen(false);
     setNewAdminPinInput('');
     setPasscodeError('');
@@ -2065,6 +2076,14 @@ export default function App() {
       setSettings(DEFAULT_SETTINGS);
       setEvents(SAMPLE_EVENTS);
       setActiveMemberIds(['jimmy', 'sea', 'avocean']);
+      try {
+        localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
+        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(SAMPLE_EVENTS));
+      } catch {}
+      saveSettingsToFirestore(DEFAULT_SETTINGS).catch(() => {});
+      SAMPLE_EVENTS.forEach((ev) => {
+        saveEventToFirestore(ev).catch(() => {});
+      });
       setBackupModalOpen(false);
       showToast('Reset to default schedule!');
     }
@@ -2086,10 +2105,21 @@ export default function App() {
     try {
       const parsed = JSON.parse(importJsonText);
       if (parsed.settings) {
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed.settings, bannerTitle: 'JIMMY SEA AVOCEAN HUB' });
+        const updated = { ...DEFAULT_SETTINGS, ...parsed.settings, bannerTitle: 'JIMMY SEA AVOCEAN HUB' };
+        setSettings(updated);
+        try {
+          localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updated));
+        } catch {}
+        saveSettingsToFirestore(updated).catch(() => {});
       }
       if (Array.isArray(parsed.events)) {
         setEvents(parsed.events);
+        try {
+          localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(parsed.events));
+        } catch {}
+        parsed.events.forEach((ev: ScheduleEvent) => {
+          saveEventToFirestore(ev).catch(() => {});
+        });
       }
       if (Array.isArray(parsed.userReminders)) {
         setUserReminders(parsed.userReminders);

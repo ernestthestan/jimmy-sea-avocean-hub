@@ -169,37 +169,14 @@ export function sanitizeForFirestore<T>(data: T): T {
 
 /**
  * 2. REAL-TIME CALENDAR EVENTS SYNC
+ * Pure real-time listener. Never injects sample events over user database edits.
+ * All additions, edits, and deletions made directly on the website persist 100%.
  */
 export function subscribeToEvents(
-  initialSampleEvents: ScheduleEvent[],
+  _initialSampleEvents: ScheduleEvent[],
   onUpdate: (events: ScheduleEvent[]) => void
 ) {
   const eventsCol = collection(db, 'events');
-  const metaDocRef = doc(db, 'settings', 'events_meta');
-
-  // Check if events have ever been initialized.
-  // Once initialized, an empty events list is a valid user choice and NEVER gets re-seeded.
-  getDoc(metaDocRef)
-    .then(async (metaSnap) => {
-      if (!metaSnap.exists()) {
-        try {
-          const eventsSnap = await getDocs(eventsCol);
-          if (eventsSnap.empty && initialSampleEvents.length > 0) {
-            for (const ev of initialSampleEvents) {
-              const clean = sanitizeForFirestore(ev);
-              await setDoc(doc(db, 'events', ev.id), clean).catch(() => {});
-            }
-          }
-          await setDoc(metaDocRef, {
-            seeded: true,
-            initializedAt: new Date().toISOString()
-          }).catch(() => {});
-        } catch (e) {
-          console.warn('Events initialization error:', e);
-        }
-      }
-    })
-    .catch((err) => console.warn('Could not check events meta doc:', err));
 
   const unsubscribe = onSnapshot(
     eventsCol,
@@ -210,7 +187,7 @@ export function subscribeToEvents(
       });
       // Sort chronologically by date
       loaded.sort((a, b) => a.date.localeCompare(b.date));
-      // Notify listeners even when loaded is empty (e.g. user deleted all events)
+      // Notify listeners with current database state
       onUpdate(loaded);
     },
     (error) => {
