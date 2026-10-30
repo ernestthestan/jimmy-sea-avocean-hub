@@ -117,6 +117,7 @@ export interface ScheduleEvent {
   title: string;
   date: string; // Start date YYYY-MM-DD
   endDate?: string; // Optional end date YYYY-MM-DD for multi-day events
+  isAllDay?: boolean; // All-day event flag
   time?: string;
   endTime?: string; // Optional end time HH:mm
   timezone?: string;
@@ -764,6 +765,9 @@ const getEventTimeDurationLabel = (startTime?: string, endTime?: string): string
 
 // Format event time and timezone in 12-hour format (e.g. "6:00 PM – 8:00 PM BKK" or "6:00 PM BKK")
 const formatEventTime = (ev: ScheduleEvent, prefer12h: boolean = true) => {
+  if (ev.isAllDay || ev.time?.toLowerCase() === 'all day') {
+    return 'All Day';
+  }
   if (!ev.time && !ev.endTime) return null;
   const startFmt = ev.time ? (prefer12h ? formatTime12h(ev.time) : ev.time) : '';
   const endFmt = ev.endTime ? (prefer12h ? formatTime12h(ev.endTime) : ev.endTime) : '';
@@ -1485,6 +1489,7 @@ export default function App() {
   const [formDate, setFormDate] = useState<string>('2026-10-28');
   const [formEndDate, setFormEndDate] = useState<string>('');
   const [formIsMultiDay, setFormIsMultiDay] = useState<boolean>(false);
+  const [formIsAllDay, setFormIsAllDay] = useState<boolean>(false);
   const [formTime, setFormTime] = useState<string>(() => (is12Hour ? '6:00 PM' : '18:00'));
   const [formEndTime, setFormEndTime] = useState<string>('');
   const [formTimezone, setFormTimezone] = useState<string>('BKK');
@@ -1926,7 +1931,11 @@ export default function App() {
       });
     });
     Object.keys(map).forEach((k) => {
-      map[k].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+      map[k].sort((a, b) => {
+        if (a.isAllDay && !b.isAllDay) return -1;
+        if (!a.isAllDay && b.isAllDay) return 1;
+        return (a.time || '').localeCompare(b.time || '');
+      });
     });
     return map;
   }, [filteredEvents]);
@@ -1961,6 +1970,7 @@ export default function App() {
     setFormDate(defaultDate);
     setFormEndDate('');
     setFormIsMultiDay(false);
+    setFormIsAllDay(false);
     setFormTime(is12Hour ? '6:00 PM' : '18:00');
     setFormEndTime('');
     setTimeAdjusterTarget('start');
@@ -1992,6 +2002,9 @@ export default function App() {
     setFormIsMultiDay(isMulti);
     setFormEndDate(ev.endDate || '');
 
+    const isAllDay = Boolean(ev.isAllDay || ev.time?.toLowerCase() === 'all day');
+    setFormIsAllDay(isAllDay);
+
     let parsedTime = ev.time || '';
     let parsedTz = ev.timezone || '';
 
@@ -2006,16 +2019,16 @@ export default function App() {
     }
     if (!parsedTz) parsedTz = 'BKK';
 
-    if (parsedTime) {
+    if (parsedTime && !isAllDay) {
       if (is12Hour) {
         parsedTime = formatTime12h(parsedTime);
       }
-    } else {
+    } else if (!isAllDay) {
       parsedTime = is12Hour ? '6:00 PM' : '18:00';
     }
 
     let parsedEndTime = ev.endTime || '';
-    if (parsedEndTime) {
+    if (parsedEndTime && !isAllDay) {
       if (is12Hour) {
         parsedEndTime = formatTime12h(parsedEndTime);
       }
@@ -2033,7 +2046,7 @@ export default function App() {
       setFormTimezone('CUSTOM');
       setCustomTimezone(parsedTz);
     }
-    setShowTimeAdjuster(true);
+    setShowTimeAdjuster(!isAllDay);
 
     setFormLocation(ev.location || '');
     setFormLocationUrl(ev.locationUrl || '');
@@ -2067,9 +2080,10 @@ export default function App() {
       title: formTitle.trim(),
       date: formDate,
       endDate: resolvedEndDate || undefined,
-      time: formTime.trim(),
-      endTime: formEndTime.trim() ? formEndTime.trim() : undefined,
-      timezone: resolvedTimezone,
+      isAllDay: formIsAllDay,
+      time: formIsAllDay ? 'All Day' : formTime.trim(),
+      endTime: formIsAllDay ? undefined : (formEndTime.trim() ? formEndTime.trim() : undefined),
+      timezone: formIsAllDay ? undefined : resolvedTimezone,
       location: formLocation.trim(),
       locationUrl: formLocationUrl.trim(),
       posterUrl: formPosterUrl.trim(),
@@ -2607,9 +2621,13 @@ export default function App() {
         if (listViewFilter === 'past') {
           // Show most recently concluded events first
           if (a.date !== b.date) return b.date.localeCompare(a.date);
+          if (a.isAllDay && !b.isAllDay) return -1;
+          if (!a.isAllDay && b.isAllDay) return 1;
           return (b.time || '').localeCompare(a.time || '');
         }
         if (a.date !== b.date) return a.date.localeCompare(b.date);
+        if (a.isAllDay && !b.isAllDay) return -1;
+        if (!a.isAllDay && b.isAllDay) return 1;
         return (a.time || '').localeCompare(b.time || '');
       });
   }, [filteredEvents, searchQuery, listViewFilter, todayDateStr]);
@@ -2660,14 +2678,22 @@ export default function App() {
                 🗓️ {getEventDaysCount(ev.date, ev.endDate)}-Day Event
               </span>
             )}
-            {(ev.time || ev.endTime) && (
-              <span className="text-xs font-bold text-[#334155] dark:text-slate-300 flex items-center gap-1.5 flex-wrap">
-                <Clock className="w-3.5 h-3.5 text-purple-500" />
-                <span>{formatEventTime(ev, is12Hour)}</span>
-                {getEventTimeDurationLabel(ev.time, ev.endTime) && (
-                  <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300 bg-purple-100/70 dark:bg-purple-950/70 px-2 py-0.5 rounded-full">
-                    {getEventTimeDurationLabel(ev.time, ev.endTime)}
-                  </span>
+            {(ev.isAllDay || ev.time || ev.endTime) && (
+              <span className={`text-xs font-bold flex items-center gap-1.5 flex-wrap ${
+                ev.isAllDay ? 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800' : 'text-[#334155] dark:text-slate-300'
+              }`}>
+                {ev.isAllDay ? (
+                  <span>☀️ All Day</span>
+                ) : (
+                  <>
+                    <Clock className="w-3.5 h-3.5 text-purple-500" />
+                    <span>{formatEventTime(ev, is12Hour)}</span>
+                    {getEventTimeDurationLabel(ev.time, ev.endTime) && (
+                      <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300 bg-purple-100/70 dark:bg-purple-950/70 px-2 py-0.5 rounded-full">
+                        {getEventTimeDurationLabel(ev.time, ev.endTime)}
+                      </span>
+                    )}
+                  </>
                 )}
               </span>
             )}
@@ -2870,8 +2896,14 @@ export default function App() {
                           {getEventDaysCount(ev.date, ev.endDate)}-Day Event
                         </span>
                       )}
-                      <span>{ev.endTime ? 'Time: ' : 'Starts '}{formatEventTime(ev, is12Hour) || 'TBA'}</span>
-                      {getEventTimeDurationLabel(ev.time, ev.endTime) && (
+                      {ev.isAllDay ? (
+                        <span className="text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded-md text-[11px]">
+                          ☀️ All-Day Event Schedule
+                        </span>
+                      ) : (
+                        <span>{ev.endTime ? 'Time: ' : 'Starts '}{formatEventTime(ev, is12Hour) || 'TBA'}</span>
+                      )}
+                      {!ev.isAllDay && getEventTimeDurationLabel(ev.time, ev.endTime) && (
                         <span className="text-[11px] font-bold text-purple-600 dark:text-purple-300">
                           ({getEventTimeDurationLabel(ev.time, ev.endTime)})
                         </span>
@@ -3126,20 +3158,22 @@ export default function App() {
             </button>
           )}
 
-          {/* Live Viewers & Today's Visits Stats */}
-          <div
-            className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
-            title={`${visitorStats.liveViewers} online now · ${visitorStats.todayVisits.toLocaleString()} visits today (${visitorStats.totalVisits.toLocaleString()} all-time)`}
-          >
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span>{visitorStats.liveViewers} online</span>
-            <span className="text-slate-300 dark:text-slate-600">·</span>
-            <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
-            <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
-          </div>
+          {/* Live Viewers & Today's Visits Stats (Admin & Owner Only) */}
+          {canEditEvents && (
+            <div
+              className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
+              title={`${visitorStats.liveViewers} online now · ${visitorStats.todayVisits.toLocaleString()} visits today (${visitorStats.totalVisits.toLocaleString()} all-time)`}
+            >
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>{visitorStats.liveViewers} online</span>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+              <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
+            </div>
+          )}
 
           {/* Role Status Pills */}
           {isOwner && (
@@ -4596,22 +4630,70 @@ export default function App() {
                 )}
               </div>
 
-              {/* Time & Timezone Selection with Start Time, End Time & Interactive Scroll Wheel */}
+              {/* Time & Timezone Selection with Start Time, End Time, Scroll Wheel & All-Day Event Toggle */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-[#526586] dark:text-slate-400">
-                    Time & Timezone ({is12Hour ? '12-Hour AM/PM' : '24-Hour'})
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                  <label className="text-xs font-bold text-[#526586] dark:text-slate-400 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Time & Timezone ({is12Hour ? '12-Hour AM/PM' : '24-Hour'})</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowTimeAdjuster(!showTimeAdjuster)}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 cursor-pointer"
-                  >
-                    <SlidersHorizontal className="w-3 h-3" />
-                    <span>{showTimeAdjuster ? 'Hide Wheel' : 'Open Scroll Wheel'}</span>
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    {/* All-Day Event Toggle Checkbox */}
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800 text-amber-900 dark:text-amber-300 cursor-pointer select-none hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={formIsAllDay}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormIsAllDay(checked);
+                          if (checked) {
+                            setShowTimeAdjuster(false);
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold">☀️ All-Day Event</span>
+                    </label>
+
+                    {!formIsAllDay && (
+                      <button
+                        type="button"
+                        onClick={() => setShowTimeAdjuster(!showTimeAdjuster)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 cursor-pointer"
+                      >
+                        <SlidersHorizontal className="w-3 h-3" />
+                        <span>{showTimeAdjuster ? 'Hide Wheel' : 'Open Scroll Wheel'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
+                {formIsAllDay ? (
+                  <div className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/70 text-amber-600 dark:text-amber-300 flex items-center justify-center text-base font-bold shrink-0">
+                        ☀️
+                      </span>
+                      <div>
+                        <span className="font-bold text-amber-900 dark:text-amber-200 block text-xs sm:text-sm">
+                          All-Day Event Schedule Active
+                        </span>
+                        <span className="text-amber-700 dark:text-amber-300/80 text-[11px]">
+                          This event runs throughout the entire day without fixed start or end hours.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormIsAllDay(false)}
+                      className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 text-xs font-bold hover:bg-amber-50 cursor-pointer shrink-0"
+                    >
+                      Set specific time
+                    </button>
+                  </div>
+                ) : (
+                  <>
                 {/* Start Time, End Time & Timezone Controls */}
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                   {/* Start Time Input */}
@@ -4977,6 +5059,8 @@ export default function App() {
                     <Globe className="w-3 h-3 text-purple-500 shrink-0" />
                     <span className="truncate">{selectedTzObj.region}</span>
                   </div>
+                )}
+                  </>
                 )}
               </div>
 
