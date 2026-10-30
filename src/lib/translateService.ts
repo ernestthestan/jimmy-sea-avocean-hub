@@ -30,9 +30,141 @@ export interface TranslateParams {
 }
 
 /**
- * Translates text into target language using:
+ * Checks if a response from MyMemory is an error message instead of an actual translation
+ */
+function isInvalidTranslationResult(candidate: unknown): boolean {
+  if (!candidate || typeof candidate !== 'string') return true;
+  const upper = candidate.toUpperCase().trim();
+  if (upper.includes('QUERY LENGTH LIMIT')) return true;
+  if (upper.startsWith('MYMEMORY WARNING')) return true;
+  if (upper.includes('INVALID TARGET LANGUAGE')) return true;
+  if (upper.includes('YOU HAVE USED ALL YOUR FREE QUOTA')) return true;
+  if (upper.includes('PLEASE SELECT TWO DISTINCT LANGUAGES')) return true;
+  if (upper.includes('IS NOT A VALID LANGUAGE')) return true;
+  return false;
+}
+
+/**
+ * Splits arbitrary text into small chunks (< 350 characters) respecting
+ * paragraphs and sentence boundaries to strictly conform to external translation API limits.
+ */
+function splitTextIntoChunks(text: string, maxChunkLength = 350): string[] {
+  if (text.length <= maxChunkLength) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  const paragraphs = text.split(/\n+/);
+  let current = '';
+
+  for (const para of paragraphs) {
+    const trimmedPara = para.trim();
+    if (!trimmedPara) continue;
+
+    if ((current + '\n' + trimmedPara).trim().length <= maxChunkLength) {
+      current = current ? `${current}\n${trimmedPara}` : trimmedPara;
+    } else {
+      if (current) {
+        chunks.push(current);
+        current = '';
+      }
+
+      if (trimmedPara.length <= maxChunkLength) {
+        current = trimmedPara;
+      } else {
+        // Paragraph exceeds maxChunkLength: split by sentences (. ! ? or commas)
+        const sentences = trimmedPara.match(/[^.!?\n]+[.!?\n]*/g) || [trimmedPara];
+        let subChunk = '';
+        for (const s of sentences) {
+          const trimmedS = s.trim();
+          if (!trimmedS) continue;
+
+          if ((subChunk + ' ' + trimmedS).trim().length <= maxChunkLength) {
+            subChunk = subChunk ? `${subChunk} ${trimmedS}` : trimmedS;
+          } else {
+            if (subChunk) {
+              chunks.push(subChunk);
+              subChunk = '';
+            }
+
+            if (trimmedS.length <= maxChunkLength) {
+              subChunk = trimmedS;
+            } else {
+              // Hard slice if a single unbroken sentence is extraordinarily long
+              for (let i = 0; i < trimmedS.length; i += maxChunkLength) {
+                chunks.push(trimmedS.slice(i, i + maxChunkLength));
+              }
+            }
+          }
+        }
+        if (subChunk) {
+          chunks.push(subChunk);
+        }
+      }
+    }
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
+/**
+ * Translates a single small chunk (< 350 chars) via MyMemory API
+ */
+async function translateChunkMyMemory(chunk: string, targetLang: string): Promise<string | null> {
+  try {
+    const langCode = targetLang.split('-')[0].toLowerCase();
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+      chunk
+    )}&langpair=autodetect|${encodeURIComponent(langCode)}`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const candidate = data?.responseData?.translatedText;
+    if (candidate && !isInvalidTranslationResult(candidate)) {
+      return candidate.trim();
+    }
+  } catch {
+    // Network or API failure
+  }
+  return null;
+}
+
+/**
+ * Translates a single small chunk via Google GTX web translation endpoint
+ */
+async function translateChunkGTX(chunk: string, targetLang: string): Promise<string | null> {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
+      targetLang
+    )}&dt=t&q=${encodeURIComponent(chunk)}`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (Array.isArray(data) && Array.isArray(data[0])) {
+      const translated = data[0].map((item: any) => item[0] || '').join('');
+      if (translated && !isInvalidTranslationResult(translated)) {
+        return translated.trim();
+      }
+    }
+  } catch {
+    // Fallback failure
+  }
+  return null;
+}
+
+/**
+ * Main translation entry point supporting:
  * 1. Server-side Gemini 3.8 Flash AI translation endpoint (/api/translate)
- * 2. High-availability client fallback for static hosts (e.g. Cloudflare Workers)
+ * 2. Intelligent chunked client-side fallback (< 350 chars per chunk) ensuring
+ *    descriptions of any length never trigger QUERY LENGTH LIMIT errors on static deploys
  */
 export async function translateText(
   paramOrText: TranslateParams | string,
@@ -62,7 +194,7 @@ export async function translateText(
   const trimmed = text.trim();
   if (!trimmed) return '';
 
-  // 1. Try server-side Gemini AI endpoint first
+  // 1. Try server-side Gemini 3.8 Flash AI endpoint first (if full-stack server is running)
   try {
     const res = await fetch('/api/translate', {
       method: 'POST',
@@ -77,52 +209,40 @@ export async function translateText(
     });
 
     if (res.ok) {
-      const data = await res.json();
-      if (data.translation && typeof data.translation === 'string' && data.translation.trim()) {
-        return data.translation.trim();
-      }
-    }
-  } catch {
-    // Network or server endpoint offline, proceed to fallback
-  }
-
-  // 2. High-availability public machine translation fallback (works on Cloudflare Workers & static deploys)
-  try {
-    const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
-      trimmed
-    )}&langpair=autodetect|${encodeURIComponent(targetLang.split('-')[0])}`;
-
-    const res = await fetch(myMemoryUrl);
-    if (res.ok) {
-      const data = await res.json();
-      const candidate = data?.responseData?.translatedText;
-      if (candidate && typeof candidate === 'string' && candidate.trim() && !candidate.startsWith('MYMEMORY WARNING')) {
-        return candidate.trim();
-      }
-    }
-  } catch {
-    // MyMemory fallback failed, try secondary fallback
-  }
-
-  // 3. Secondary client web fallback
-  try {
-    const fallbackUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
-      targetLang
-    )}&dt=t&q=${encodeURIComponent(trimmed)}`;
-
-    const res = await fetch(fallbackUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && Array.isArray(data[0])) {
-        const fullTranslation = data[0].map((chunk: any) => chunk[0] || '').join('');
-        if (fullTranslation.trim()) {
-          return fullTranslation.trim();
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.translation && typeof data.translation === 'string' && data.translation.trim()) {
+          return data.translation.trim();
         }
       }
     }
   } catch {
-    // Secondary fallback failed
+    // Backend endpoint offline or not running (e.g. static Cloudflare Workers deploy)
   }
 
-  throw new Error(`Unable to translate text to ${targetLangName}. Please try again.`);
+  // 2. Client-side Chunked Translation
+  // Chunking ensures we never exceed the 500 character limitation on public machine translation endpoints
+  const chunks = splitTextIntoChunks(trimmed, 350);
+
+  const translatedChunks: string[] = [];
+  for (const chunk of chunks) {
+    // Try MyMemory for this chunk
+    let chunkResult = await translateChunkMyMemory(chunk, targetLang);
+
+    // If MyMemory failed or had an error, try Google GTX fallback
+    if (!chunkResult) {
+      chunkResult = await translateChunkGTX(chunk, targetLang);
+    }
+
+    // If both failed, retain original chunk text so translation remains intact
+    translatedChunks.push(chunkResult || chunk);
+  }
+
+  const finalResult = translatedChunks.join('\n\n').trim();
+  if (finalResult && !isInvalidTranslationResult(finalResult)) {
+    return finalResult;
+  }
+
+  throw new Error(`Unable to translate description to ${targetLangName}. Please try again.`);
 }

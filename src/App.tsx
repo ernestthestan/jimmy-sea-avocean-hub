@@ -440,6 +440,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     locationUrl: 'https://maps.google.com/?q=Siam+Paragon+Bangkok',
     members: ['jimmy', 'sea', 'avocean'],
     category: 'Event',
+    posterUrl: '/assets/aistudio/Screenshot_2026-10-29_160833_2a5e0be1.png',
     link: 'https://x.com',
     description: 'งานเปิดตัวพรีเซนเตอร์แบรนด์อย่างเป็นทางการ พร้อมมุมถ่ายภาพสุดพิเศษและการตอบคำถามแฟนคลับทั่วโลกสดจากพารากอนฮอลล์',
     hashtags: '#JimmySeaLiveQA #JimmySea #Avocean',
@@ -1135,7 +1136,27 @@ export default function App() {
   const [translationsCache, setTranslationsCache] = useState<Record<string, Record<string, string>>>(() => {
     try {
       const saved = localStorage.getItem('avocean_translations_cache');
-      return saved ? JSON.parse(saved) : {};
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Filter out any stale error strings like QUERY LENGTH LIMIT EXCEEDED
+        const cleaned: Record<string, Record<string, string>> = {};
+        for (const [evId, langMap] of Object.entries(parsed)) {
+          if (langMap && typeof langMap === 'object') {
+            cleaned[evId] = {};
+            for (const [lang, val] of Object.entries(langMap as Record<string, string>)) {
+              if (
+                typeof val === 'string' &&
+                !val.includes('QUERY LENGTH LIMIT') &&
+                !val.startsWith('MYMEMORY WARNING')
+              ) {
+                cleaned[evId][lang] = val;
+              }
+            }
+          }
+        }
+        return cleaned;
+      }
+      return {};
     } catch {
       return {};
     }
@@ -1145,6 +1166,21 @@ export default function App() {
   const [activeTranslationViews, setActiveTranslationViews] = useState<Record<string, boolean>>({});
   const [translatingEventId, setTranslatingEventId] = useState<string | null>(null);
   const [copiedTranslationId, setCopiedTranslationId] = useState<string | null>(null);
+
+  // Photo Lightbox Modal State for Enlarging Event Posters and Photos
+  const [enlargedPhoto, setEnlargedPhoto] = useState<{ url: string; title?: string } | null>(null);
+
+  // Close photo lightbox on Escape key
+  useEffect(() => {
+    if (!enlargedPhoto) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setEnlargedPhoto(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [enlargedPhoto]);
 
   // --- Personal Accent Color Choice (Purple, Blue, Green) ---
   const [accentColor, setAccentColor] = useState<AccentChoice>(() => {
@@ -2185,8 +2221,13 @@ export default function App() {
     const lang = targetLangCode || preferredTranslationLang;
     if (!text.trim()) return;
 
-    // If already in cache for this event and target language, reveal it immediately
-    if (translationsCache[eventId]?.[lang]) {
+    // If already in cache for this event and target language (and is valid text), reveal it immediately
+    const existing = translationsCache[eventId]?.[lang];
+    if (
+      existing &&
+      !existing.includes('QUERY LENGTH LIMIT') &&
+      !existing.startsWith('MYMEMORY WARNING')
+    ) {
       setActiveTranslationViews((prev) => ({ ...prev, [eventId]: true }));
       return;
     }
@@ -2580,14 +2621,29 @@ export default function App() {
           {/* Left Sub-Column: Media Poster, Venue & Google Maps, Streaming */}
           <div className="xl:col-span-5 flex flex-col justify-between gap-4 h-full">
             <div className="flex flex-col gap-4">
-              {/* Poster Media (Only rendered when an official poster is uploaded) */}
+              {/* Poster Media (Clickable to open high-resolution popup/lightbox) */}
               {ev.posterUrl && (
-                <div className="w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800">
+                <div
+                  onClick={() => setEnlargedPhoto({ url: ev.posterUrl!, title: ev.title })}
+                  className="w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none"
+                  title="Click to enlarge full event photo"
+                >
                   <img
                     src={ev.posterUrl}
                     alt={ev.title}
-                    className="w-full max-h-[360px] object-cover"
+                    className="w-full max-h-[360px] object-cover group-hover:scale-[1.02] transition-transform duration-300"
                   />
+                  {/* Hover Overlay with Enlarge Badge */}
+                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                    <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/80 text-white text-xs font-bold backdrop-blur-xs shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-transform">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span>Click to view full photo</span>
+                    </span>
+                  </div>
+                  {/* Pinned Expand Badge at Top-Right */}
+                  <div className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs opacity-85 group-hover:opacity-100 transition-all shadow-sm">
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               )}
             </div>
@@ -2736,7 +2792,13 @@ export default function App() {
               {/* Description & Translation for International Fans */}
               {ev.description && (() => {
                 const isTranslating = translatingEventId === ev.id;
-                const cachedTranslation = translationsCache[ev.id]?.[preferredTranslationLang];
+                const rawCached = translationsCache[ev.id]?.[preferredTranslationLang];
+                const cachedTranslation =
+                  rawCached &&
+                  !rawCached.includes('QUERY LENGTH LIMIT') &&
+                  !rawCached.startsWith('MYMEMORY WARNING')
+                    ? rawCached
+                    : undefined;
                 const isShowingTranslated = Boolean(activeTranslationViews[ev.id] && cachedTranslation);
                 const currentDisplayDescription = isShowingTranslated ? cachedTranslation : ev.description;
                 const currentLangObj = TRANSLATION_LANGUAGES.find((l) => l.code === preferredTranslationLang);
@@ -2814,7 +2876,7 @@ export default function App() {
 
                         {/* Copy Description Button */}
                         <button
-                          onClick={() => handleCopyTranslatedDescription(ev.id, currentDisplayDescription)}
+                          onClick={() => handleCopyTranslatedDescription(ev.id, currentDisplayDescription || '')}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-white/95 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
                           title="Copy text"
                         >
@@ -3173,7 +3235,17 @@ export default function App() {
           const isContain = settings.bannerFit === 'contain';
 
           return (
-            <div className={`relative w-full ${heightClass} rounded-[28px] overflow-hidden shadow-sm border-2 border-white/80 dark:border-slate-800 bg-slate-200 dark:bg-slate-800 group`}>
+            <div
+              onClick={() => {
+                if (activePhoto) {
+                  setEnlargedPhoto({ url: activePhoto, title: settings.bannerTitle || 'Official Hub Banner' });
+                }
+              }}
+              className={`relative w-full ${heightClass} rounded-[28px] overflow-hidden shadow-sm border-2 border-white/80 dark:border-slate-800 bg-slate-200 dark:bg-slate-800 group ${
+                activePhoto ? 'cursor-pointer' : ''
+              }`}
+              title={activePhoto ? 'Click to view full banner photo' : undefined}
+            >
               {activePhoto ? (
                 isContain ? (
                   /* Contain Mode: Full photo shown with soft blurred ambient backdrop */
@@ -4818,8 +4890,16 @@ export default function App() {
                 </div>
 
                 {formPosterUrl && (
-                  <div className="w-full h-24 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 flex items-center justify-center">
-                    <img src={formPosterUrl} alt="Preview" className="h-full object-contain" />
+                  <div
+                    onClick={() => setEnlargedPhoto({ url: formPosterUrl, title: formTitle || 'Event Poster Preview' })}
+                    className="w-full h-28 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 flex items-center justify-center cursor-pointer group relative hover:border-purple-400 transition-colors shadow-2xs"
+                    title="Click to enlarge photo preview"
+                  >
+                    <img src={formPosterUrl} alt="Preview" className="h-full object-contain group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1.5">
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span>Click to enlarge full photo</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -6347,6 +6427,79 @@ export default function App() {
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* PHOTO LIGHTBOX MODAL (Full Resolution Event Photo Popup)      */}
+      {/* ============================================================== */}
+      {enlargedPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6 animate-in fade-in duration-200 select-none"
+          onClick={() => setEnlargedPhoto(null)}
+        >
+          {/* Top Bar: Title, Open Original, Download & Close */}
+          <div
+            className="w-full max-w-5xl flex items-center justify-between gap-3 text-white z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5 truncate pr-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0 animate-pulse" />
+              <span className="text-sm sm:text-base font-extrabold truncate text-white tracking-tight">
+                {enlargedPhoto.title || 'Event Photo'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Open Image in New Tab */}
+              <a
+                href={enlargedPhoto.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all cursor-pointer"
+                title="Open photo in new tab"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Open Original</span>
+              </a>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setEnlargedPhoto(null)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center border border-white/20 transition-all cursor-pointer active:scale-95"
+                title="Close (Esc)"
+              >
+                <X className="w-5 h-5 stroke-[2.5]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Centered Image Container */}
+          <div
+            className="relative flex-1 flex items-center justify-center my-3 max-h-[82vh] max-w-[95vw] w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={enlargedPhoto.url}
+              alt={enlargedPhoto.title || 'Full resolution photo'}
+              className="max-h-[82vh] max-w-[92vw] object-contain rounded-2xl shadow-2xl border border-white/15 animate-in zoom-in-95 duration-200"
+            />
+          </div>
+
+          {/* Bottom Bar: Instructions */}
+          <div
+            className="text-white/60 text-xs font-medium z-10 select-none pb-1 flex items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span>Click outside or press</span>
+            <kbd className="px-2 py-0.5 rounded bg-white/15 text-white font-mono text-[11px] font-bold">
+              Esc
+            </kbd>
+            <span>to close</span>
           </div>
         </div>
       )}
