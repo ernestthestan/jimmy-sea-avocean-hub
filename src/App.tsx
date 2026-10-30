@@ -1037,6 +1037,7 @@ export default function App() {
   const [showWeekOnly, setShowWeekOnly] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'calendar' | 'list'>('calendar');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [listViewFilter, setListViewFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [selectedDayActiveEventId, setSelectedDayActiveEventId] = useState<string | null>(null);
 
   // Automatically update today's date string when midnight passes in user's timezone
@@ -1403,31 +1404,45 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeBannerPhotos.length]);
 
-  const handleAddBannerPhoto = (photoUrl: string) => {
-    if (!photoUrl.trim()) return;
+  const handleAddBannerPhoto = (photoInput: string) => {
+    if (!photoInput.trim()) return;
     const currentList = settings.bannerPhotos && settings.bannerPhotos.length > 0
       ? [...settings.bannerPhotos]
       : (settings.bannerImageUrl ? [settings.bannerImageUrl] : []);
 
-    if (currentList.includes(photoUrl.trim())) {
+    const tokens = photoInput
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+
+    const additions: string[] = [];
+    tokens.forEach((url) => {
+      if (!currentList.includes(url) && !additions.includes(url)) {
+        additions.push(url);
+      }
+    });
+
+    if (additions.length === 0) {
       showToast('Photo is already in banner collection');
       return;
     }
 
-    const updatedList = [...currentList, photoUrl.trim()];
+    const updatedList = [...currentList, ...additions];
     const updatedSettings: AppSettings = {
       ...settings,
       bannerPhotos: updatedList,
-      bannerImageUrl: updatedList[0]
+      bannerImageUrl: updatedList[0] || ''
     };
     setSettings(updatedSettings);
     saveSettingsToFirestore(updatedSettings).catch((err) => console.warn('Could not sync banner to Firestore:', err));
     setNewBannerUrlInput('');
-    showToast('Banner photo added!');
+    showToast(additions.length === 1 ? 'Banner photo added!' : `${additions.length} banner photos added!`);
   };
 
   const handleRemoveBannerPhoto = (indexToRemove: number) => {
-    const currentList = settings.bannerPhotos || [];
+    const currentList = settings.bannerPhotos && settings.bannerPhotos.length > 0
+      ? [...settings.bannerPhotos]
+      : (settings.bannerImageUrl ? [settings.bannerImageUrl] : []);
     const updatedList = currentList.filter((_, idx) => idx !== indexToRemove);
     const updatedSettings: AppSettings = {
       ...settings,
@@ -1596,6 +1611,15 @@ export default function App() {
   const [draftBannerSubtitleSize, setDraftBannerSubtitleSize] = useState<SubtitleSizeChoice>(settings.bannerSubtitleSize || 'medium');
   const [draftBannerTag, setDraftBannerTag] = useState<string>(settings.bannerTag || '');
   const [draftBannerImageUrl, setDraftBannerImageUrl] = useState<string>(settings.bannerImageUrl);
+  const [draftBannerPhotos, setDraftBannerPhotos] = useState<string[]>(() => {
+    if (settings.bannerPhotos && settings.bannerPhotos.length > 0) return settings.bannerPhotos;
+    if (settings.bannerImageUrl) return [settings.bannerImageUrl];
+    return [];
+  });
+  const [draftNewBannerUrl, setDraftNewBannerUrl] = useState<string>('');
+  const [showBatchUrlInput, setShowBatchUrlInput] = useState<boolean>(false);
+  const [draftBatchBannerUrls, setDraftBatchBannerUrls] = useState<string>('');
+  const [copiedBannerUrlIdx, setCopiedBannerUrlIdx] = useState<number | null>(null);
   const [draftBannerPreset, setDraftBannerPreset] = useState<string>(settings.bannerPreset);
   const [draftOwnerPin, setDraftOwnerPin] = useState<string>(settings.ownerPin || 'ErnestTheStan05!');
   const [draftAdminPin, setDraftAdminPin] = useState<string>(settings.adminPin || 'Avocean2026');
@@ -2378,13 +2402,21 @@ export default function App() {
       }
       return;
     }
+    const initialPhotos = settings.bannerPhotos && settings.bannerPhotos.length > 0
+      ? [...settings.bannerPhotos]
+      : (settings.bannerImageUrl ? [settings.bannerImageUrl] : []);
+    setDraftBannerPhotos(initialPhotos);
+    setDraftBannerImageUrl(initialPhotos[0] || settings.bannerImageUrl || '');
+    setDraftNewBannerUrl('');
+    setDraftBatchBannerUrls('');
+    setShowBatchUrlInput(false);
+    setCopiedBannerUrlIdx(null);
     setDraftGreeting(settings.greeting || DEFAULT_SETTINGS.greeting);
     setDraftBannerTitle(settings.bannerTitle || 'JIMMY SEA AVOCEAN HUB');
     setDraftBannerTitleSize(settings.bannerTitleSize || 'medium');
     setDraftBannerSubtitle(settings.bannerSubtitle ?? DEFAULT_SETTINGS.bannerSubtitle);
     setDraftBannerSubtitleSize(settings.bannerSubtitleSize || 'medium');
     setDraftBannerTag(settings.bannerTag ?? '');
-    setDraftBannerImageUrl(settings.bannerImageUrl ?? '');
     setDraftBannerPreset(settings.bannerPreset || 'avocean-dream');
     setDraftOwnerPin(settings.ownerPin || 'ErnestTheStan05!');
     setDraftAdminPin(settings.adminPin || 'Avocean2026');
@@ -2394,8 +2426,54 @@ export default function App() {
     setSettingsModalOpen(true);
   };
 
+  const handleDraftAddPhoto = (urlInput: string) => {
+    if (!urlInput.trim()) return;
+    const tokens = urlInput
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    const newAdditions: string[] = [];
+    tokens.forEach((url) => {
+      if (!draftBannerPhotos.includes(url) && !newAdditions.includes(url)) {
+        newAdditions.push(url);
+      }
+    });
+
+    if (newAdditions.length === 0) {
+      showToast('Photo URL is already in your banner list');
+      return;
+    }
+
+    setDraftBannerPhotos((prev) => [...prev, ...newAdditions]);
+    setDraftNewBannerUrl('');
+    setDraftBatchBannerUrls('');
+    setShowBatchUrlInput(false);
+    showToast(newAdditions.length === 1 ? 'Banner photo added!' : `${newAdditions.length} banner photos added!`);
+  };
+
+  const handleDraftRemovePhoto = (idxToRemove: number) => {
+    setDraftBannerPhotos((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+    showToast('Photo removed from list');
+  };
+
+  const handleDraftMovePhoto = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= draftBannerPhotos.length) return;
+    setDraftBannerPhotos((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(fromIdx, 1);
+      copy.splice(toIdx, 0, item);
+      return copy;
+    });
+  };
+
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanBannerPhotos = draftBannerPhotos
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const primaryBannerImage = cleanBannerPhotos[0] || '';
+
     const updatedSettings: AppSettings = {
       ...settings,
       greeting: draftGreeting.trim() || 'Hey ErnestTheStan!',
@@ -2406,7 +2484,8 @@ export default function App() {
         'Official Fan Schedule, Appearances & Trending Projects 🥑🌊💚',
       bannerSubtitleSize: draftBannerSubtitleSize,
       bannerTag: draftBannerTag.trim() || '',
-      bannerImageUrl: draftBannerImageUrl.trim(),
+      bannerImageUrl: primaryBannerImage,
+      bannerPhotos: cleanBannerPhotos,
       bannerPreset: draftBannerPreset || 'avocean-dream',
       ownerPin: draftOwnerPin.trim() || settings.ownerPin || 'ErnestTheStan05!',
       adminPin: draftAdminPin.trim() || settings.adminPin || 'Avocean2026',
@@ -2489,10 +2568,30 @@ export default function App() {
   const getMemberById = (id: string): Member =>
     settings.members.find((m) => m.id === id) || settings.members[0];
 
+  // Counts for List View Filters (Upcoming vs Past Concluded)
+  const { upcomingCount, pastCount, allCount } = useMemo(() => {
+    let upcoming = 0;
+    let past = 0;
+    filteredEvents.forEach((ev) => {
+      const isPast = (ev.endDate || ev.date) < todayDateStr;
+      if (isPast) past++;
+      else upcoming++;
+    });
+    return {
+      upcomingCount: upcoming,
+      pastCount: past,
+      allCount: filteredEvents.length
+    };
+  }, [filteredEvents, todayDateStr]);
+
   const listViewEvents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return [...filteredEvents]
       .filter((ev) => {
+        const isPast = (ev.endDate || ev.date) < todayDateStr;
+        if (listViewFilter === 'upcoming' && isPast) return false;
+        if (listViewFilter === 'past' && !isPast) return false;
+
         if (!q) return true;
         return (
           ev.title.toLowerCase().includes(q) ||
@@ -2505,10 +2604,15 @@ export default function App() {
         );
       })
       .sort((a, b) => {
+        if (listViewFilter === 'past') {
+          // Show most recently concluded events first
+          if (a.date !== b.date) return b.date.localeCompare(a.date);
+          return (b.time || '').localeCompare(a.time || '');
+        }
         if (a.date !== b.date) return a.date.localeCompare(b.date);
         return (a.time || '').localeCompare(b.time || '');
       });
-  }, [filteredEvents, searchQuery]);
+  }, [filteredEvents, searchQuery, listViewFilter, todayDateStr]);
 
   const selectedTzObj = ALL_TIMEZONES.find((t) => t.code === formTimezone);
 
@@ -3778,42 +3882,111 @@ export default function App() {
             )}
           </div>
 
-          {/* List View Header */}
-          <div className="flex items-center justify-between px-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400">
-              Showing {listViewEvents.length} {listViewEvents.length === 1 ? 'Event' : 'Events'}
-            </span>
-            {canEditEvents && (
+          {/* List View Filter Tabs & Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2">
+            {/* Filter Pills */}
+            <div className="inline-flex items-center gap-1 p-1 rounded-2xl bg-white/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 shadow-xs self-start sm:self-auto">
               <button
-                onClick={() => openAddEventModal(selectedDateStr)}
-                style={{ backgroundColor: currentAccent.colorHex }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3.5 py-1.5 rounded-full shadow-xs hover:opacity-90 transition-opacity cursor-pointer"
+                type="button"
+                onClick={() => setListViewFilter('upcoming')}
+                style={listViewFilter === 'upcoming' ? { backgroundColor: currentAccent.colorHex } : {}}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  listViewFilter === 'upcoming'
+                    ? 'text-white shadow-xs'
+                    : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+                }`}
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Event</span>
+                Upcoming & Today ({upcomingCount})
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setListViewFilter('past')}
+                style={listViewFilter === 'past' ? { backgroundColor: currentAccent.colorHex } : {}}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  listViewFilter === 'past'
+                    ? 'text-white shadow-xs'
+                    : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+                }`}
+              >
+                Past Concluded ({pastCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setListViewFilter('all')}
+                style={listViewFilter === 'all' ? { backgroundColor: currentAccent.colorHex } : {}}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  listViewFilter === 'all'
+                    ? 'text-white shadow-xs'
+                    : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+                }`}
+              >
+                All ({allCount})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <span className="text-xs font-bold text-[#607494] dark:text-slate-400">
+                {listViewFilter === 'upcoming'
+                  ? `${listViewEvents.length} Active`
+                  : listViewFilter === 'past'
+                  ? `${listViewEvents.length} Concluded`
+                  : `${listViewEvents.length} Total`}
+              </span>
+              {canEditEvents && (
+                <button
+                  onClick={() => openAddEventModal(selectedDateStr)}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3.5 py-1.5 rounded-full shadow-xs hover:opacity-90 transition-opacity cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Event</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {listViewEvents.length === 0 ? (
             <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] shadow-xs py-14 px-6 flex flex-col items-center justify-center text-center border border-slate-200/80 dark:border-slate-800">
               <TrioBadges members={settings.members} size="lg" />
               <h3 className="text-lg font-bold text-[#1A3668] dark:text-white mt-3 mb-1">
-                No matching events found
+                {searchQuery
+                  ? 'No matching events found'
+                  : listViewFilter === 'upcoming'
+                  ? 'No upcoming events scheduled'
+                  : listViewFilter === 'past'
+                  ? 'No past concluded events'
+                  : 'No events found'}
               </h3>
-              <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 mb-4">
-                Try searching another keyword or adjusting your member filters
+              <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 mb-4 max-w-sm">
+                {searchQuery
+                  ? 'Try searching another keyword or adjusting your member filters'
+                  : listViewFilter === 'upcoming'
+                  ? 'Past events are hidden once concluded. Switch to "Past Concluded" to review event history, or add a new upcoming event!'
+                  : listViewFilter === 'past'
+                  ? 'No past events found in the schedule archive.'
+                  : 'Add events to populate the schedule list.'}
               </p>
-              {canEditEvents && (
-                <button
-                  onClick={() => openAddEventModal(selectedDateStr)}
-                  style={{ backgroundColor: currentAccent.colorHex }}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-4 py-2 rounded-full shadow-xs cursor-pointer hover:opacity-90"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Schedule Event</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {listViewFilter === 'upcoming' && pastCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setListViewFilter('past')}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-purple-700 dark:text-purple-300 px-4 py-2 rounded-full border border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer transition-colors"
+                  >
+                    <span>View Past Concluded ({pastCount})</span>
+                  </button>
+                )}
+                {canEditEvents && (
+                  <button
+                    onClick={() => openAddEventModal(selectedDateStr)}
+                    style={{ backgroundColor: currentAccent.colorHex }}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-4 py-2 rounded-full shadow-xs cursor-pointer hover:opacity-90"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Schedule Event</span>
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex flex-col gap-6">
@@ -5697,22 +5870,184 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Banner Photo Section */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3">
-                <span className="block text-xs font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400">
-                  Dedicated Banner Photo
-                </span>
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Banner Photo URL (Separated from text)
-                  </label>
-                  <input
-                    type="url"
-                    value={draftBannerImageUrl}
-                    onChange={(e) => setDraftBannerImageUrl(e.target.value)}
-                    placeholder="https://... (direct photo link)"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white"
-                  />
+              {/* Dedicated Banner Photos Manager (Never a single confusing long line!) */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400">
+                      Banner Photos ({draftBannerPhotos.length})
+                    </span>
+                    <p className="text-[11px] text-[#607494] dark:text-slate-400">
+                      Individual photo cards with thumbnails & instant delete buttons
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => bannerFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:underline cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Upload Image</span>
+                  </button>
+                </div>
+
+                {/* List of Banner Photos - Each is an individual item, NEVER one long line */}
+                {draftBannerPhotos.length === 0 ? (
+                  <div className="py-5 px-3 text-center text-xs text-slate-400 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                    No custom banner photos yet. Add photo URLs below or upload from device.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {draftBannerPhotos.map((photoUrl, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 shadow-xs"
+                      >
+                        {/* Thumbnail & Order */}
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <img
+                            src={photoUrl}
+                            alt={`Banner photo ${idx + 1}`}
+                            className="w-14 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0 bg-slate-100"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-xs font-bold text-[#1A3668] dark:text-white">
+                                Photo #{idx + 1}
+                              </span>
+                              {idx === 0 && (
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                                  Primary
+                                </span>
+                              )}
+                            </div>
+                            {/* Distinct, readable URL preview */}
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-[180px] sm:max-w-[260px] block">
+                                {photoUrl.startsWith('data:') ? 'Local file uploaded' : photoUrl}
+                              </span>
+                              {!photoUrl.startsWith('data:') && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(photoUrl);
+                                    setCopiedBannerUrlIdx(idx);
+                                    showToast('Photo URL copied!');
+                                    setTimeout(() => setCopiedBannerUrlIdx(null), 2000);
+                                  }}
+                                  className="text-slate-400 hover:text-purple-600 p-0.5 cursor-pointer"
+                                  title="Copy URL"
+                                >
+                                  {copiedBannerUrlIdx === idx ? (
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Reorder and Red Delete Button */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleDraftMovePhoto(idx, idx - 1)}
+                            disabled={idx === 0}
+                            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20 cursor-pointer"
+                            title="Move Up"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDraftMovePhoto(idx, idx + 1)}
+                            disabled={idx === draftBannerPhotos.length - 1}
+                            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20 cursor-pointer"
+                            title="Move Down"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          {/* Distinct Red Delete Button with text and trash icon */}
+                          <button
+                            type="button"
+                            onClick={() => handleDraftRemovePhoto(idx)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer border border-rose-200 dark:border-rose-900"
+                            title={`Delete Photo #${idx + 1}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Photo Input / Batch Paste */}
+                <div className="pt-1 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#526586] dark:text-slate-400">
+                      {showBatchUrlInput ? 'Paste Multiple URLs (One per line)' : 'Add Photo URL'}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowBatchUrlInput(!showBatchUrlInput)}
+                      className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                    >
+                      {showBatchUrlInput ? '← Single URL Mode' : '+ Paste Multiple URLs'}
+                    </button>
+                  </div>
+
+                  {showBatchUrlInput ? (
+                    <div className="space-y-2">
+                      <textarea
+                        rows={3}
+                        value={draftBatchBannerUrls}
+                        onChange={(e) => setDraftBatchBannerUrls(e.target.value)}
+                        placeholder="https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg&#10;https://example.com/photo3.jpg"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-xs font-mono text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleDraftAddPhoto(draftBatchBannerUrls)}
+                        disabled={!draftBatchBannerUrls.trim()}
+                        style={{ backgroundColor: currentAccent.colorHex }}
+                        className="w-full py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40 cursor-pointer shadow-xs"
+                      >
+                        Add All URLs to Collection
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={draftNewBannerUrl}
+                        onChange={(e) => setDraftNewBannerUrl(e.target.value)}
+                        placeholder="Paste image URL (https://...)"
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleDraftAddPhoto(draftNewBannerUrl);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleDraftAddPhoto(draftNewBannerUrl)}
+                        disabled={!draftNewBannerUrl.trim()}
+                        style={{ backgroundColor: currentAccent.colorHex }}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40 cursor-pointer shrink-0 shadow-xs"
+                      >
+                        + Add Photo
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -6375,19 +6710,26 @@ export default function App() {
                     {activeBannerPhotos.map((photo, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 gap-3"
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 gap-3"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <img
                             src={photo}
                             alt={`Banner ${idx + 1}`}
-                            className="w-14 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                            className="w-14 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0 bg-slate-100"
                           />
-                          <div className="min-w-0">
-                            <span className="text-xs font-bold text-[#1A3668] dark:text-white block truncate">
-                              Photo #{idx + 1}
-                            </span>
-                            <span className="text-[10px] text-slate-400 block truncate">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-xs font-bold text-[#1A3668] dark:text-white">
+                                Photo #{idx + 1}
+                              </span>
+                              {idx === currentBannerIndex % activeBannerPhotos.length && (
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                                  Current
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-400 block truncate max-w-[190px] sm:max-w-[240px]">
                               {photo.startsWith('data:') ? 'Local file uploaded' : photo}
                             </span>
                           </div>
@@ -6404,10 +6746,11 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleRemoveBannerPhoto(idx)}
-                            className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
-                            title="Remove photo"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer border border-rose-200 dark:border-rose-900"
+                            title={`Delete Photo #${idx + 1}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
                           </button>
                         </div>
                       </div>
