@@ -57,7 +57,8 @@ import {
   Layers,
   Maximize2,
   Activity,
-  Users
+  Users,
+  Languages
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -73,6 +74,11 @@ import {
   deleteFanMessageFromFirestore,
   type LiveStats
 } from './lib/firestoreSync';
+import {
+  TRANSLATION_LANGUAGES,
+  type TranslationLanguage,
+  translateText
+} from './lib/translateService';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -415,7 +421,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     members: ['jimmy', 'sea', 'avocean'],
     category: 'Event',
     link: 'https://x.com/gmmtvofficial',
-    description: 'Annual GMMTV press conference & showcase featuring lineup reveals, live artist appearances, and exclusive fan interactions.',
+    description: 'งานแถลงข่าวเปิดตัวซีรีส์และโปรเจกต์ใหม่ประจำปีของ GMMTV พร้อมการปรากฏตัวของทัพนักแสดงและกิจกรรมสุดพิเศษกับแฟนคลับ\nAnnual GMMTV press conference & showcase featuring lineup reveals, live artist appearances, and exclusive fan interactions.',
     hashtags: '#GMMTVNEXT #GMMTV2027 #JimmySea #Avocean',
     watchPlatforms: [
       { id: 'w1', name: 'GMMTV', platform: 'YouTube', url: 'https://youtube.com/@gmmtv' },
@@ -435,7 +441,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     members: ['jimmy', 'sea', 'avocean'],
     category: 'Event',
     link: 'https://x.com',
-    description: 'Official brand ambassador launch with exclusive photo corner and worldwide fan questions.',
+    description: 'งานเปิดตัวพรีเซนเตอร์แบรนด์อย่างเป็นทางการ พร้อมมุมถ่ายภาพสุดพิเศษและการตอบคำถามแฟนคลับทั่วโลกสดจากพารากอนฮอลล์',
     hashtags: '#JimmySeaLiveQA #JimmySea #Avocean',
     watchPlatforms: [
       { id: 'w3', name: 'GMMTV', platform: 'YouTube', url: 'https://youtube.com/@gmmtv' }
@@ -452,12 +458,12 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     members: ['jimmy'],
     category: 'Appearance',
     link: '',
-    description: 'Dr. Jimmy sharing health insights and signing special edition journals on the 1st floor.',
+    description: 'คุณหมอจิมมี่ร่วมแบ่งปันสาระความรู้ด้านสุขภาพและการดูแลตนเอง พร้อมแจกลายเซ็นสมุดบันทึกรุ่นลิมิเต็ดเอดิชัน ณ บริเวณชั้น 1 ศูนย์การค้าเซ็นทรัลเวิลด์',
     hashtags: '#DoctorJimmy #JimmyJitaraphol'
   },
   {
     id: 'sample-3',
-    title: 'Sea BadmintoDay Charity Match',
+    title: 'Sea BadmintonDay Charity Match',
     date: '2026-10-26',
     time: '16:30',
     timezone: 'BKK',
@@ -466,7 +472,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     members: ['sea'],
     category: 'Broadcast',
     link: 'https://youtube.com',
-    description: 'National athlete Sea Tawinan exhibition match raising funds for children sports equipment.',
+    description: 'แมตช์การแข่งขันแบดมินตันนัดพิเศษโดย ซี ทวินันท์ เพื่อระดมทุนสนับสนุนอุปกรณ์กีฬาให้กับเยาวชนที่ขาดแคลน',
     hashtags: '#SeaTawinan #BadmintonDayWithSea',
     watchPlatforms: [
       { id: 'w4', name: 'GMMTV', platform: 'YouTube', url: 'https://youtube.com' }
@@ -483,7 +489,7 @@ const SAMPLE_EVENTS: ScheduleEvent[] = [
     members: ['avocean', 'jimmy', 'sea'],
     category: 'Fan Event',
     link: 'https://x.com',
-    description: 'Worldwide fandom gathering, Halloween costume reveals, fan art sharing and giveaways.',
+    description: 'กิจกรรมปาร์ตี้ฮาโลวีนออนไลน์รวมพลชาว Avocean ทั่วทุกมุมโลก พูดคุยใน X Space เปิดตัวลุคคอสตูมสุดเซอร์ไพรส์ และร่วมกิจกรรมแจกของที่ระลึก',
     hashtags: '#AvoceanHalloween2026 #JimmySeaFandom',
     watchPlatforms: [
       { id: 'w5', name: 'X / Twitter', platform: 'Space', url: 'https://x.com' }
@@ -1116,6 +1122,29 @@ export default function App() {
   const [myRemindersModalOpen, setMyRemindersModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedHashtags, setCopiedHashtags] = useState<boolean>(false);
+
+  // --- Translation State for Native Event Descriptions ---
+  const [preferredTranslationLang, setPreferredTranslationLang] = useState<string>(() => {
+    try {
+      return localStorage.getItem('avocean_preferred_trans_lang') || 'en';
+    } catch {
+      return 'en';
+    }
+  });
+
+  const [translationsCache, setTranslationsCache] = useState<Record<string, Record<string, string>>>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_translations_cache');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Track whether an event card is actively displaying the translated text vs original
+  const [activeTranslationViews, setActiveTranslationViews] = useState<Record<string, boolean>>({});
+  const [translatingEventId, setTranslatingEventId] = useState<string | null>(null);
+  const [copiedTranslationId, setCopiedTranslationId] = useState<string | null>(null);
 
   // --- Personal Accent Color Choice (Purple, Blue, Green) ---
   const [accentColor, setAccentColor] = useState<AccentChoice>(() => {
@@ -2142,6 +2171,70 @@ export default function App() {
     setTimeout(() => setCopiedHashtags(false), 2500);
   };
 
+  // --- Translation Handlers for Event Descriptions ---
+  const handleSelectTranslationLang = (langCode: string) => {
+    setPreferredTranslationLang(langCode);
+    try {
+      localStorage.setItem('avocean_preferred_trans_lang', langCode);
+    } catch {}
+    const langObj = TRANSLATION_LANGUAGES.find((l) => l.code === langCode);
+    showToast(`Translation language: ${langObj?.flag || ''} ${langObj?.name || langCode}`);
+  };
+
+  const handleTranslateEventDescription = async (eventId: string, text: string, targetLangCode?: string) => {
+    const lang = targetLangCode || preferredTranslationLang;
+    if (!text.trim()) return;
+
+    // If already in cache for this event and target language, reveal it immediately
+    if (translationsCache[eventId]?.[lang]) {
+      setActiveTranslationViews((prev) => ({ ...prev, [eventId]: true }));
+      return;
+    }
+
+    setTranslatingEventId(eventId);
+    try {
+      const translated = await translateText(text, lang);
+      setTranslationsCache((prev) => {
+        const next = {
+          ...prev,
+          [eventId]: {
+            ...(prev[eventId] || {}),
+            [lang]: translated
+          }
+        };
+        try {
+          localStorage.setItem('avocean_translations_cache', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      setActiveTranslationViews((prev) => ({ ...prev, [eventId]: true }));
+      const langObj = TRANSLATION_LANGUAGES.find((l) => l.code === lang);
+      showToast(`Translated to ${langObj?.flag || ''} ${langObj?.name || lang}!`);
+    } catch (err: any) {
+      console.error('Translation error:', err);
+      showToast('Could not complete translation. Please try again.');
+    } finally {
+      setTranslatingEventId(null);
+    }
+  };
+
+  const handleToggleTranslationView = (eventId: string) => {
+    setActiveTranslationViews((prev) => ({
+      ...prev,
+      [eventId]: !prev[eventId]
+    }));
+  };
+
+  const handleCopyTranslatedDescription = (eventId: string, text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedTranslationId(eventId);
+    showToast('Description copied to clipboard!');
+    setTimeout(() => {
+      setCopiedTranslationId((prev) => (prev === eventId ? null : prev));
+    }, 2500);
+  };
+
   // --- Open Reminder Modal ---
   const openReminderModal = (ev: ScheduleEvent) => {
     setReminderEvent(ev);
@@ -2640,17 +2733,122 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Description */}
-              {ev.description && (
-                <div className="flex flex-col gap-1.5 flex-1">
-                  <span className="block text-xs font-bold text-[#475569] dark:text-slate-400 px-1">
-                    About Event
-                  </span>
-                  <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 text-xs sm:text-[13.5px] font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-line flex-1">
-                    {ev.description}
+              {/* Description & Translation for International Fans */}
+              {ev.description && (() => {
+                const isTranslating = translatingEventId === ev.id;
+                const cachedTranslation = translationsCache[ev.id]?.[preferredTranslationLang];
+                const isShowingTranslated = Boolean(activeTranslationViews[ev.id] && cachedTranslation);
+                const currentDisplayDescription = isShowingTranslated ? cachedTranslation : ev.description;
+                const currentLangObj = TRANSLATION_LANGUAGES.find((l) => l.code === preferredTranslationLang);
+
+                return (
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <div className="flex items-center justify-between gap-2 px-1 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="block text-xs font-bold text-[#475569] dark:text-slate-400">
+                          About Event
+                        </span>
+                        {isShowingTranslated && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            <span>{currentLangObj?.flag}</span>
+                            <span>{currentLangObj?.name}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Translation Controls Toolbar */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Target Language Dropdown */}
+                        <div className="relative inline-flex items-center">
+                          <select
+                            value={preferredTranslationLang}
+                            onChange={(e) => {
+                              const newLang = e.target.value;
+                              handleSelectTranslationLang(newLang);
+                              if (activeTranslationViews[ev.id]) {
+                                handleTranslateEventDescription(ev.id, ev.description || '', newLang);
+                              }
+                            }}
+                            className="text-[11px] font-bold pl-2 pr-6 py-1 rounded-lg bg-white/95 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400 appearance-none"
+                            title="Choose target language for translation"
+                          >
+                            {TRANSLATION_LANGUAGES.map((lang) => (
+                              <option key={lang.code} value={lang.code} className="dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+                                {lang.flag} {lang.name}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+                        </div>
+
+                        {/* Translate / Toggle Button */}
+                        {cachedTranslation ? (
+                          <button
+                            onClick={() => handleToggleTranslationView(ev.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                            title={isShowingTranslated ? "View original notice text" : `Show ${currentLangObj?.name} translation`}
+                          >
+                            <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                            <span>{isShowingTranslated ? 'Show Original' : 'Show Translation'}</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleTranslateEventDescription(ev.id, ev.description || '')}
+                            disabled={isTranslating}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                            title={`Translate description to ${currentLangObj?.name || 'selected language'}`}
+                          >
+                            {isTranslating ? (
+                              <>
+                                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                <span>Translating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Languages className="w-3.5 h-3.5" />
+                                <span>Translate</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {/* Copy Description Button */}
+                        <button
+                          onClick={() => handleCopyTranslatedDescription(ev.id, currentDisplayDescription)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-white/95 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                          title="Copy text"
+                        >
+                          {copiedTranslationId === ev.id ? (
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 text-xs sm:text-[13.5px] font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-line flex-1 flex flex-col justify-between">
+                      <div>{currentDisplayDescription}</div>
+
+                      {/* Footer hint if translated */}
+                      {isShowingTranslated && (
+                        <div className="mt-3 pt-2.5 border-t border-purple-100 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-purple-700 dark:text-purple-300 font-semibold">
+                          <span className="flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-purple-500" />
+                            <span>AI Translation ({currentLangObj?.name})</span>
+                          </span>
+                          <button
+                            onClick={() => handleToggleTranslationView(ev.id)}
+                            className="underline hover:text-purple-900 dark:hover:text-purple-200 cursor-pointer"
+                          >
+                            View original text
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="flex flex-col gap-4 mt-auto">
