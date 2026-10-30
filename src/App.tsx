@@ -6478,24 +6478,19 @@ export default function App() {
             </div>
           </div>
 
-          {/* Centered Image Container */}
-          <div
-            className="relative flex-1 flex items-center justify-center my-3 max-h-[82vh] max-w-[95vw] w-full"
-            onClick={(e) => e.stopPropagation()}
-          >
+          {/* Centered Image Container: clicks on open space bubble up to backdrop to close */}
+          <div className="relative flex-1 flex items-center justify-center my-2 max-h-[82vh] max-w-[95vw] w-full cursor-pointer">
             <img
               src={enlargedPhoto.url}
               alt={enlargedPhoto.title || 'Full resolution photo'}
-              className="max-h-[82vh] max-w-[92vw] object-contain rounded-2xl shadow-2xl border border-white/15 animate-in zoom-in-95 duration-200"
+              className="max-h-[82vh] max-w-[92vw] object-contain rounded-2xl shadow-2xl border border-white/15 animate-in zoom-in-95 duration-200 cursor-default"
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
 
           {/* Bottom Bar: Instructions */}
-          <div
-            className="text-white/60 text-xs font-medium z-10 select-none pb-1 flex items-center gap-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span>Click outside or press</span>
+          <div className="text-white/60 text-xs font-medium z-10 select-none pb-1 flex items-center gap-2 pointer-events-none">
+            <span>Click open space or press</span>
             <kbd className="px-2 py-0.5 rounded bg-white/15 text-white font-mono text-[11px] font-bold">
               Esc
             </kbd>
