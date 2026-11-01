@@ -161,10 +161,54 @@ async function translateChunkGTX(chunk: string, targetLang: string): Promise<str
 }
 
 /**
+ * Extracts and replaces URLs with safe placeholder tokens so translation
+ * APIs cannot corrupt, translate, or strip query parameters/paths from URLs.
+ */
+function protectUrls(text: string): { protectedText: string; urlMap: Map<string, string> } {
+  const urlMap = new Map<string, string>();
+  let tokenIndex = 0;
+
+  // Regex matching http/https URLs and common bare URLs
+  const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`]+|(?:www\.|bit\.ly\/|register\.[a-z0-9.-]+)[^\s<>"'{}|\\^`]*)/gi;
+
+  const protectedText = text.replace(urlRegex, (match) => {
+    // Trim trailing punctuation that belongs to sentence structure rather than the URL
+    const trailingPunctMatch = match.match(/[.,)>\];]+$/);
+    const trailingPunct = trailingPunctMatch ? trailingPunctMatch[0] : '';
+    const cleanUrl = match.slice(0, match.length - trailingPunct.length);
+
+    if (!cleanUrl) return match;
+
+    const token = `__AVO_URL_${tokenIndex++}__`;
+    urlMap.set(token, cleanUrl);
+    return `${token}${trailingPunct}`;
+  });
+
+  return { protectedText, urlMap };
+}
+
+/**
+ * Restores original exact URLs from placeholder tokens
+ */
+function restoreUrls(text: string, urlMap: Map<string, string>): string {
+  let restored = text;
+  urlMap.forEach((originalUrl, token) => {
+    const num = token.replace(/\D/g, '');
+    // Replace exact token
+    restored = restored.replaceAll(token, originalUrl);
+    // Replace loose token if translation service spaced it out (e.g. "__ AVO_URL_0 __")
+    const looseRegex = new RegExp(`__\\s*AVO_URL_${num}\\s*__`, 'gi');
+    restored = restored.replace(looseRegex, originalUrl);
+  });
+  return restored;
+}
+
+/**
  * Main translation entry point supporting:
  * 1. Server-side Gemini 3.8 Flash AI translation endpoint (/api/translate)
  * 2. Intelligent chunked client-side fallback (< 350 chars per chunk) ensuring
  *    descriptions of any length never trigger QUERY LENGTH LIMIT errors on static deploys
+ * 3. Automatic URL protection ensuring links are preserved with 100% accuracy
  */
 export async function translateText(
   paramOrText: TranslateParams | string,
@@ -194,6 +238,9 @@ export async function translateText(
   const trimmed = text.trim();
   if (!trimmed) return '';
 
+  // Protect URLs so external translation engines do not translate, shorten, or break links
+  const { protectedText, urlMap } = protectUrls(trimmed);
+
   // 1. Try server-side Gemini 3.8 Flash AI endpoint first (if full-stack server is running)
   try {
     const res = await fetch('/api/translate', {
@@ -202,7 +249,7 @@ export async function translateText(
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        text: trimmed,
+        text: protectedText,
         targetLang,
         targetLangName
       })
@@ -213,7 +260,8 @@ export async function translateText(
       if (contentType.includes('application/json')) {
         const data = await res.json();
         if (data.translation && typeof data.translation === 'string' && data.translation.trim()) {
-          return data.translation.trim();
+          const restored = restoreUrls(data.translation.trim(), urlMap);
+          return restored;
         }
       }
     }
@@ -223,7 +271,7 @@ export async function translateText(
 
   // 2. Client-side Chunked Translation
   // Chunking ensures we never exceed the 500 character limitation on public machine translation endpoints
-  const chunks = splitTextIntoChunks(trimmed, 350);
+  const chunks = splitTextIntoChunks(protectedText, 350);
 
   const translatedChunks: string[] = [];
   for (const chunk of chunks) {
@@ -239,10 +287,11 @@ export async function translateText(
     translatedChunks.push(chunkResult || chunk);
   }
 
-  const finalResult = translatedChunks.join('\n\n').trim();
-  if (finalResult && !isInvalidTranslationResult(finalResult)) {
-    return finalResult;
+  const combined = translatedChunks.join('\n\n').trim();
+  if (combined && !isInvalidTranslationResult(combined)) {
+    return restoreUrls(combined, urlMap);
   }
 
   throw new Error(`Unable to translate description to ${targetLangName}. Please try again.`);
 }
+

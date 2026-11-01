@@ -641,22 +641,37 @@ export const getEventPosters = (ev: ScheduleEvent): string[] => {
   return [];
 };
 
+// Helper to compute a simple, fast text checksum for verifying cache freshness
+export const computeTextChecksum = (text?: string | null): string => {
+  if (!text) return '0_0';
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash << 5) - hash + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return `${text.length}_${hash}`;
+};
+
 // Helper to render event description with auto-linked clickable URLs
 export const renderDescriptionTextWithLinks = (text?: string | null) => {
   if (!text) return null;
-  // Match URLs starting with http:// or https://
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  // Match URLs starting with http:// or https://, as well as bare domains like bit.ly/... or register.gmm-tv.com/...
+  const urlRegex = /(https?:\/\/[^\s<>"'{}|\\^`]+|(?:www\.|bit\.ly\/|register\.[a-z0-9.-]+)[^\s<>"'{}|\\^`]*)/gi;
   const parts = text.split(urlRegex);
 
   return parts.map((part, index) => {
     if (part.match(urlRegex)) {
-      // Clean up any trailing punctuation like . , ) > ]
-      const cleanUrl = part.replace(/[.,)>\]]+$/, '');
+      // Clean up any trailing punctuation like . , ) > ] ;
+      const cleanUrl = part.replace(/[.,)>\];]+$/, '');
       const trailingPunctuation = part.slice(cleanUrl.length);
+      const targetHref = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')
+        ? cleanUrl
+        : `https://${cleanUrl}`;
+
       return (
         <React.Fragment key={index}>
           <a
-            href={cleanUrl}
+            href={targetHref}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-0.5 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-bold underline underline-offset-2 break-all"
@@ -2390,7 +2405,20 @@ export default function App() {
       // 1. Await Firestore save to guarantee it is safely committed to cloud
       await saveEventToFirestore(newEvent);
 
-      // 2. Update React state and localStorage
+      // 2. Invalidate translation cache for this event so updated links and descriptions are never stale
+      setTranslationsCache((prev) => {
+        if (!prev[newEvent.id]) return prev;
+        const next = { ...prev };
+        delete next[newEvent.id];
+        try {
+          localStorage.setItem('avocean_translations_cache', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      // Reset translation toggle to show the newly updated original text
+      setActiveTranslationViews((prev) => ({ ...prev, [newEvent.id]: false }));
+
+      // 3. Update React state and localStorage
       setEvents((prev) => {
         const exists = prev.some((item) => item.id === newEvent.id);
         const updated = exists
@@ -2435,6 +2463,22 @@ export default function App() {
     try {
       localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
     } catch {}
+
+    // Purge translation cache for deleted event
+    setTranslationsCache((prev) => {
+      if (!prev[eventId]) return prev;
+      const next = { ...prev };
+      delete next[eventId];
+      try {
+        localStorage.setItem('avocean_translations_cache', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    setActiveTranslationViews((prev) => {
+      const next = { ...prev };
+      delete next[eventId];
+      return next;
+    });
 
     // Sync deletion to Firestore Cloud Database
     try {
@@ -2654,29 +2698,44 @@ export default function App() {
     showToast(`Translation language: ${langObj?.flag || ''} ${langObj?.name || langCode}`);
   };
 
-  const handleTranslateEventDescription = async (eventId: string, text: string, targetLangCode?: string) => {
+  const handleTranslateEventDescription = async (
+    eventId: string,
+    text: string,
+    targetLangCode?: string,
+    forceRefresh: boolean = false
+  ) => {
     const lang = targetLangCode || preferredTranslationLang;
     if (!text.trim()) return;
 
-    // If already in cache for this event and target language (and is valid text), reveal it immediately
-    const existing = translationsCache[eventId]?.[lang];
-    if (
-      existing &&
-      !existing.includes('QUERY LENGTH LIMIT') &&
-      !existing.startsWith('MYMEMORY WARNING')
-    ) {
-      setActiveTranslationViews((prev) => ({ ...prev, [eventId]: true }));
-      return;
+    const currentChecksum = computeTextChecksum(text);
+    const eventCache = translationsCache[eventId];
+    const isChecksumValid = eventCache && eventCache._sourceChecksum === currentChecksum;
+
+    // If already in cache for this event and target language, and source checksum matches, and not forcing refresh:
+    if (!forceRefresh && isChecksumValid) {
+      const existing = eventCache[lang];
+      if (
+        existing &&
+        !existing.includes('QUERY LENGTH LIMIT') &&
+        !existing.startsWith('MYMEMORY WARNING')
+      ) {
+        setActiveTranslationViews((prev) => ({ ...prev, [eventId]: true }));
+        return;
+      }
     }
 
     setTranslatingEventId(eventId);
     try {
       const translated = await translateText(text, lang);
       setTranslationsCache((prev) => {
+        const prevEvent = prev[eventId];
+        // If checksum changed, clear previous stale language versions so we don't mix old & new translations
+        const base = prevEvent?._sourceChecksum === currentChecksum ? prevEvent : {};
         const next = {
           ...prev,
           [eventId]: {
-            ...(prev[eventId] || {}),
+            ...base,
+            _sourceChecksum: currentChecksum,
             [lang]: translated
           }
         };
@@ -2687,7 +2746,7 @@ export default function App() {
       });
       setActiveTranslationViews((prev) => ({ ...prev, [eventId]: true }));
       const langObj = TRANSLATION_LANGUAGES.find((l) => l.code === lang);
-      showToast(`Translated to ${langObj?.flag || ''} ${langObj?.name || lang}!`);
+      showToast(forceRefresh ? `Refreshed ${langObj?.name || lang} translation!` : `Translated to ${langObj?.flag || ''} ${langObj?.name || lang}!`);
     } catch (err: any) {
       console.error('Translation error:', err);
       showToast('Could not complete translation. Please try again.');
@@ -3488,7 +3547,10 @@ export default function App() {
               {/* Description & Translation for International Fans */}
               {ev.description && (() => {
                 const isTranslating = translatingEventId === ev.id;
-                const rawCached = translationsCache[ev.id]?.[preferredTranslationLang];
+                const currentChecksum = computeTextChecksum(ev.description);
+                const eventCache = translationsCache[ev.id];
+                const isCacheValid = eventCache && eventCache._sourceChecksum === currentChecksum;
+                const rawCached = isCacheValid ? eventCache?.[preferredTranslationLang] : undefined;
                 const cachedTranslation =
                   rawCached &&
                   !rawCached.includes('QUERY LENGTH LIMIT') &&
@@ -3544,14 +3606,25 @@ export default function App() {
 
                         {/* Translate / Toggle Button */}
                         {cachedTranslation ? (
-                          <button
-                            onClick={() => handleToggleTranslationView(ev.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
-                            title={isShowingTranslated ? "View original notice text" : `Show ${currentLangObj?.name} translation`}
-                          >
-                            <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                            <span>{isShowingTranslated ? 'Show Original' : 'Show Translation'}</span>
-                          </button>
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleTranslationView(ev.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                              title={isShowingTranslated ? "View original notice text" : `Show ${currentLangObj?.name} translation`}
+                            >
+                              <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                              <span>{isShowingTranslated ? 'Show Original' : 'Show Translation'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleTranslateEventDescription(ev.id, ev.description || '', preferredTranslationLang, true)}
+                              disabled={isTranslating}
+                              className="p-1 rounded-lg bg-white/95 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Re-translate / Refresh translation to fetch updated text and links"
+                            >
+                              <RotateCcw className={`w-3.5 h-3.5 ${isTranslating ? 'animate-spin text-purple-600' : ''}`} />
+                            </button>
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleTranslateEventDescription(ev.id, ev.description || '')}
@@ -8243,7 +8316,10 @@ export default function App() {
       {descriptionModalEvent && (() => {
         const ev = descriptionModalEvent;
         const isTranslating = translatingEventId === ev.id;
-        const rawCached = translationsCache[ev.id]?.[preferredTranslationLang];
+        const currentChecksum = computeTextChecksum(ev.description);
+        const eventCache = translationsCache[ev.id];
+        const isCacheValid = eventCache && eventCache._sourceChecksum === currentChecksum;
+        const rawCached = isCacheValid ? eventCache?.[preferredTranslationLang] : undefined;
         const cachedTranslation =
           rawCached &&
           !rawCached.includes('QUERY LENGTH LIMIT') &&
@@ -8383,13 +8459,24 @@ export default function App() {
 
                     {/* Translate Button */}
                     {cachedTranslation ? (
-                      <button
-                        onClick={() => handleToggleTranslationView(ev.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 cursor-pointer"
-                      >
-                        <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                        <span>{isShowingTranslated ? 'Show Original' : 'Show Translation'}</span>
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => handleToggleTranslationView(ev.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 cursor-pointer"
+                        >
+                          <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                          <span>{isShowingTranslated ? 'Show Original' : 'Show Translation'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleTranslateEventDescription(ev.id, ev.description || '', preferredTranslationLang, true)}
+                          disabled={isTranslating}
+                          className="p-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+                          title="Re-translate / Refresh translation to fetch updated text and links"
+                        >
+                          <RotateCcw className={`w-3.5 h-3.5 ${isTranslating ? 'animate-spin text-purple-600' : ''}`} />
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => handleTranslateEventDescription(ev.id, ev.description || '')}

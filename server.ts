@@ -38,6 +38,7 @@ app.post('/api/translate', async (req, res) => {
       contents: `You are an expert bilingual translator for Thai entertainment, GMMTV celebrity fandom, and international fan club events.
 Translate the following event notice/description into ${targetLangName || targetLang}.
 Preserve artist names (such as Jimmy, Sea, Avocean, GMMTV), venue names, dates, times, and line breaks accurately.
+CRITICAL: Preserve all URLs, registration links, web links, hashtags, and social handles EXACTLY as they appear without shortening, modifying, or removing any path components.
 Make the translation natural, clear, and friendly for international fans.
 Output ONLY the translated text, without commentary, markdown code fences, or explanations.
 
