@@ -56,6 +56,10 @@ import {
   SlidersHorizontal,
   Layers,
   Maximize2,
+  Minimize2,
+  Expand,
+  FileText,
+  BookOpen,
   Activity,
   Users,
   Languages,
@@ -635,6 +639,38 @@ export const getEventPosters = (ev: ScheduleEvent): string[] => {
     return [ev.posterUrl];
   }
   return [];
+};
+
+// Helper to render event description with auto-linked clickable URLs
+export const renderDescriptionTextWithLinks = (text?: string | null) => {
+  if (!text) return null;
+  // Match URLs starting with http:// or https://
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      // Clean up any trailing punctuation like . , ) > ]
+      const cleanUrl = part.replace(/[.,)>\]]+$/, '');
+      const trailingPunctuation = part.slice(cleanUrl.length);
+      return (
+        <React.Fragment key={index}>
+          <a
+            href={cleanUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-bold underline underline-offset-2 break-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span>{cleanUrl}</span>
+            <ExternalLink className="w-3 h-3 inline shrink-0 ml-0.5" />
+          </a>
+          {trailingPunctuation}
+        </React.Fragment>
+      );
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
 };
 
 export interface RegistrationStatusInfo {
@@ -1297,20 +1333,32 @@ export default function App() {
   // Active photo index for events with multiple posters/photos (eventId -> photoIndex)
   const [activePhotoIndexByEvent, setActivePhotoIndexByEvent] = useState<Record<string, number>>({});
 
-  // Close photo lightbox on Escape key, or navigate photos with Left/Right arrow keys
+  // Extended Event Description states (Reader modal & card view expand)
+  const [descriptionModalEvent, setDescriptionModalEvent] = useState<ScheduleEvent | null>(null);
+  const [descriptionModalFontSize, setDescriptionModalFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
+  const [descriptionModalCopied, setDescriptionModalCopied] = useState<boolean>(false);
+
+  // Close modals on Escape key, or navigate photos with Left/Right arrow keys
   useEffect(() => {
-    if (!enlargedPhoto) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setEnlargedPhoto(null);
-      } else if (e.key === 'ArrowRight' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
+        if (descriptionModalEvent) {
+          setDescriptionModalEvent(null);
+          return;
+        }
+        if (enlargedPhoto) {
+          setEnlargedPhoto(null);
+          return;
+        }
+      } else if (enlargedPhoto && e.key === 'ArrowRight' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
         const nextIdx = ((enlargedPhoto.currentIndex ?? 0) + 1) % enlargedPhoto.photos.length;
         setEnlargedPhoto({
           ...enlargedPhoto,
           url: enlargedPhoto.photos[nextIdx],
           currentIndex: nextIdx
         });
-      } else if (e.key === 'ArrowLeft' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
+      } else if (enlargedPhoto && e.key === 'ArrowLeft' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
         const prevIdx = ((enlargedPhoto.currentIndex ?? 0) - 1 + enlargedPhoto.photos.length) % enlargedPhoto.photos.length;
         setEnlargedPhoto({
           ...enlargedPhoto,
@@ -1321,7 +1369,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enlargedPhoto]);
+  }, [enlargedPhoto, descriptionModalEvent]);
 
   // --- Personal Accent Color Choice (Purple, Blue, Green) ---
   const [accentColor, setAccentColor] = useState<AccentChoice>(() => {
@@ -1755,6 +1803,9 @@ export default function App() {
   const [formCategory, setFormCategory] = useState<string>('Event');
   const [formLink, setFormLink] = useState<string>('');
   const [formDescription, setFormDescription] = useState<string>('');
+  const [isExtendedDescEditor, setIsExtendedDescEditor] = useState<boolean>(false);
+  const [showFullDescEditorModal, setShowFullDescEditorModal] = useState<boolean>(false);
+  const [fullEditorTab, setFullEditorTab] = useState<'editor' | 'preview'>('editor');
   const [formHashtags, setFormHashtags] = useState<string>('');
   const [formWatchPlatforms, setFormWatchPlatforms] = useState<WatchPlatform[]>([]);
 
@@ -2154,6 +2205,9 @@ export default function App() {
     setFormCategory('Event');
     setFormLink('');
     setFormDescription('');
+    setIsExtendedDescEditor(false);
+    setShowFullDescEditorModal(false);
+    setFullEditorTab('editor');
     setFormHashtags('#JimmySea #Avocean');
     setFormWatchPlatforms([]);
     setFormHasRegistration(false);
@@ -2238,7 +2292,11 @@ export default function App() {
     setFormMembers(ev.members && ev.members.length ? ev.members : ['jimmy']);
     setFormCategory(ev.category || 'Event');
     setFormLink(ev.link || '');
-    setFormDescription(ev.description || ev.notes || '');
+    const currentDesc = ev.description || ev.notes || '';
+    setFormDescription(currentDesc);
+    setIsExtendedDescEditor(currentDesc.length > 200 || currentDesc.split('\n').length > 5);
+    setShowFullDescEditorModal(false);
+    setFullEditorTab('editor');
     setFormHashtags(ev.hashtags || '');
     setFormWatchPlatforms(ev.watchPlatforms ? [...ev.watchPlatforms] : []);
     // Populate registration period fields
@@ -3441,6 +3499,9 @@ export default function App() {
                 const currentDisplayDescription = isShowingTranslated ? cachedTranslation : ev.description;
                 const currentLangObj = TRANSLATION_LANGUAGES.find((l) => l.code === preferredTranslationLang);
 
+                const isLongDescription = (currentDisplayDescription || '').length > 280 || (currentDisplayDescription || '').split('\n').length > 5;
+                const isExpanded = Boolean(expandedDescriptions[ev.id]);
+
                 return (
                   <div className="flex flex-col gap-1.5 flex-1">
                     <div className="flex items-center justify-between gap-2 px-1 flex-wrap">
@@ -3456,7 +3517,7 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Translation Controls Toolbar */}
+                      {/* Translation & View Controls Toolbar */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {/* Target Language Dropdown */}
                         <div className="relative inline-flex items-center">
@@ -3524,11 +3585,71 @@ export default function App() {
                             <Copy className="w-3 h-3" />
                           )}
                         </button>
+
+                        {/* Extended View Button */}
+                        <button
+                          type="button"
+                          onClick={() => setDescriptionModalEvent(ev)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/95 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-slate-700 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
+                          title="Open full extended reader view"
+                        >
+                          <Maximize2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                          <span>Extended View</span>
+                        </button>
                       </div>
                     </div>
 
                     <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 text-xs sm:text-[13.5px] font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-line flex-1 flex flex-col justify-between">
-                      <div>{currentDisplayDescription}</div>
+                      {isLongDescription && !isExpanded ? (
+                        <div className="relative">
+                          <div className="max-h-48 overflow-hidden">
+                            {renderDescriptionTextWithLinks(currentDisplayDescription)}
+                          </div>
+                          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-50 via-slate-50/90 to-transparent dark:from-slate-800 dark:via-slate-800/90 flex items-end justify-between pt-6 px-1">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedDescriptions((prev) => ({ ...prev, [ev.id]: true }))}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-purple-700 dark:text-purple-300 bg-white dark:bg-slate-700 border border-purple-200 dark:border-purple-800 shadow-xs hover:bg-purple-50 dark:hover:bg-purple-950/60 cursor-pointer transition-all"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                              <span>Show Full Description</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDescriptionModalEvent(ev)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-xs cursor-pointer transition-all"
+                              title="Open full distraction-free announcement reader"
+                            >
+                              <Maximize2 className="w-3.5 h-3.5" />
+                              <span>Extended View</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div>{renderDescriptionTextWithLinks(currentDisplayDescription)}</div>
+                          {isLongDescription && isExpanded && (
+                            <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedDescriptions((prev) => ({ ...prev, [ev.id]: false }))}
+                                className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                                <span>Show Less</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDescriptionModalEvent(ev)}
+                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 border border-purple-200 dark:border-purple-800 cursor-pointer"
+                              >
+                                <Maximize2 className="w-3.5 h-3.5" />
+                                <span>Extended Reader</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Footer hint if translated */}
                       {isShowingTranslated && (
@@ -4994,7 +5115,7 @@ export default function App() {
       {/* ============================================================== */}
       {eventModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-lg p-5 sm:p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800">
+          <div className={`bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full ${isExtendedDescEditor ? 'max-w-2xl' : 'max-w-lg'} p-5 sm:p-6 transition-all duration-200 animate-in fade-in zoom-in-95 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-[#1A3668] dark:text-white">
                 {editingEvent ? 'Edit Schedule Event' : 'Add Schedule Event'}
@@ -5990,17 +6111,102 @@ export default function App() {
               </div>
 
               {/* Description */}
-              <div>
-                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                  Event Description
-                </label>
-                <textarea
-                  rows={2}
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Detailed explanation of the event..."
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                />
+              <div className="space-y-2 p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <label className="text-xs font-bold text-[#1A3668] dark:text-slate-200">
+                      Event Description & Announcement Details
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Character and Line Counter */}
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {formDescription.split('\n').filter(Boolean).length} lines · {formDescription.length} chars
+                    </span>
+
+                    {/* Toggle Extended Height */}
+                    <button
+                      type="button"
+                      onClick={() => setIsExtendedDescEditor(!isExtendedDescEditor)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-purple-100 dark:bg-purple-950/70 hover:bg-purple-200 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                      title={isExtendedDescEditor ? "Switch to standard height" : "Extend editor height for long text"}
+                    >
+                      {isExtendedDescEditor ? (
+                        <>
+                          <Minimize2 className="w-3 h-3" />
+                          <span>Standard View</span>
+                        </>
+                      ) : (
+                        <>
+                          <Maximize2 className="w-3 h-3" />
+                          <span>Extended View</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Open Dedicated Fullscreen/Split-View Editor */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFullEditorTab('editor');
+                        setShowFullDescEditorModal(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-[#1A3668] dark:text-white border border-slate-200 dark:border-slate-600 shadow-2xs transition-colors cursor-pointer"
+                      title="Open full distraction-free editor with live preview"
+                    >
+                      <Expand className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                      <span>Full Editor</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Announcement Section Badges / Starters */}
+                <div className="flex items-center gap-1.5 flex-wrap py-0.5">
+                  <span className="text-[10px] font-bold text-slate-400">Quick inserts:</span>
+                  {[
+                    { label: 'Online Reg', snippet: '\n[🚨 รอบ Online Registration]\n📌 เงื่อนไข:\n🔗 https://...\n📅 ระยะเวลาลงทะเบียน: \n🎁 สิทธิพิเศษ: \n' },
+                    { label: 'On-Site Reg', snippet: '\n[🚨 รอบ On-Site Registration]\n📌 เงื่อนไข:\n📍 สถานที่: \n📅 ระยะเวลา: \n🎁 สิทธิพิเศษ: \n' },
+                    { label: 'Terms & Conditions', snippet: '\n📌 เงื่อนไขและกติกา:\n- \n' },
+                    { label: 'Privileges / Perks', snippet: '\n🎁 สิทธิพิเศษสำหรับผู้เข้าร่วม:\n- \n' },
+                    { label: 'Winner Announcement', snippet: '\n📅 ประกาศรายชื่อผู้โชคดี: \n' },
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setFormDescription((prev) => (prev ? `${prev.trimEnd()}${preset.snippet}` : preset.snippet.trimStart()))}
+                      className="text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-700 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200/80 dark:border-slate-600 transition-colors cursor-pointer"
+                    >
+                      + {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative">
+                  <textarea
+                    rows={isExtendedDescEditor ? 14 : 7}
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    placeholder="Enter or paste detailed announcement (e.g. registration tiers, ticket rules, hashtag guidelines, schedule details). Drag bottom-right corner to freely resize height anytime..."
+                    className={`w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-3 text-sm font-semibold text-[#1A3668] dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-500 transition-all leading-relaxed resize-y ${
+                      isExtendedDescEditor ? 'min-h-[280px]' : 'min-h-[150px]'
+                    }`}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 flex-wrap gap-2">
+                  <span>💡 Preserves line breaks, links, emojis and bullet points. Drag the bottom right corner (⋰) to resize as tall as you need.</span>
+                  {formDescription && (
+                    <button
+                      type="button"
+                      onClick={() => setFormDescription('')}
+                      className="text-rose-500 hover:text-rose-700 underline cursor-pointer"
+                    >
+                      Clear description
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Hashtags */}
@@ -7857,6 +8063,460 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* MODAL: FULLSCREEN DESCRIPTION & ANNOUNCEMENT EDITOR            */}
+      {/* ============================================================== */}
+      {showFullDescEditorModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200"
+          onClick={() => setShowFullDescEditorModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar: Title, Counters, Presets & Actions */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3 bg-slate-50/70 dark:bg-slate-800/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-[#1A3668] dark:text-white leading-tight">
+                    Extended Description & Announcement Editor
+                  </h3>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mt-0.5">
+                    <span>{formDescription.split('\n').filter(Boolean).length} lines</span>
+                    <span>·</span>
+                    <span>{formDescription.length} characters</span>
+                    <span>·</span>
+                    <span>{formTitle || 'Schedule Event'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Mobile Tab Switcher */}
+                <div className="inline-flex md:hidden items-center p-1 rounded-xl bg-slate-200/80 dark:bg-slate-800 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setFullEditorTab('editor')}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      fullEditorTab === 'editor'
+                        ? 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-xs'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    Editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFullEditorTab('preview')}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      fullEditorTab === 'preview'
+                        ? 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-xs'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    Live Preview
+                  </button>
+                </div>
+
+                {/* Done & Apply Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowFullDescEditorModal(false)}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer active:scale-95 transition-all"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Apply & Return</span>
+                </button>
+
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowFullDescEditorModal(false)}
+                  className="w-9 h-9 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 flex items-center justify-center cursor-pointer transition-colors"
+                  title="Close (Esc)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Insert Snippets Toolbar */}
+            <div className="px-4 py-2 bg-purple-50/50 dark:bg-purple-950/30 border-b border-purple-100 dark:border-purple-900/50 flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-bold text-purple-900 dark:text-purple-300">Quick inserts:</span>
+              {[
+                { label: 'Online Reg Section', snippet: '\n[🚨 รอบ Online Registration]\n📌 เงื่อนไข:\n🔗 https://...\n📅 ระยะเวลาซื้อสินค้าและลงทะเบียน: \n🎁 สิทธิพิเศษ: \n🎁 ผู้โชคดีทั้งหมด: \n' },
+                { label: 'On-Site Reg Section', snippet: '\n[🚨 รอบ On-Site Registration]\n📌 เงื่อนไข:\n📍 สถานที่: \n📅 ระยะเวลา: \n🎁 สิทธิพิเศษ: \n🎁 ผู้โชคดี: \n' },
+                { label: 'Terms & Conditions', snippet: '\n📌 เงื่อนไขและกติกา:\n- \n- \n' },
+                { label: 'Privileges / Perks', snippet: '\n🎁 สิทธิพิเศษ:\n- \n' },
+                { label: 'Winner Announcement', snippet: '\n📅 ประกาศรายชื่อผู้โชคดี:\n' },
+                { label: 'Notice & Remarks', snippet: '\n⚠️ หมายเหตุ:\n- \n' }
+              ].map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setFormDescription((prev) => (prev ? `${prev.trimEnd()}${preset.snippet}` : preset.snippet.trimStart()))}
+                  className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-purple-100 dark:hover:bg-purple-900 text-[#1A3668] dark:text-slate-200 border border-purple-200/60 dark:border-slate-700 transition-colors cursor-pointer"
+                >
+                  + {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Main Editor Body: Split View (Side-by-Side on Desktop) */}
+            <div className="flex-1 overflow-hidden p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left Column: Full-Height Textarea */}
+              <div className={`flex flex-col h-full ${fullEditorTab === 'preview' ? 'hidden md:flex' : 'flex'}`}>
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 px-1">
+                  <span>Text Editor (Preserves formatting & links)</span>
+                  {formDescription && (
+                    <button
+                      type="button"
+                      onClick={() => setFormDescription('')}
+                      className="text-rose-500 hover:text-rose-700 underline cursor-pointer text-[11px]"
+                    >
+                      Clear all text
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="Paste or write detailed announcement here... Full paragraph text, bullet points, tier rules, hashtags, and registration links are fully preserved."
+                  className="flex-1 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-4 text-sm font-medium text-[#1A3668] dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-500 resize-none leading-relaxed min-h-[380px] overflow-y-auto"
+                />
+              </div>
+
+              {/* Right Column: Live Announcement Preview */}
+              <div className={`flex flex-col h-full ${fullEditorTab === 'editor' ? 'hidden md:flex' : 'flex'}`}>
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 px-1">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Live Fan View Preview</span>
+                  </span>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    Auto-links active
+                  </span>
+                </div>
+                <div className="flex-1 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 overflow-y-auto min-h-[380px]">
+                  {formDescription.trim() ? (
+                    <div className="text-sm font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                      {renderDescriptionTextWithLinks(formDescription)}
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 p-6">
+                      <FileText className="w-10 h-10 mb-2 opacity-30 text-purple-500" />
+                      <p className="text-xs font-semibold">Start typing in the editor to see your announcement formatted live.</p>
+                      <p className="text-[11px] opacity-70 mt-1">Links like https://... will automatically become clickable buttons.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Bar */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs font-medium text-slate-400 bg-slate-50/70 dark:bg-slate-800/50">
+              <span>Press <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">Esc</kbd> or click Apply & Return when done</span>
+              <button
+                type="button"
+                onClick={() => setShowFullDescEditorModal(false)}
+                style={{ backgroundColor: currentAccent.colorHex }}
+                className="px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer"
+              >
+                Done Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: EXTENDED EVENT ANNOUNCEMENT & DESCRIPTION READER         */}
+      {/* ============================================================== */}
+      {descriptionModalEvent && (() => {
+        const ev = descriptionModalEvent;
+        const isTranslating = translatingEventId === ev.id;
+        const rawCached = translationsCache[ev.id]?.[preferredTranslationLang];
+        const cachedTranslation =
+          rawCached &&
+          !rawCached.includes('QUERY LENGTH LIMIT') &&
+          !rawCached.startsWith('MYMEMORY WARNING')
+            ? rawCached
+            : undefined;
+        const isShowingTranslated = Boolean(activeTranslationViews[ev.id] && cachedTranslation);
+        const currentDisplayDescription = isShowingTranslated ? cachedTranslation : ev.description;
+        const currentLangObj = TRANSLATION_LANGUAGES.find((l) => l.code === preferredTranslationLang);
+        const regInfo = getRegistrationStatusInfo(ev, todayDateStr);
+
+        const fontSizeClasses = {
+          sm: 'text-xs sm:text-[13px] leading-normal',
+          base: 'text-xs sm:text-sm leading-relaxed',
+          lg: 'text-sm sm:text-base leading-relaxed',
+          xl: 'text-base sm:text-lg leading-loose'
+        };
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+            onClick={() => setDescriptionModalEvent(null)}
+          >
+            <div
+              className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header: Title, Category, Members, Close */}
+              <div className="p-5 sm:p-6 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1.5 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {ev.category && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-[10.5px] font-bold text-[#475569] dark:text-slate-300 uppercase tracking-wider bg-white dark:bg-slate-800">
+                          <MapPin className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                          <span>{ev.category}</span>
+                        </span>
+                      )}
+                      {(ev.members || []).map((mId) => {
+                        const m = getMemberById(mId);
+                        return (
+                          <span
+                            key={mId}
+                            style={{
+                              backgroundColor: isDarkMode ? '#1E293B' : m.pillBg,
+                              borderColor: m.pillBorder
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10.5px] font-bold text-[#1A3668] dark:text-white"
+                          >
+                            <span>{m.emoji}</span>
+                            <span>{m.name}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    <h2 className="text-lg sm:text-xl font-extrabold text-[#1A3668] dark:text-white leading-snug tracking-tight">
+                      {ev.title}
+                    </h2>
+
+                    <div className="flex items-center gap-3 text-xs font-semibold text-[#607494] dark:text-slate-400 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <CalendarIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>{formatEventFullDateRange(ev.date, ev.endDate)}</span>
+                      </span>
+                      {ev.time && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                          <span>{ev.isAllDay ? 'All-Day' : formatEventTime(ev, is12Hour)}</span>
+                        </span>
+                      )}
+                      {ev.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                          <span>{ev.location}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionModalEvent(null)}
+                    className="w-9 h-9 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 flex items-center justify-center cursor-pointer transition-colors shrink-0"
+                    title="Close (Esc)"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Reader Controls Toolbar: Font Size, Translation & Copy */}
+                <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                  {/* Font Size Adjuster */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-400">Size:</span>
+                    {(['sm', 'base', 'lg', 'xl'] as const).map((sz) => (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => setDescriptionModalFontSize(sz)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                          descriptionModalFontSize === sz
+                            ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-2xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {sz === 'sm' ? 'A-' : sz === 'base' ? 'A' : sz === 'lg' ? 'A+' : 'A++'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Translation & Copy Actions */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Language Selector */}
+                    <div className="relative inline-flex items-center">
+                      <select
+                        value={preferredTranslationLang}
+                        onChange={(e) => {
+                          const newLang = e.target.value;
+                          handleSelectTranslationLang(newLang);
+                          if (activeTranslationViews[ev.id]) {
+                            handleTranslateEventDescription(ev.id, ev.description || '', newLang);
+                          }
+                        }}
+                        className="text-[11px] font-bold pl-2 pr-6 py-1 rounded-lg bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer focus:outline-none appearance-none"
+                      >
+                        {TRANSLATION_LANGUAGES.map((lang) => (
+                          <option key={lang.code} value={lang.code} className="dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+                            {lang.flag} {lang.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+                    </div>
+
+                    {/* Translate Button */}
+                    {cachedTranslation ? (
+                      <button
+                        onClick={() => handleToggleTranslationView(ev.id)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 cursor-pointer"
+                      >
+                        <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                        <span>{isShowingTranslated ? 'Show Original' : 'Show Translation'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleTranslateEventDescription(ev.id, ev.description || '')}
+                        disabled={isTranslating}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-bold bg-purple-600 hover:bg-purple-700 text-white cursor-pointer disabled:opacity-50"
+                      >
+                        {isTranslating ? (
+                          <>
+                            <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Translating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Languages className="w-3 h-3" />
+                            <span>Translate</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Copy Description Button */}
+                    <button
+                      onClick={() => {
+                        handleCopyTranslatedDescription(ev.id, currentDisplayDescription || '');
+                        setDescriptionModalCopied(true);
+                        setTimeout(() => setDescriptionModalCopied(false), 2000);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs"
+                    >
+                      {descriptionModalCopied ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Announcement</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable Announcement Body */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-5 bg-white dark:bg-slate-900">
+                {/* Registration Callout if applicable */}
+                {regInfo.hasReg && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200/80 dark:border-emerald-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${regInfo.badgeBg} ${regInfo.badgeText} border ${regInfo.badgeBorder}`}>
+                          {regInfo.statusLabel}
+                        </span>
+                        <span className="text-xs font-bold text-[#1A3668] dark:text-white">Registration & Ticket Schedule</span>
+                      </div>
+                      <p className="text-xs font-semibold text-[#607494] dark:text-slate-300">
+                        {formatRegistrationSchedule(ev, is12Hour)}
+                      </p>
+                    </div>
+                    {ev.registrationUrl && (
+                      <a
+                        href={ev.registrationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <span>Open Official Registration</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Formatted Announcement Text with Clickable Links */}
+                <div className={`font-medium text-[#334155] dark:text-slate-200 whitespace-pre-line ${fontSizeClasses[descriptionModalFontSize]}`}>
+                  {renderDescriptionTextWithLinks(currentDisplayDescription)}
+                </div>
+
+                {/* Official Hashtags Section */}
+                {ev.hashtags && (
+                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <span className="block text-xs font-bold text-slate-400 mb-2">Official Hashtags</span>
+                    <div className="flex flex-wrap gap-2">
+                      {ev.hashtags.split(/\s+/).filter(Boolean).map((tag, tIdx) => (
+                        <span
+                          key={tIdx}
+                          className="px-3 py-1 rounded-full text-xs font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Reader Footer */}
+              <div className="p-4 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2 bg-slate-50/70 dark:bg-slate-800/50 text-xs font-semibold text-slate-400">
+                <span>{currentDisplayDescription?.split('\n').filter(Boolean).length || 0} lines · {currentDisplayDescription?.length || 0} characters</span>
+                <div className="flex items-center gap-2">
+                  {ev.link && (
+                    <a
+                      href={ev.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:underline px-3 py-1.5 cursor-pointer"
+                    >
+                      <span>Official Source Link</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionModalEvent(null)}
+                    style={{ backgroundColor: currentAccent.colorHex }}
+                    className="px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer"
+                  >
+                    Close Reader
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
