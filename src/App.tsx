@@ -23,6 +23,7 @@ import {
   RotateCcw,
   Globe,
   Share2,
+  HeartHandshake,
   Tv,
   Lock,
   Unlock,
@@ -66,11 +67,12 @@ import {
   Languages,
   Loader2,
   Ticket,
-  ClipboardList
+  ClipboardList,
+  Truck
 } from 'lucide-react';
 import {
   testFirestoreConnection,
-  startLivePresenceTracking,
+  startDailyVisitsTracking,
   subscribeToEvents,
   saveEventToFirestore,
   deleteEventFromFirestore,
@@ -80,6 +82,7 @@ import {
   sendFanMessageToFirestore,
   updateFanMessageInFirestore,
   deleteFanMessageFromFirestore,
+  onQuotaExceededChange,
   type LiveStats
 } from './lib/firestoreSync';
 import {
@@ -88,6 +91,9 @@ import {
   translateText
 } from './lib/translateService';
 import { compressImageFile, compressDataUrl } from './lib/imageCompression';
+import { FanHub } from './components/FanHub';
+import type { FanClub, FoodSupportProject } from './types/fanhub';
+import { INITIAL_FAN_CLUBS, INITIAL_FOOD_SUPPORT_PROJECTS } from './data/initialFanHubData';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -1352,10 +1358,84 @@ export default function App() {
     return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
   });
   const [showWeekOnly, setShowWeekOnly] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'calendar' | 'list'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'list' | 'fanhub'>('calendar');
+  const [fanHubSubTab, setFanHubSubTab] = useState<'directory' | 'foodsupport'>('directory');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [listViewFilter, setListViewFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [selectedDayActiveEventId, setSelectedDayActiveEventId] = useState<string | null>(null);
+
+  // --- Fan Clubs Directory & Food Support State ---
+  const [fanClubs, setFanClubs] = useState<FanClub[]>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_fan_clubs_v2') || localStorage.getItem('avocean_fan_clubs_v1');
+      if (saved) {
+        const parsed: FanClub[] = JSON.parse(saved);
+        if (parsed.some((c) => c.actor === 'everyone' || c.actor === 'avocean')) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return INITIAL_FAN_CLUBS;
+  });
+
+  const [foodProjects, setFoodProjects] = useState<FoodSupportProject[]>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_food_projects_v2') || localStorage.getItem('avocean_food_projects_v1');
+      if (saved) {
+        const parsed: FoodSupportProject[] = JSON.parse(saved);
+        if (parsed.some((p) => p.actor === 'everyone' || p.actor === 'avocean')) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return INITIAL_FOOD_SUPPORT_PROJECTS;
+  });
+
+  const handleSaveFanClub = (club: FanClub) => {
+    setFanClubs((prev) => {
+      const exists = prev.some((c) => c.id === club.id);
+      const next = exists ? prev.map((c) => (c.id === club.id ? club : c)) : [club, ...prev];
+      try {
+        localStorage.setItem('avocean_fan_clubs_v2', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast(`Fan club "${club.name}" saved!`);
+  };
+
+  const handleDeleteFanClub = (clubId: string) => {
+    setFanClubs((prev) => {
+      const next = prev.filter((c) => c.id !== clubId);
+      try {
+        localStorage.setItem('avocean_fan_clubs_v2', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast('Fan club removed from directory.');
+  };
+
+  const handleSaveFoodProject = (project: FoodSupportProject) => {
+    setFoodProjects((prev) => {
+      const exists = prev.some((p) => p.id === project.id);
+      const next = exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
+      try {
+        localStorage.setItem('avocean_food_projects_v2', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast(`Food support project "${project.title}" saved!`);
+  };
+
+  const handleDeleteFoodProject = (projectId: string) => {
+    setFoodProjects((prev) => {
+      const next = prev.filter((p) => p.id !== projectId);
+      try {
+        localStorage.setItem('avocean_food_projects_v2', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast('Food support project removed.');
+  };
 
   // Automatically update today's date string when midnight passes in user's timezone
   useEffect(() => {
@@ -1442,6 +1522,15 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedHashtags, setCopiedHashtags] = useState<boolean>(false);
   const [copiedIndividualTag, setCopiedIndividualTag] = useState<string | null>(null);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState<boolean>(false);
+  const [showQuotaBanner, setShowQuotaBanner] = useState<boolean>(true);
+
+  useEffect(() => {
+    const unsub = onQuotaExceededChange((exceeded) => {
+      setIsQuotaExceeded(exceeded);
+    });
+    return () => unsub();
+  }, []);
 
   // --- Translation State for Native Event Descriptions ---
   const [preferredTranslationLang, setPreferredTranslationLang] = useState<string>(() => {
@@ -1557,21 +1646,19 @@ export default function App() {
   };
 
   // --- Real-Time Firestore Presence, Visitor Count & Cloud Sync ---
-  // --- Real-Time Firestore Presence, Daily Visits & Cloud Sync ---
+  // --- Daily Refreshing Visits & Cloud Stats ---
   const [visitorStats, setVisitorStats] = useState<LiveStats>(() => {
     try {
       const raw = localStorage.getItem('avocean_visitor_stats_v2');
       if (raw) {
         const parsed = JSON.parse(raw);
         return {
-          liveViewers: parsed.liveViewers || 1,
           todayVisits: typeof parsed.todayVisits === 'number' ? parsed.todayVisits : 1,
           totalVisits: typeof parsed.totalVisits === 'number' ? parsed.totalVisits : 28
         };
       }
     } catch {}
     return {
-      liveViewers: 1,
       todayVisits: 1,
       totalVisits: 28
     };
@@ -1582,12 +1669,12 @@ export default function App() {
     testFirestoreConnection();
   }, []);
 
-  // Real-Time Online Presence & Daily Refreshing Visits from Firestore
+  // Daily Refreshing Visits Sync from Firestore
   useEffect(() => {
-    const unsubscribe = startLivePresenceTracking((liveStats) => {
-      setVisitorStats(liveStats);
+    const unsubscribe = startDailyVisitsTracking((stats) => {
+      setVisitorStats(stats);
       try {
-        localStorage.setItem('avocean_visitor_stats_v2', JSON.stringify(liveStats));
+        localStorage.setItem('avocean_visitor_stats_v2', JSON.stringify(stats));
       } catch {}
     });
     return () => unsubscribe();
@@ -4079,6 +4166,37 @@ export default function App() {
         </div>
       )}
 
+      {/* Cloud Quota Notice Banner (if Firestore free daily quota is exceeded) */}
+      {isQuotaExceeded && showQuotaBanner && (
+        <div className="w-full max-w-[1340px] mb-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-2xs backdrop-blur-md">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[11px] shrink-0">
+              ☁️ Cloud Quota Notice
+            </span>
+            <span className="font-semibold text-xs leading-relaxed">
+              Firestore free daily read limit reached for today (resets at midnight UTC). The app is seamlessly running in <strong>Local Storage Mode</strong> so you can continue viewing, creating, and editing events without interruption!
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href="https://console.firebase.google.com/project/gen-lang-client-0451241322/firestore/databases/ai-studio-remixjimmyseaavo-4879c752-3bf2-455d-8b6f-4259853fbf24/data?openUpgradeDialog=true"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 font-bold text-amber-800 dark:text-amber-200 text-[11px] transition-colors"
+            >
+              Manage Quota ↗
+            </a>
+            <button
+              onClick={() => setShowQuotaBanner(false)}
+              className="p-1 rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer"
+              title="Dismiss note"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* TOP TOOLBAR: FILLS FULL WIDTH UP TO 1340px */}
       <div className="w-full max-w-[1340px] flex flex-wrap items-center justify-between gap-3 mb-4 px-1">
         {/* Left Side: "Leave a message" (viewers), Inbox (admins/owner), & Stats */}
@@ -4113,18 +4231,12 @@ export default function App() {
             </button>
           )}
 
-          {/* Live Viewers & Today's Visits Stats (Admin & Owner Only) */}
+          {/* Today's Visits Stats (Admin & Owner Only) */}
           {canEditEvents && (
             <div
-              className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
-              title={`${visitorStats.liveViewers} online now · ${visitorStats.todayVisits.toLocaleString()} visits today (${visitorStats.totalVisits.toLocaleString()} all-time)`}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
+              title={`${visitorStats.todayVisits.toLocaleString()} visits today · ${visitorStats.totalVisits.toLocaleString()} all-time`}
             >
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>{visitorStats.liveViewers} online</span>
-              <span className="text-slate-300 dark:text-slate-600">·</span>
               <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
               <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
             </div>
@@ -4855,7 +4967,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'list' ? (
         /* DEDICATED FULL-WIDTH CENTERED LIST VIEW: No stretching, clean search & complete event cards */
         <div className="w-full max-w-[1100px] mx-auto flex flex-col gap-5">
           {/* Search bar */}
@@ -4990,36 +5102,94 @@ export default function App() {
             </div>
           )}
         </div>
+      ) : (
+        /* ============================================================== */
+        /* FAN HUB: FAN CLUBS DIRECTORY & FOOD SUPPORT PROJECTS           */
+        /* ============================================================== */
+        <FanHub
+          fanClubs={fanClubs}
+          foodProjects={foodProjects}
+          canEdit={canEditEvents}
+          isOwner={isOwner}
+          events={events}
+          currentAccent={currentAccent}
+          activeSubTab={fanHubSubTab}
+          onSubTabChange={setFanHubSubTab}
+          onSaveFanClub={handleSaveFanClub}
+          onDeleteFanClub={handleDeleteFanClub}
+          onSaveFoodProject={handleSaveFoodProject}
+          onDeleteFoodProject={handleDeleteFoodProject}
+          showToast={showToast}
+        />
       )}
 
       {/* ============================================================== */}
-      {/* FLOATING NAVIGATION PILL (Calendar | List)                     */}
+      {/* FLOATING NAVIGATION DOCKS                                      */}
+      {/* Bubble 1: Schedule (Calendar / List)                           */}
+      {/* Bubble 2: Fan Hub (Fan Clubs / Food Support)                   */}
       {/* ============================================================== */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40">
-        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800">
+      <div className="fixed bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-16px)] justify-center flex-wrap sm:flex-nowrap pointer-events-none">
+        {/* Bubble 1: Schedule Navigation */}
+        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
           <button
             onClick={() => setActiveTab('calendar')}
             style={activeTab === 'calendar' ? { backgroundColor: currentAccent.colorHex } : {}}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
               activeTab === 'calendar'
                 ? 'text-white shadow-sm'
                 : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
             }`}
+            title="View Calendar schedule"
           >
-            <CalendarIcon className="w-4 h-4 stroke-[2.2]" />
+            <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
             <span>Calendar</span>
           </button>
           <button
             onClick={() => setActiveTab('list')}
             style={activeTab === 'list' ? { backgroundColor: currentAccent.colorHex } : {}}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
               activeTab === 'list'
                 ? 'text-white shadow-sm'
                 : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
             }`}
+            title="View List schedule"
           >
-            <ListIcon className="w-4 h-4 stroke-[2.2]" />
+            <ListIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
             <span>List</span>
+          </button>
+        </div>
+
+        {/* Bubble 2: Fan Hub Navigation */}
+        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
+          <button
+            onClick={() => {
+              setActiveTab('fanhub');
+              setFanHubSubTab('directory');
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+              activeTab === 'fanhub' && fanHubSubTab === 'directory'
+                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 text-white shadow-sm'
+                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+            }`}
+            title="JimmySea Fan Clubs Directory"
+          >
+            <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+            <span>Fan Clubs</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('fanhub');
+              setFanHubSubTab('foodsupport');
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+              activeTab === 'fanhub' && fanHubSubTab === 'foodsupport'
+                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 text-white shadow-sm'
+                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+            }`}
+            title="Fan Food Support & Catering Projects"
+          >
+            <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+            <span>Food Support</span>
           </button>
         </div>
       </div>
