@@ -56,6 +56,9 @@ ${text}`,
   }
 });
 
+// Serve public static assets (including og-image.png, favicon, manifests)
+app.use(express.static('public'));
+
 // Vite middleware in dev or static files in production
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
