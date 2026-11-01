@@ -27,6 +27,7 @@ import {
   Lock,
   Unlock,
   Copy,
+  Hash,
   Eye,
   Navigation,
   FileImage,
@@ -1440,6 +1441,7 @@ export default function App() {
   const [myRemindersModalOpen, setMyRemindersModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedHashtags, setCopiedHashtags] = useState<boolean>(false);
+  const [copiedIndividualTag, setCopiedIndividualTag] = useState<string | null>(null);
 
   // --- Translation State for Native Event Descriptions ---
   const [preferredTranslationLang, setPreferredTranslationLang] = useState<string>(() => {
@@ -3975,34 +3977,81 @@ export default function App() {
               )}
 
               {/* Hashtags */}
-              {ev.hashtags && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="block text-xs font-bold text-[#475569] dark:text-slate-400 px-1">
-                    Hashtags
-                  </span>
-                  <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[22px] p-3 pl-4 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3">
-                    <span className="text-xs sm:text-sm font-bold text-[#1A3668] dark:text-white tracking-tight truncate">
-                      {ev.hashtags}
-                    </span>
-                    <button
-                      onClick={() => handleCopyHashtags(ev.hashtags || '')}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 hover:bg-purple-100 border border-slate-200 dark:border-slate-600 text-xs font-bold text-[#1A3668] dark:text-white shrink-0 transition-colors cursor-pointer"
-                    >
-                      {copiedHashtags ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
+              {ev.hashtags && (() => {
+                const tagList = ev.hashtags.split(/[\s,]+/).filter(Boolean);
+                return (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-2">
+                        <span className="block text-xs font-bold text-[#475569] dark:text-slate-400">
+                          Hashtags
+                        </span>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300">
+                          {tagList.length} {tagList.length === 1 ? 'tag' : 'tags'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyHashtags(ev.hashtags || '')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/50 border border-slate-200 dark:border-slate-600 text-xs font-bold text-[#1A3668] dark:text-white shrink-0 transition-all cursor-pointer shadow-2xs hover:border-purple-300"
+                        title="Copy all hashtags to clipboard"
+                      >
+                        {copiedHashtags ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-emerald-600 dark:text-emerald-400">Copied All!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                            <span>Copy All</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[22px] p-3.5 sm:p-4 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {tagList.map((tag, tIdx) => {
+                          const cleanTag = tag.startsWith('#') ? tag : `#${tag}`;
+                          const isCopied = copiedIndividualTag === cleanTag;
+                          return (
+                            <button
+                              key={tIdx}
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(cleanTag);
+                                setCopiedIndividualTag(cleanTag);
+                                showToast(`Copied ${cleanTag}!`);
+                                setTimeout(() => setCopiedIndividualTag(null), 2000);
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer shadow-2xs group ${
+                                isCopied
+                                  ? 'bg-emerald-500 text-white border-emerald-500 scale-102 shadow-xs'
+                                  : 'bg-white dark:bg-slate-700/90 text-[#1A3668] dark:text-slate-100 hover:text-purple-700 dark:hover:text-purple-300 border-slate-200 dark:border-slate-600 hover:border-purple-300 dark:hover:border-purple-500 hover:bg-purple-50/70 dark:hover:bg-purple-950/40 active:scale-97'
+                              }`}
+                              title={`Click to copy ${cleanTag}`}
+                            >
+                              {isCopied ? (
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                              ) : (
+                                <Hash className="w-3 h-3 text-purple-500 dark:text-purple-400 opacity-70 group-hover:opacity-100" />
+                              )}
+                              <span>{cleanTag.replace(/^#/, '')}</span>
+                              <Copy className="w-2.5 h-2.5 opacity-0 group-hover:opacity-70 transition-opacity ml-0.5" />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400 font-semibold px-1">
+                        <span>Click any hashtag to copy it individually</span>
+                        <span className="text-[10px] opacity-75">Ready for Twitter/X & IG</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -6620,13 +6669,17 @@ export default function App() {
                 </div>
 
                 <div className="relative pt-1">
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     value={formHashtags}
                     onChange={(e) => setFormHashtags(e.target.value)}
                     placeholder="e.g. #jimmyyjp #Tiny #sea_tawinan #ChaoTalay #ชาวทะเล #AVOCEAN"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-400 resize-y leading-relaxed"
                   />
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 pt-1 font-medium">
+                    <span>Space or comma-separated hashtags</span>
+                    <span>{formHashtags.split(/[\s,]+/).filter(Boolean).length} tags added</span>
+                  </div>
                 </div>
               </div>
 
