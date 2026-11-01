@@ -302,8 +302,155 @@ const STREAMING_PLATFORM_PRESETS = [
   { name: 'WeTV', platform: 'WeTV Thailand', icon: 'tv', defaultUrl: 'https://wetv.vip' },
   { name: 'iQIYI', platform: 'iQIYI', icon: 'tv', defaultUrl: 'https://iq.com' },
   { name: 'AIS PLAY', platform: 'AIS PLAY', icon: 'tv', defaultUrl: 'https://aisplay.ais.co.th' },
-  { name: 'Netflix', platform: 'Netflix', icon: 'tv', defaultUrl: 'https://netflix.com' },
-  { name: 'X / Twitter', platform: 'Space / Live', icon: 'tv', defaultUrl: 'https://x.com' }
+  { name: 'TikTok', platform: 'TikTok Live', icon: 'tv', defaultUrl: 'https://tiktok.com/@gmmtvofficial' },
+  { name: 'X / Twitter', platform: 'Space / Live', icon: 'tv', defaultUrl: 'https://x.com/gmmtvofficial' }
+];
+
+export interface DetectedPlatformInfo {
+  name: string;
+  platform: string;
+  categoryTag?: string;
+}
+
+// Automatically detect website/platform name and channel from any URL
+export function detectPlatformFromUrl(url: string): DetectedPlatformInfo {
+  const trimmed = (url || '').trim().toLowerCase();
+  if (!trimmed) {
+    return { name: 'GMMTV', platform: 'YouTube' };
+  }
+
+  // 1. YouTube
+  if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) {
+    if (trimmed.includes('gmmtv')) {
+      return { name: 'GMMTV', platform: 'YouTube', categoryTag: 'YouTube' };
+    }
+    return { name: 'YouTube Stream', platform: 'YouTube', categoryTag: 'YouTube' };
+  }
+
+  // 2. Facebook
+  if (trimmed.includes('facebook.com') || trimmed.includes('fb.watch') || trimmed.includes('fb.com')) {
+    if (trimmed.includes('gmmtv')) {
+      return { name: 'GMMTV', platform: 'Facebook', categoryTag: 'Facebook' };
+    }
+    return { name: 'Facebook Live', platform: 'Facebook', categoryTag: 'Facebook' };
+  }
+
+  // 3. X (Twitter)
+  if (trimmed.includes('x.com') || trimmed.includes('twitter.com')) {
+    if (trimmed.includes('/i/spaces/') || trimmed.includes('/broadcasts/') || trimmed.includes('/space/')) {
+      return { name: 'X / Twitter Space', platform: 'Space / Live', categoryTag: 'X Space' };
+    }
+    if (trimmed.includes('gmmtv')) {
+      return { name: 'GMMTV Official', platform: 'X / Twitter', categoryTag: 'X' };
+    }
+    return { name: 'X / Twitter', platform: 'X / Twitter', categoryTag: 'X' };
+  }
+
+  // 4. TrueID
+  if (trimmed.includes('trueid.net')) {
+    return { name: 'TrueID', platform: 'TrueID', categoryTag: 'TrueID' };
+  }
+
+  // 5. WeTV
+  if (trimmed.includes('wetv.vip') || trimmed.includes('wetv.com')) {
+    return { name: 'WeTV Thailand', platform: 'WeTV Thailand', categoryTag: 'WeTV' };
+  }
+
+  // 6. iQIYI
+  if (trimmed.includes('iq.com') || trimmed.includes('iqiyi.com')) {
+    return { name: 'iQIYI', platform: 'iQIYI', categoryTag: 'iQIYI' };
+  }
+
+  // 7. AIS PLAY
+  if (trimmed.includes('aisplay.ais.co.th') || trimmed.includes('ais.th')) {
+    return { name: 'AIS PLAY', platform: 'AIS PLAY', categoryTag: 'AIS PLAY' };
+  }
+
+  // 8. Netflix
+  if (trimmed.includes('netflix.com')) {
+    return { name: 'Netflix', platform: 'Netflix', categoryTag: 'Netflix' };
+  }
+
+  // 9. TikTok
+  if (trimmed.includes('tiktok.com')) {
+    if (trimmed.includes('/live')) {
+      return { name: 'TikTok Live', platform: 'TikTok Live', categoryTag: 'TikTok' };
+    }
+    return { name: 'TikTok', platform: 'TikTok', categoryTag: 'TikTok' };
+  }
+
+  // 10. Instagram
+  if (trimmed.includes('instagram.com')) {
+    if (trimmed.includes('/live')) {
+      return { name: 'Instagram Live', platform: 'Instagram Live', categoryTag: 'Instagram' };
+    }
+    return { name: 'Instagram', platform: 'Instagram', categoryTag: 'Instagram' };
+  }
+
+  // 11. Twitch
+  if (trimmed.includes('twitch.tv')) {
+    return { name: 'Twitch', platform: 'Twitch Stream', categoryTag: 'Twitch' };
+  }
+
+  // 12. Bilibili
+  if (trimmed.includes('bilibili.com') || trimmed.includes('bilibili.tv')) {
+    return { name: 'Bilibili', platform: 'Bilibili', categoryTag: 'Bilibili' };
+  }
+
+  // 13. oneD / One31
+  if (trimmed.includes('oned.net') || trimmed.includes('one31.net')) {
+    return { name: 'oneD', platform: 'oneD Live', categoryTag: 'oneD' };
+  }
+
+  // 14. Bugaboo.tv / Ch7HD
+  if (trimmed.includes('bugaboo.tv')) {
+    return { name: 'Bugaboo.tv', platform: 'Ch7HD', categoryTag: 'Bugaboo' };
+  }
+
+  // 15. Ticket / Event Platforms
+  if (trimmed.includes('eventpop.me')) {
+    return { name: 'Eventpop', platform: 'Online Event', categoryTag: 'Eventpop' };
+  }
+  if (trimmed.includes('ticketmelon.com')) {
+    return { name: 'Ticketmelon', platform: 'Live Stream', categoryTag: 'Ticketmelon' };
+  }
+  if (trimmed.includes('thaiticketmajor.com')) {
+    return { name: 'ThaiTicketMajor', platform: 'TTM Live', categoryTag: 'ThaiTicketMajor' };
+  }
+
+  // 16. Smart Domain Name Fallback
+  try {
+    const raw = trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`;
+    const urlObj = new URL(raw);
+    const host = urlObj.hostname.replace(/^(www|m|live|stream|web)\./, '');
+    const mainName = host.split('.')[0] || 'Live';
+    const formatted = mainName.charAt(0).toUpperCase() + mainName.slice(1);
+    return { name: formatted, platform: formatted, categoryTag: formatted };
+  } catch {
+    return { name: 'Live Stream', platform: 'Online' };
+  }
+}
+
+export interface PopularHashtagItem {
+  tag: string;
+  category: 'jimmy' | 'sea' | 'avocean' | 'general';
+  desc: string;
+}
+
+// Quick add hashtags for usually used ones requested by user
+export const POPULAR_HASHTAGS: PopularHashtagItem[] = [
+  // User requested Jimmy individual hashtags
+  { tag: '#jimmyyjp', category: 'jimmy', desc: 'Jimmy Jitaraphol (Official X/IG)' },
+  { tag: '#Tiny', category: 'jimmy', desc: 'Jimmy Fandom' },
+  // User requested Sea individual hashtags
+  { tag: '#sea_tawinan', category: 'sea', desc: 'Sea Tawinan (Official X/IG)' },
+  { tag: '#ChaoTalay', category: 'sea', desc: 'Sea Fandom (English)' },
+  { tag: '#ชาวทะเล', category: 'sea', desc: 'Sea Fandom (Thai)' },
+  // User requested Avocean fandom & JimmySea couple hashtags
+  { tag: '#AVOCEAN', category: 'avocean', desc: 'JimmySea Official Fandom' },
+  { tag: '#JimmySea', category: 'avocean', desc: 'Jimmy & Sea Duo' },
+  { tag: '#จิมมี่ซี', category: 'avocean', desc: 'JimmySea (Thai)' },
+  { tag: '#GMMTV', category: 'general', desc: 'GMMTV Official Agency' }
 ];
 
 const REMINDER_TIMING_OPTIONS = [
@@ -2223,8 +2370,11 @@ export default function App() {
     setIsExtendedDescEditor(false);
     setShowFullDescEditorModal(false);
     setFullEditorTab('editor');
-    setFormHashtags('#JimmySea #Avocean');
+    setFormHashtags('#JimmySea #AVOCEAN');
     setFormWatchPlatforms([]);
+    setNewPlatformUrl('');
+    setNewPlatformName('');
+    setNewPlatformType('');
     setFormHasRegistration(false);
     setFormRegStartDate('');
     setFormRegStartTime(is12Hour ? '10:00 AM' : '10:00');
@@ -2314,6 +2464,9 @@ export default function App() {
     setFullEditorTab('editor');
     setFormHashtags(ev.hashtags || '');
     setFormWatchPlatforms(ev.watchPlatforms ? [...ev.watchPlatforms] : []);
+    setNewPlatformUrl('');
+    setNewPlatformName('');
+    setNewPlatformType('');
     // Populate registration period fields
     setFormHasRegistration(Boolean(ev.hasRegistration || ev.registrationStartDate));
     setFormRegStartDate(ev.registrationStartDate || '');
@@ -2643,16 +2796,73 @@ export default function App() {
     }
   };
 
-  const handleAddWatchPlatform = () => {
-    if (!newPlatformUrl.trim()) return;
+  // Helper for checking if hashtag is currently present
+  const hasHashtag = (currentText: string, tag: string): boolean => {
+    if (!currentText || !tag) return false;
+    const cleanTag = tag.trim().toLowerCase();
+    const words = currentText.split(/\s+/).map((w) => w.toLowerCase());
+    return words.includes(cleanTag);
+  };
+
+  // Helper for toggling a hashtag in the input
+  const handleToggleHashtag = (tag: string) => {
+    setFormHashtags((prev) => {
+      const cleanTag = tag.trim();
+      const words = (prev || '').trim().split(/\s+/).filter(Boolean);
+      if (words.some((w) => w.toLowerCase() === cleanTag.toLowerCase())) {
+        return words.filter((w) => w.toLowerCase() !== cleanTag.toLowerCase()).join(' ');
+      } else {
+        return [...words, cleanTag].join(' ');
+      }
+    });
+  };
+
+  const handleAddAllRequestedTags = () => {
+    const requested = ['#jimmyyjp', '#Tiny', '#sea_tawinan', '#ChaoTalay', '#ชาวทะเล', '#AVOCEAN'];
+    setFormHashtags((prev) => {
+      const words = (prev || '').trim().split(/\s+/).filter(Boolean);
+      requested.forEach((tag) => {
+        if (!words.some((w) => w.toLowerCase() === tag.toLowerCase())) {
+          words.push(tag);
+        }
+      });
+      return words.join(' ');
+    });
+    showToast('Added popular JimmySea hashtags!');
+  };
+
+  // Auto-detect streaming website and channel when user pastes or types a link
+  const handleWatchUrlChange = (url: string) => {
+    setNewPlatformUrl(url);
+    if (url.trim()) {
+      const detected = detectPlatformFromUrl(url);
+      setNewPlatformName(detected.name);
+      setNewPlatformType(detected.platform);
+    }
+  };
+
+  const handleAddWatchPlatform = (overrideUrl?: string, overrideName?: string, overrideType?: string) => {
+    const rawUrl = (overrideUrl || newPlatformUrl).trim();
+    if (!rawUrl) {
+      showToast('Please enter or paste a streaming URL');
+      return;
+    }
+    const detected = detectPlatformFromUrl(rawUrl);
+    const resolvedName = (overrideName || newPlatformName).trim() || detected.name || 'GMMTV';
+    const resolvedType = (overrideType || newPlatformType).trim() || detected.platform || 'YouTube';
+    const resolvedUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://') ? rawUrl : `https://${rawUrl}`;
+
     const item: WatchPlatform = {
       id: `wp-${Date.now()}`,
-      name: newPlatformName.trim() || 'GMMTV',
-      platform: newPlatformType.trim() || 'YouTube',
-      url: newPlatformUrl.trim()
+      name: resolvedName,
+      platform: resolvedType,
+      url: resolvedUrl
     };
     setFormWatchPlatforms((prev) => [...prev, item]);
     setNewPlatformUrl('');
+    setNewPlatformName('');
+    setNewPlatformType('');
+    showToast(`Added ${resolvedName} (${resolvedType})!`);
   };
 
   const handleRemoveWatchPlatform = (id: string) => {
