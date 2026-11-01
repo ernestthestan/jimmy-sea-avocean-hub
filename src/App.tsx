@@ -58,7 +58,8 @@ import {
   Maximize2,
   Activity,
   Users,
-  Languages
+  Languages,
+  Loader2
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -79,6 +80,7 @@ import {
   type TranslationLanguage,
   translateText
 } from './lib/translateService';
+import { compressImageFile } from './lib/imageCompression';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -1325,14 +1327,29 @@ export default function App() {
 
   const handleSendFanMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!msgContent.trim() && !msgEventTitle.trim()) return;
+    if (!msgSenderName.trim()) {
+      showToast('Please enter your name or social handle.');
+      return;
+    }
+    if (!msgEventTitle.trim()) {
+      showToast('Please enter the event title or topic.');
+      return;
+    }
+    if (!msgSourceUrl.trim()) {
+      showToast('Please provide a source link (e.g. X/Twitter post or official link).');
+      return;
+    }
+    if (!msgContent.trim()) {
+      showToast('Please provide details or a description for the event.');
+      return;
+    }
 
     const newMsg: FanMessage = {
       id: `msg-${Date.now()}`,
-      senderName: msgSenderName.trim() || 'Avocean Fan',
-      eventTitle: msgEventTitle.trim() || 'Fan Note / Suggestion',
+      senderName: msgSenderName.trim(),
+      eventTitle: msgEventTitle.trim(),
       eventDate: msgEventDate || undefined,
-      sourceUrl: msgSourceUrl.trim() || undefined,
+      sourceUrl: msgSourceUrl.trim(),
       message: msgContent.trim(),
       createdAt: new Date().toISOString(),
       isRead: false
@@ -1485,6 +1502,8 @@ export default function App() {
   const [reminderSuccess, setReminderSuccess] = useState<boolean>(false);
 
   // Event Form State
+  const [isSavingEvent, setIsSavingEvent] = useState<boolean>(false);
+  const [isCompressingPoster, setIsCompressingPoster] = useState<boolean>(false);
   const [formTitle, setFormTitle] = useState<string>('');
   const [formDate, setFormDate] = useState<string>('2026-10-28');
   const [formEndDate, setFormEndDate] = useState<string>('');
@@ -2061,63 +2080,77 @@ export default function App() {
   };
 
   // Submit Add/Edit Event Form
-  const handleSaveEvent = (e: React.FormEvent) => {
+  const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle.trim()) return;
-
-    const resolvedTimezone =
-      formTimezone === 'CUSTOM'
-        ? customTimezone.trim() || 'UTC'
-        : formTimezone;
-
-    const resolvedEndDate =
-      formIsMultiDay && formEndDate && formEndDate > formDate
-        ? formEndDate
-        : undefined;
-
-    const newEvent: ScheduleEvent = {
-      id: editingEvent ? editingEvent.id : `ev-${Date.now()}`,
-      title: formTitle.trim(),
-      date: formDate,
-      endDate: resolvedEndDate || undefined,
-      isAllDay: formIsAllDay,
-      time: formIsAllDay ? 'All Day' : formTime.trim(),
-      endTime: formIsAllDay ? undefined : (formEndTime.trim() ? formEndTime.trim() : undefined),
-      timezone: formIsAllDay ? undefined : resolvedTimezone,
-      location: formLocation.trim(),
-      locationUrl: formLocationUrl.trim(),
-      posterUrl: formPosterUrl.trim(),
-      members: formMembers.length > 0 ? formMembers : [settings.members[0].id],
-      category: formCategory,
-      link: formLink.trim(),
-      description: formDescription.trim(),
-      hashtags: formHashtags.trim(),
-      watchPlatforms: formWatchPlatforms
-    };
-
-    setEvents((prev) => {
-      const exists = prev.some((item) => item.id === newEvent.id);
-      const updated = exists
-        ? prev.map((item) => (item.id === newEvent.id ? newEvent : item))
-        : [...prev, newEvent];
-      try {
-        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    // Sync to Firestore Cloud Database
-    saveEventToFirestore(newEvent).catch((err) => console.warn('Could not sync event to Firestore:', err));
-
-    if (detailEvent && detailEvent.id === newEvent.id) {
-      setDetailEvent(newEvent);
+    if (!formTitle.trim()) {
+      showToast('Please enter an event title.');
+      return;
     }
 
-    setSelectedDateStr(formDate);
-    const dt = parseDateKey(formDate);
-    setCurrentMonthDate(new Date(dt.getFullYear(), dt.getMonth(), 1));
-    setEventModalOpen(false);
-    showToast(editingEvent ? 'Event updated!' : 'Event added to calendar!');
+    setIsSavingEvent(true);
+
+    try {
+      const resolvedTimezone =
+        formTimezone === 'CUSTOM'
+          ? customTimezone.trim() || 'UTC'
+          : formTimezone;
+
+      const resolvedEndDate =
+        formIsMultiDay && formEndDate && formEndDate > formDate
+          ? formEndDate
+          : undefined;
+
+      const newEvent: ScheduleEvent = {
+        id: editingEvent ? editingEvent.id : `ev-${Date.now()}`,
+        title: formTitle.trim(),
+        date: formDate,
+        endDate: resolvedEndDate || undefined,
+        isAllDay: formIsAllDay,
+        time: formIsAllDay ? 'All Day' : formTime.trim(),
+        endTime: formIsAllDay ? undefined : (formEndTime.trim() ? formEndTime.trim() : undefined),
+        timezone: formIsAllDay ? undefined : resolvedTimezone,
+        location: formLocation.trim(),
+        locationUrl: formLocationUrl.trim(),
+        posterUrl: formPosterUrl.trim(),
+        members: formMembers.length > 0 ? formMembers : [settings.members[0].id],
+        category: formCategory,
+        link: formLink.trim(),
+        description: formDescription.trim(),
+        hashtags: formHashtags.trim(),
+        watchPlatforms: formWatchPlatforms
+      };
+
+      // 1. Await Firestore save to guarantee it is safely committed to cloud
+      await saveEventToFirestore(newEvent);
+
+      // 2. Update React state and localStorage
+      setEvents((prev) => {
+        const exists = prev.some((item) => item.id === newEvent.id);
+        const updated = exists
+          ? prev.map((item) => (item.id === newEvent.id ? newEvent : item))
+          : [...prev, newEvent];
+        try {
+          localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      if (detailEvent && detailEvent.id === newEvent.id) {
+        setDetailEvent(newEvent);
+      }
+
+      setSelectedDateStr(formDate);
+      setSelectedDayActiveEventId(null);
+      const dt = parseDateKey(formDate);
+      setCurrentMonthDate(new Date(dt.getFullYear(), dt.getMonth(), 1));
+      setEventModalOpen(false);
+      showToast(editingEvent ? 'Event updated and saved to cloud!' : 'Event added to calendar and saved to cloud!');
+    } catch (err: any) {
+      console.error('Could not save event to Firestore:', err);
+      showToast(`Could not save event: ${err?.message || 'Please check your connection and try again.'}`);
+    } finally {
+      setIsSavingEvent(false);
+    }
   };
 
   // Delete Event (Owner Only)
@@ -2158,46 +2191,74 @@ export default function App() {
     showToast('Google Maps search link generated!');
   };
 
-  // Handle Poster Photo Upload
-  const handlePosterFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Poster Photo Upload with automatic compression for fast cloud sync
+  const handlePosterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 4 * 1024 * 1024) {
-      showToast('Image is larger than 4MB. Please choose a smaller file or link.');
+    if (file.size > 15 * 1024 * 1024) {
+      showToast('Image is larger than 15MB. Please choose a smaller photo.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setFormPosterUrl(event.target.result as string);
-        showToast('Poster uploaded successfully!');
+    setIsCompressingPoster(true);
+    showToast('Optimizing poster photo for cloud sync...');
+
+    try {
+      const compressedUrl = await compressImageFile(file, 1200, 0.82);
+      setFormPosterUrl(compressedUrl);
+      showToast('Poster uploaded and optimized!');
+    } catch (err) {
+      console.warn('Poster compression fallback:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setFormPosterUrl(event.target.result as string);
+          showToast('Poster uploaded successfully!');
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressingPoster(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
-  // Handle Banner Photo Upload from file
-  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Banner Photo Upload from file with compression
+  const handleBannerFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Banner image is larger than 5MB. Please choose a smaller photo.');
+    if (file.size > 15 * 1024 * 1024) {
+      showToast('Banner photo is larger than 15MB. Please choose a smaller photo.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        const photoUrl = event.target.result as string;
-        setDraftBannerImageUrl(photoUrl);
-        setSettings((prev) => ({ ...prev, bannerImageUrl: photoUrl }));
-        showToast('Banner photo updated!');
+    showToast('Optimizing banner photo...');
+    try {
+      const compressedUrl = await compressImageFile(file, 1600, 0.85);
+      setDraftBannerImageUrl(compressedUrl);
+      setSettings((prev) => ({ ...prev, bannerImageUrl: compressedUrl }));
+      showToast('Banner photo updated!');
+    } catch (err) {
+      console.warn('Banner compression error:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const photoUrl = event.target.result as string;
+          setDraftBannerImageUrl(photoUrl);
+          setSettings((prev) => ({ ...prev, bannerImageUrl: photoUrl }));
+          showToast('Banner photo updated!');
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      if (bannerFileInputRef.current) {
+        bannerFileInputRef.current.value = '';
       }
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleAddWatchPlatform = () => {
@@ -3840,21 +3901,28 @@ export default function App() {
                   >
                     All Events ({selectedDayEvents.length})
                   </button>
-                  {selectedDayEvents.map((evItem) => (
-                    <button
-                      key={evItem.id}
-                      onClick={() => setSelectedDayActiveEventId(evItem.id)}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
-                        selectedDayActiveEventId === evItem.id
-                          ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs'
-                          : 'bg-white dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <span>{formatEventTime(evItem, is12Hour) || 'TBA'}</span>
-                      <span>·</span>
-                      <span className="max-w-[140px] truncate">{evItem.title}</span>
-                    </button>
-                  ))}
+                  {selectedDayEvents.map((evItem) => {
+                    const firstMember = evItem.members && evItem.members[0] ? getMemberById(evItem.members[0]) : null;
+                    return (
+                      <button
+                        key={evItem.id}
+                        onClick={() => setSelectedDayActiveEventId(evItem.id)}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                          selectedDayActiveEventId === evItem.id
+                            ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {firstMember && <span className="leading-none">{firstMember.emoji}</span>}
+                        <span>{formatEventTime(evItem, is12Hour) || 'TBA'}</span>
+                        <span>·</span>
+                        <span className="max-w-[130px] truncate">{evItem.title}</span>
+                        {evItem.members && evItem.members.length === 1 && firstMember && (
+                          <span className="text-[10px] opacity-85 font-semibold">({firstMember.name})</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -5139,10 +5207,12 @@ export default function App() {
                   />
                   <button
                     type="button"
+                    disabled={isCompressingPoster}
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold cursor-pointer shrink-0"
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0 inline-flex items-center gap-1.5"
                   >
-                    Upload File
+                    {isCompressingPoster && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isCompressingPoster ? 'Optimizing...' : 'Upload File'}</span>
                   </button>
                 </div>
 
@@ -5358,9 +5428,22 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-purple-600 hover:bg-slate-800 shadow-xs cursor-pointer active:scale-95 transition-all"
+                  disabled={isSavingEvent || isCompressingPoster}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-purple-600 hover:bg-slate-800 disabled:opacity-50 shadow-xs cursor-pointer active:scale-95 transition-all"
                 >
-                  {editingEvent ? 'Save Changes' : 'Add to Calendar'}
+                  {isSavingEvent ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving to Cloud...</span>
+                    </>
+                  ) : isCompressingPoster ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Optimizing Photo...</span>
+                    </>
+                  ) : (
+                    <span>{editingEvent ? 'Save Changes' : 'Add to Calendar'}</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -6446,10 +6529,11 @@ export default function App() {
 
                 <div>
                   <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Your Name or Social Handle (Optional)
+                    Your Name or Social Handle *
                   </label>
                   <input
                     type="text"
+                    required
                     value={msgSenderName}
                     onChange={(e) => setMsgSenderName(e.target.value)}
                     placeholder="e.g. AvoceanFan_BKK or @twitterhandle"
@@ -6485,13 +6569,14 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                      Source / Link (Optional)
+                      Source / Link *
                     </label>
                     <input
                       type="url"
+                      required
                       value={msgSourceUrl}
                       onChange={(e) => setMsgSourceUrl(e.target.value)}
-                      placeholder="https://x.com/..."
+                      placeholder="https://x.com/... or official link"
                       className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                     />
                   </div>

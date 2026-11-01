@@ -276,6 +276,13 @@ export async function saveEventToFirestore(ev: ScheduleEvent): Promise<void> {
     ...ev,
     updatedAt: new Date().toISOString()
   });
+
+  // Guard against Firestore 1MiB document limit
+  const serialized = JSON.stringify(clean);
+  if (serialized.length > 950 * 1024) {
+    throw new Error('Event data (including poster image) exceeds 950KB cloud document limit. Please use a compressed photo or web link.');
+  }
+
   await setDoc(eventRef, clean);
 }
 
