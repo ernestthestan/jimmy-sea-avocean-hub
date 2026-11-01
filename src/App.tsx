@@ -59,7 +59,9 @@ import {
   Activity,
   Users,
   Languages,
-  Loader2
+  Loader2,
+  Ticket,
+  ClipboardList
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -133,6 +135,15 @@ export interface ScheduleEvent {
   hashtags?: string;
   watchPlatforms?: WatchPlatform[];
   notes?: string;
+  // Registration Period Fields
+  hasRegistration?: boolean;
+  registrationStartDate?: string; // YYYY-MM-DD
+  registrationStartTime?: string; // e.g. 10:00 AM or 10:00
+  registrationEndDate?: string; // YYYY-MM-DD
+  registrationEndTime?: string; // e.g. 6:00 PM or 18:00
+  registrationTimezone?: string; // e.g. BKK
+  registrationUrl?: string; // Link to registration form or ticket platform
+  registrationNotes?: string; // Guidelines or instructions
 }
 
 export interface UserReminder {
@@ -611,6 +622,94 @@ const formatEventShortDateRange = (startDateStr: string, endDateStr?: string): s
     return `${startDay}–${endDay} ${startMonth} (${daysCount}D)`;
   }
   return `${startDay} ${startMonth} – ${endDay} ${endMonth} (${daysCount}D)`;
+};
+
+export interface RegistrationStatusInfo {
+  hasReg: boolean;
+  status: 'open' | 'upcoming' | 'closed' | 'none';
+  statusLabel: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+}
+
+// Compute registration status based on event registration window and today's date
+export const getRegistrationStatusInfo = (ev: ScheduleEvent, todayStr: string): RegistrationStatusInfo => {
+  if (!ev.hasRegistration && !ev.registrationStartDate && !ev.registrationEndDate) {
+    return {
+      hasReg: false,
+      status: 'none',
+      statusLabel: '',
+      badgeBg: '',
+      badgeText: '',
+      badgeBorder: ''
+    };
+  }
+
+  const startDate = ev.registrationStartDate || '';
+  const endDate = ev.registrationEndDate || startDate;
+
+  if (startDate && todayStr < startDate) {
+    return {
+      hasReg: true,
+      status: 'upcoming',
+      statusLabel: 'Registration Upcoming',
+      badgeBg: 'bg-amber-100 dark:bg-amber-950/80',
+      badgeText: 'text-amber-800 dark:text-amber-300',
+      badgeBorder: 'border-amber-300 dark:border-amber-700'
+    };
+  }
+
+  if (endDate && todayStr > endDate) {
+    return {
+      hasReg: true,
+      status: 'closed',
+      statusLabel: 'Registration Concluded',
+      badgeBg: 'bg-slate-100 dark:bg-slate-800',
+      badgeText: 'text-slate-600 dark:text-slate-400',
+      badgeBorder: 'border-slate-200 dark:border-slate-700'
+    };
+  }
+
+  return {
+    hasReg: true,
+    status: 'open',
+    statusLabel: 'Registration OPEN',
+    badgeBg: 'bg-emerald-100 dark:bg-emerald-950/80',
+    badgeText: 'text-emerald-800 dark:text-emerald-300',
+    badgeBorder: 'border-emerald-300 dark:border-emerald-700'
+  };
+};
+
+// Format readable registration period label e.g. "1 Nov, 10:00 AM – 5 Nov, 6:00 PM BKK"
+export const formatRegistrationSchedule = (ev: ScheduleEvent, is12h: boolean): string => {
+  const startD = ev.registrationStartDate;
+  const endD = ev.registrationEndDate;
+  const startT = ev.registrationStartTime ? (is12h ? formatTime12h(ev.registrationStartTime) : ev.registrationStartTime) : '';
+  const endT = ev.registrationEndTime ? (is12h ? formatTime12h(ev.registrationEndTime) : ev.registrationEndTime) : '';
+  const tz = ev.registrationTimezone || ev.timezone || 'BKK';
+
+  if (!startD && !endD) return '';
+
+  const formatSingleDate = (dStr: string) => {
+    const dt = parseDateKey(dStr);
+    return `${dt.getDate()} ${SHORT_MONTHS[dt.getMonth()]}`;
+  };
+
+  if (startD && endD && startD !== endD) {
+    const sLabel = `${formatSingleDate(startD)}${startT ? ` ${startT}` : ''}`;
+    const eLabel = `${formatSingleDate(endD)}${endT ? ` ${endT}` : ''}`;
+    return `${sLabel} – ${eLabel} (${tz})`;
+  }
+
+  const dateLabel = formatSingleDate(startD || endD || '');
+  if (startT && endT) {
+    return `${dateLabel}, ${startT} – ${endT} (${tz})`;
+  }
+  if (startT) {
+    return `${dateLabel} at ${startT} (${tz})`;
+  }
+  return `${dateLabel} (${tz})`;
 };
 
 // Get numeric offset in hours for any timezone code
@@ -1620,6 +1719,16 @@ export default function App() {
   const [formHashtags, setFormHashtags] = useState<string>('');
   const [formWatchPlatforms, setFormWatchPlatforms] = useState<WatchPlatform[]>([]);
 
+  // Registration Period Form State
+  const [formHasRegistration, setFormHasRegistration] = useState<boolean>(false);
+  const [formRegStartDate, setFormRegStartDate] = useState<string>('');
+  const [formRegStartTime, setFormRegStartTime] = useState<string>('');
+  const [formRegEndDate, setFormRegEndDate] = useState<string>('');
+  const [formRegEndTime, setFormRegEndTime] = useState<string>('');
+  const [formRegTimezone, setFormRegTimezone] = useState<string>('BKK');
+  const [formRegUrl, setFormRegUrl] = useState<string>('');
+  const [formRegNotes, setFormRegNotes] = useState<string>('');
+
   const [newPlatformName, setNewPlatformName] = useState<string>('GMMTV');
   const [newPlatformType, setNewPlatformType] = useState<string>('YouTube');
   const [newPlatformUrl, setNewPlatformUrl] = useState<string>('https://youtube.com/@gmmtv');
@@ -2004,6 +2113,14 @@ export default function App() {
     setFormDescription('');
     setFormHashtags('#JimmySea #Avocean');
     setFormWatchPlatforms([]);
+    setFormHasRegistration(false);
+    setFormRegStartDate('');
+    setFormRegStartTime(is12Hour ? '10:00 AM' : '10:00');
+    setFormRegEndDate('');
+    setFormRegEndTime(is12Hour ? '6:00 PM' : '18:00');
+    setFormRegTimezone('BKK');
+    setFormRegUrl('');
+    setFormRegNotes('');
     setShowTimeAdjuster(true);
     setEventModalOpen(true);
   };
@@ -2076,6 +2193,15 @@ export default function App() {
     setFormDescription(ev.description || ev.notes || '');
     setFormHashtags(ev.hashtags || '');
     setFormWatchPlatforms(ev.watchPlatforms ? [...ev.watchPlatforms] : []);
+    // Populate registration period fields
+    setFormHasRegistration(Boolean(ev.hasRegistration || ev.registrationStartDate));
+    setFormRegStartDate(ev.registrationStartDate || '');
+    setFormRegStartTime(ev.registrationStartTime || '');
+    setFormRegEndDate(ev.registrationEndDate || '');
+    setFormRegEndTime(ev.registrationEndTime || '');
+    setFormRegTimezone(ev.registrationTimezone || ev.timezone || 'BKK');
+    setFormRegUrl(ev.registrationUrl || '');
+    setFormRegNotes(ev.registrationNotes || '');
     setEventModalOpen(true);
   };
 
@@ -2117,7 +2243,16 @@ export default function App() {
         link: formLink.trim(),
         description: formDescription.trim(),
         hashtags: formHashtags.trim(),
-        watchPlatforms: formWatchPlatforms
+        watchPlatforms: formWatchPlatforms,
+        // Registration Period Fields
+        hasRegistration: formHasRegistration,
+        registrationStartDate: formHasRegistration && formRegStartDate ? formRegStartDate : undefined,
+        registrationStartTime: formHasRegistration && formRegStartTime.trim() ? formRegStartTime.trim() : undefined,
+        registrationEndDate: formHasRegistration && formRegEndDate ? formRegEndDate : undefined,
+        registrationEndTime: formHasRegistration && formRegEndTime.trim() ? formRegEndTime.trim() : undefined,
+        registrationTimezone: formHasRegistration && formRegStartDate ? formRegTimezone : undefined,
+        registrationUrl: formHasRegistration && formRegUrl.trim() ? formRegUrl.trim() : undefined,
+        registrationNotes: formHasRegistration && formRegNotes.trim() ? formRegNotes.trim() : undefined
       };
 
       // 1. Await Firestore save to guarantee it is safely committed to cloud
@@ -2722,6 +2857,7 @@ export default function App() {
   // Render Full Event View (Matching Screenshot 2 - shows all details immediately!)
   const renderFullEventCard = (ev: ScheduleEvent) => {
     const hasReminder = isReminderSetForEvent(ev.id);
+    const regInfo = getRegistrationStatusInfo(ev, todayDateStr);
 
     return (
       <div
@@ -2737,6 +2873,18 @@ export default function App() {
             {getEventDaysCount(ev.date, ev.endDate) > 1 && (
               <span className="text-xs font-extrabold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
                 🗓️ {getEventDaysCount(ev.date, ev.endDate)}-Day Event
+              </span>
+            )}
+            {regInfo.hasReg && (
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-2xs ${regInfo.badgeBg} ${regInfo.badgeText} ${regInfo.badgeBorder}`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  regInfo.status === 'open'
+                    ? 'bg-emerald-500 animate-pulse'
+                    : regInfo.status === 'upcoming'
+                    ? 'bg-amber-500'
+                    : 'bg-slate-400'
+                }`} />
+                <span>{regInfo.statusLabel}</span>
               </span>
             )}
             {(ev.isAllDay || ev.time || ev.endTime) && (
@@ -2985,6 +3133,70 @@ export default function App() {
                   <span>{hasReminder ? 'Reminder Active' : 'Remind Me'}</span>
                 </button>
               </div>
+
+              {/* Registration / Ticket Period Card */}
+              {regInfo.hasReg && (
+                <div
+                  className={`rounded-[26px] p-4.5 sm:p-5 shadow-2xs border transition-all ${
+                    regInfo.status === 'open'
+                      ? 'bg-gradient-to-br from-emerald-50/90 to-teal-50/70 dark:from-emerald-950/50 dark:to-teal-950/40 border-emerald-300/80 dark:border-emerald-700'
+                      : regInfo.status === 'upcoming'
+                      ? 'bg-gradient-to-br from-amber-50/90 to-yellow-50/70 dark:from-amber-950/50 dark:to-yellow-950/40 border-amber-300/80 dark:border-amber-700'
+                      : 'bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-2xs ${regInfo.badgeBg} ${regInfo.badgeText} ${regInfo.badgeBorder}`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          regInfo.status === 'open'
+                            ? 'bg-emerald-500 animate-pulse'
+                            : regInfo.status === 'upcoming'
+                            ? 'bg-amber-500'
+                            : 'bg-slate-400'
+                        }`} />
+                        <span>{regInfo.statusLabel}</span>
+                      </span>
+
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#1A3668] dark:text-white">
+                        <Ticket className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        <span>Registration / Ticket Period</span>
+                      </div>
+                    </div>
+
+                    {ev.registrationUrl && (
+                      <a
+                        href={ev.registrationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white shadow-xs transition-all cursor-pointer ${
+                          regInfo.status === 'open'
+                            ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
+                            : regInfo.status === 'upcoming'
+                            ? 'bg-amber-600 hover:bg-amber-700'
+                            : 'bg-slate-700 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span>{regInfo.status === 'open' ? 'Register / Get Tickets Now' : 'Registration Link'}</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs font-bold text-[#1A3668] dark:text-slate-200">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                      <span>{formatRegistrationSchedule(ev, is12Hour)}</span>
+                    </div>
+
+                    {ev.registrationNotes && (
+                      <div className="text-[11px] font-semibold text-[#607494] dark:text-slate-400 bg-white/70 dark:bg-slate-800/70 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                        📌 {ev.registrationNotes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Description & Translation for International Fans */}
               {ev.description && (() => {
@@ -5415,6 +5627,144 @@ export default function App() {
                   placeholder="https://x.com/... or official ticket link"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                 />
+              </div>
+
+              {/* Registration / Ticket Period Section */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-teal-50/60 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200/80 dark:border-emerald-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formHasRegistration}
+                      onChange={(e) => setFormHasRegistration(e.target.checked)}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-emerald-300 dark:border-slate-700 cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Ticket className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                        Include Registration / Ticket Period
+                      </span>
+                    </div>
+                  </label>
+                  {formHasRegistration && (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-900 dark:text-emerald-200">
+                      Registration Enabled
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] font-medium text-emerald-800 dark:text-emerald-300/80">
+                  Specify registration or ticket sales dates (e.g. raffle registration window, ticket pre-sales, or form signups) before the main event.
+                </p>
+
+                {formHasRegistration && (
+                  <div className="space-y-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                    {/* Registration Start & End Dates */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                          Registration Opens (Start Date) *
+                        </label>
+                        <input
+                          type="date"
+                          required={formHasRegistration}
+                          value={formRegStartDate}
+                          onChange={(e) => {
+                            setFormRegStartDate(e.target.value);
+                            if (formRegEndDate && formRegEndDate < e.target.value) {
+                              setFormRegEndDate(e.target.value);
+                            }
+                          }}
+                          className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                          Registration Closes (End Date)
+                        </label>
+                        <input
+                          type="date"
+                          min={formRegStartDate}
+                          value={formRegEndDate}
+                          onChange={(e) => setFormRegEndDate(e.target.value)}
+                          className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Registration Times & Timezone */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                          Open Time (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={formRegStartTime}
+                          onChange={(e) => setFormRegStartTime(e.target.value)}
+                          placeholder={is12Hour ? 'e.g. 10:00 AM' : 'e.g. 10:00'}
+                          className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                          Close Time (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={formRegEndTime}
+                          onChange={(e) => setFormRegEndTime(e.target.value)}
+                          placeholder={is12Hour ? 'e.g. 6:00 PM' : 'e.g. 18:00'}
+                          className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                          Timezone
+                        </label>
+                        <select
+                          value={formRegTimezone}
+                          onChange={(e) => setFormRegTimezone(e.target.value)}
+                          className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        >
+                          {ALL_TIMEZONES.slice(0, 15).map((tz) => (
+                            <option key={tz.code} value={tz.code}>
+                              {tz.code} ({tz.offset})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Registration Link / Form URL */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                        Registration / Ticket Link (URL)
+                      </label>
+                      <input
+                        type="url"
+                        value={formRegUrl}
+                        onChange={(e) => setFormRegUrl(e.target.value)}
+                        placeholder="https://... (Google Form, ThaiTicketMajor, Ticketmelon link)"
+                        className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    {/* Registration Instructions / Notes */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                        Instructions / Guidelines (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={formRegNotes}
+                        onChange={(e) => setFormRegNotes(e.target.value)}
+                        placeholder="e.g. 1 entry per account, raffle results announced 2 days before event"
+                        className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
