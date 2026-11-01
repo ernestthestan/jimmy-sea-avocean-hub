@@ -82,7 +82,7 @@ import {
   type TranslationLanguage,
   translateText
 } from './lib/translateService';
-import { compressImageFile } from './lib/imageCompression';
+import { compressImageFile, compressDataUrl } from './lib/imageCompression';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -127,7 +127,8 @@ export interface ScheduleEvent {
   timezone?: string;
   location?: string;
   locationUrl?: string; // Google Maps link
-  posterUrl?: string; // Image URL or Base64 data URL
+  posterUrl?: string; // Image URL or Base64 data URL (primary cover)
+  posterUrls?: string[]; // Multiple photos/posters (e.g. seating map, perks chart, teaser posters)
   members: string[]; // member ids
   category?: string;
   link?: string;
@@ -622,6 +623,18 @@ const formatEventShortDateRange = (startDateStr: string, endDateStr?: string): s
     return `${startDay}–${endDay} ${startMonth} (${daysCount}D)`;
   }
   return `${startDay} ${startMonth} – ${endDay} ${endMonth} (${daysCount}D)`;
+};
+
+// Extract all posters/photos for an event, backwards-compatible with legacy single posterUrl
+export const getEventPosters = (ev: ScheduleEvent): string[] => {
+  if (ev.posterUrls && ev.posterUrls.length > 0) {
+    const valid = ev.posterUrls.filter(Boolean);
+    if (valid.length > 0) return valid;
+  }
+  if (ev.posterUrl) {
+    return [ev.posterUrl];
+  }
+  return [];
 };
 
 export interface RegistrationStatusInfo {
@@ -1273,15 +1286,37 @@ export default function App() {
   const [translatingEventId, setTranslatingEventId] = useState<string | null>(null);
   const [copiedTranslationId, setCopiedTranslationId] = useState<string | null>(null);
 
-  // Photo Lightbox Modal State for Enlarging Event Posters and Photos
-  const [enlargedPhoto, setEnlargedPhoto] = useState<{ url: string; title?: string } | null>(null);
+  // Photo Lightbox Modal State for Enlarging Event Posters and Photos (with multi-photo gallery support)
+  const [enlargedPhoto, setEnlargedPhoto] = useState<{
+    url: string;
+    title?: string;
+    photos?: string[];
+    currentIndex?: number;
+  } | null>(null);
 
-  // Close photo lightbox on Escape key
+  // Active photo index for events with multiple posters/photos (eventId -> photoIndex)
+  const [activePhotoIndexByEvent, setActivePhotoIndexByEvent] = useState<Record<string, number>>({});
+
+  // Close photo lightbox on Escape key, or navigate photos with Left/Right arrow keys
   useEffect(() => {
     if (!enlargedPhoto) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setEnlargedPhoto(null);
+      } else if (e.key === 'ArrowRight' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
+        const nextIdx = ((enlargedPhoto.currentIndex ?? 0) + 1) % enlargedPhoto.photos.length;
+        setEnlargedPhoto({
+          ...enlargedPhoto,
+          url: enlargedPhoto.photos[nextIdx],
+          currentIndex: nextIdx
+        });
+      } else if (e.key === 'ArrowLeft' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
+        const prevIdx = ((enlargedPhoto.currentIndex ?? 0) - 1 + enlargedPhoto.photos.length) % enlargedPhoto.photos.length;
+        setEnlargedPhoto({
+          ...enlargedPhoto,
+          url: enlargedPhoto.photos[prevIdx],
+          currentIndex: prevIdx
+        });
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1712,6 +1747,10 @@ export default function App() {
   const [formLocation, setFormLocation] = useState<string>('');
   const [formLocationUrl, setFormLocationUrl] = useState<string>('');
   const [formPosterUrl, setFormPosterUrl] = useState<string>('');
+  const [formPosterUrls, setFormPosterUrls] = useState<string[]>([]);
+  const [formNewPosterUrlInput, setFormNewPosterUrlInput] = useState<string>('');
+  const [showBatchPosterUrlInput, setShowBatchPosterUrlInput] = useState<boolean>(false);
+  const [draftBatchPosterUrls, setDraftBatchPosterUrls] = useState<string>('');
   const [formMembers, setFormMembers] = useState<string[]>(['jimmy']);
   const [formCategory, setFormCategory] = useState<string>('Event');
   const [formLink, setFormLink] = useState<string>('');
@@ -2107,6 +2146,10 @@ export default function App() {
     setFormLocation('');
     setFormLocationUrl('');
     setFormPosterUrl('');
+    setFormPosterUrls([]);
+    setFormNewPosterUrlInput('');
+    setShowBatchPosterUrlInput(false);
+    setDraftBatchPosterUrls('');
     setFormMembers(['jimmy', 'sea']);
     setFormCategory('Event');
     setFormLink('');
@@ -2186,7 +2229,12 @@ export default function App() {
 
     setFormLocation(ev.location || '');
     setFormLocationUrl(ev.locationUrl || '');
-    setFormPosterUrl(ev.posterUrl || '');
+    const evPosters = getEventPosters(ev);
+    setFormPosterUrls(evPosters);
+    setFormPosterUrl(evPosters[0] || '');
+    setFormNewPosterUrlInput('');
+    setShowBatchPosterUrlInput(false);
+    setDraftBatchPosterUrls('');
     setFormMembers(ev.members && ev.members.length ? ev.members : ['jimmy']);
     setFormCategory(ev.category || 'Event');
     setFormLink(ev.link || '');
@@ -2226,6 +2274,31 @@ export default function App() {
           ? formEndDate
           : undefined;
 
+      // Prepare posters list: combine formPosterUrls and any unsaved input
+      let finalPostersList = [...formPosterUrls];
+      if (formNewPosterUrlInput.trim() && !finalPostersList.includes(formNewPosterUrlInput.trim())) {
+        finalPostersList.push(formNewPosterUrlInput.trim());
+      }
+      if (finalPostersList.length === 0 && formPosterUrl.trim()) {
+        finalPostersList.push(formPosterUrl.trim());
+      }
+      finalPostersList = finalPostersList.filter(Boolean);
+
+      // Auto-compress any base64 data URLs in the posters list
+      const compressedPostersList: string[] = [];
+      for (let p of finalPostersList) {
+        if (p.startsWith('data:image/') && p.length > 150 * 1024) {
+          try {
+            p = await compressDataUrl(p, 1100, 0.78);
+          } catch (compErr) {
+            console.warn('Poster auto-compression fallback:', compErr);
+          }
+        }
+        compressedPostersList.push(p);
+      }
+
+      const primaryPoster = compressedPostersList[0] || '';
+
       const newEvent: ScheduleEvent = {
         id: editingEvent ? editingEvent.id : `ev-${Date.now()}`,
         title: formTitle.trim(),
@@ -2237,7 +2310,8 @@ export default function App() {
         timezone: formIsAllDay ? undefined : resolvedTimezone,
         location: formLocation.trim(),
         locationUrl: formLocationUrl.trim(),
-        posterUrl: formPosterUrl.trim(),
+        posterUrl: primaryPoster,
+        posterUrls: compressedPostersList.length > 0 ? compressedPostersList : undefined,
         members: formMembers.length > 0 ? formMembers : [settings.members[0].id],
         category: formCategory,
         link: formLink.trim(),
@@ -2326,39 +2400,110 @@ export default function App() {
     showToast('Google Maps search link generated!');
   };
 
-  // Handle Poster Photo Upload with automatic compression for fast cloud sync
+  // Handle Poster Photo(s) Upload with automatic compression for fast cloud sync
   const handlePosterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 15 * 1024 * 1024) {
-      showToast('Image is larger than 15MB. Please choose a smaller photo.');
-      return;
-    }
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsCompressingPoster(true);
-    showToast('Optimizing poster photo for cloud sync...');
+    showToast(`Optimizing ${files.length} photo${files.length > 1 ? 's' : ''} for cloud sync...`);
 
     try {
-      const compressedUrl = await compressImageFile(file, 1200, 0.82);
-      setFormPosterUrl(compressedUrl);
-      showToast('Poster uploaded and optimized!');
-    } catch (err) {
-      console.warn('Poster compression fallback:', err);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setFormPosterUrl(event.target.result as string);
-          showToast('Poster uploaded successfully!');
+      const newCompressedUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 15 * 1024 * 1024) {
+          showToast(`"${file.name}" is larger than 15MB. Skipped.`);
+          continue;
         }
-      };
-      reader.readAsDataURL(file);
+        try {
+          const compressedUrl = await compressImageFile(file, 1100, 0.78);
+          newCompressedUrls.push(compressedUrl);
+        } catch (err) {
+          console.warn('Poster compression error for', file.name, err);
+        }
+      }
+
+      if (newCompressedUrls.length > 0) {
+        setFormPosterUrls((prev) => {
+          const updated = [...prev, ...newCompressedUrls];
+          setFormPosterUrl(updated[0] || '');
+          return updated;
+        });
+        showToast(`Added ${newCompressedUrls.length} photo${newCompressedUrls.length > 1 ? 's' : ''}!`);
+      }
     } finally {
       setIsCompressingPoster(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  const handleAddPosterUrl = () => {
+    const trimmed = formNewPosterUrlInput.trim();
+    if (!trimmed) return;
+    setFormPosterUrls((prev) => {
+      const updated = [...prev, trimmed];
+      setFormPosterUrl(updated[0] || '');
+      return updated;
+    });
+    setFormNewPosterUrlInput('');
+    showToast('Photo added!');
+  };
+
+  const handleApplyBatchPosterUrls = () => {
+    if (!draftBatchPosterUrls.trim()) return;
+    const lines = draftBatchPosterUrls
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith('http://') || l.startsWith('https://') || l.startsWith('data:image/'));
+
+    if (lines.length === 0) {
+      showToast('No valid photo URLs found.');
+      return;
+    }
+
+    setFormPosterUrls((prev) => {
+      const updated = [...prev, ...lines];
+      setFormPosterUrl(updated[0] || '');
+      return updated;
+    });
+    setDraftBatchPosterUrls('');
+    setShowBatchPosterUrlInput(false);
+    showToast(`Added ${lines.length} photos!`);
+  };
+
+  const handleRemovePoster = (indexToRemove: number) => {
+    setFormPosterUrls((prev) => {
+      const updated = prev.filter((_, idx) => idx !== indexToRemove);
+      setFormPosterUrl(updated[0] || '');
+      return updated;
+    });
+    showToast('Photo removed.');
+  };
+
+  const handleSetCoverPoster = (indexToCover: number) => {
+    if (indexToCover === 0) return;
+    setFormPosterUrls((prev) => {
+      const item = prev[indexToCover];
+      const rest = prev.filter((_, idx) => idx !== indexToCover);
+      const updated = [item, ...rest];
+      setFormPosterUrl(updated[0] || '');
+      return updated;
+    });
+    showToast('Cover poster set!');
+  };
+
+  const handleMovePoster = (fromIdx: number, toIdx: number) => {
+    setFormPosterUrls((prev) => {
+      if (toIdx < 0 || toIdx >= prev.length) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIdx, 1);
+      copy.splice(toIdx, 0, moved);
+      setFormPosterUrl(copy[0] || '');
+      return copy;
+    });
   };
 
   // Handle Banner Photo Upload from file with compression
@@ -2858,6 +3003,7 @@ export default function App() {
   const renderFullEventCard = (ev: ScheduleEvent) => {
     const hasReminder = isReminderSetForEvent(ev.id);
     const regInfo = getRegistrationStatusInfo(ev, todayDateStr);
+    const allPosters = getEventPosters(ev);
 
     return (
       <div
@@ -2960,31 +3106,114 @@ export default function App() {
           {/* Left Sub-Column: Media Poster, Venue & Google Maps, Streaming */}
           <div className="xl:col-span-5 flex flex-col justify-between gap-4 h-full">
             <div className="flex flex-col gap-4">
-              {/* Poster Media (Clickable to open high-resolution popup/lightbox) */}
-              {ev.posterUrl && (
-                <div
-                  onClick={() => setEnlargedPhoto({ url: ev.posterUrl!, title: ev.title })}
-                  className="w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none"
-                  title="Click to enlarge full event photo"
-                >
-                  <img
-                    src={ev.posterUrl}
-                    alt={ev.title}
-                    className="w-full max-h-[360px] object-cover group-hover:scale-[1.02] transition-transform duration-300"
-                  />
-                  {/* Hover Overlay with Enlarge Badge */}
-                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                    <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/80 text-white text-xs font-bold backdrop-blur-xs shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-transform">
-                      <Maximize2 className="w-3.5 h-3.5" />
-                      <span>Click to view full photo</span>
-                    </span>
+              {/* Poster Media (Single or Multiple Photos with gallery carousel and thumbnail strip) */}
+              {allPosters.length > 0 && (() => {
+                const currentIdx = (activePhotoIndexByEvent[ev.id] ?? 0) % allPosters.length;
+                const activePhotoUrl = allPosters[currentIdx] || allPosters[0];
+
+                return (
+                  <div className="flex flex-col gap-2.5">
+                    <div
+                      onClick={() => setEnlargedPhoto({
+                        url: activePhotoUrl,
+                        title: `${ev.title}${allPosters.length > 1 ? ` (${currentIdx + 1}/${allPosters.length})` : ''}`,
+                        photos: allPosters,
+                        currentIndex: currentIdx
+                      })}
+                      className="w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none"
+                      title="Click to view full photo"
+                    >
+                      <img
+                        src={activePhotoUrl}
+                        alt={`${ev.title} - Photo ${currentIdx + 1}`}
+                        className="w-full max-h-[360px] object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                      />
+
+                      {/* Multi-photo badge & counter at top-left */}
+                      {allPosters.length > 1 && (
+                        <div className="absolute top-2.5 left-2.5 z-10 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-xs font-bold backdrop-blur-xs shadow-sm">
+                          <ImageIcon className="w-3.5 h-3.5 text-purple-300" />
+                          <span>{currentIdx + 1} / {allPosters.length}</span>
+                        </div>
+                      )}
+
+                      {/* Previous / Next Arrows on Hover / Mobile */}
+                      {allPosters.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActivePhotoIndexByEvent((prev) => ({
+                                ...prev,
+                                [ev.id]: (currentIdx - 1 + allPosters.length) % allPosters.length
+                              }));
+                            }}
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
+                            title="Previous photo"
+                          >
+                            <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActivePhotoIndexByEvent((prev) => ({
+                                ...prev,
+                                [ev.id]: (currentIdx + 1) % allPosters.length
+                              }));
+                            }}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
+                            title="Next photo"
+                          >
+                            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+                        </>
+                      )}
+
+                      {/* Hover Overlay with Enlarge Badge */}
+                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                        <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/80 text-white text-xs font-bold backdrop-blur-xs shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-transform">
+                          <Maximize2 className="w-3.5 h-3.5" />
+                          <span>Click to view full photo</span>
+                        </span>
+                      </div>
+
+                      {/* Pinned Expand Badge at Top-Right */}
+                      <div className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs opacity-85 group-hover:opacity-100 transition-all shadow-sm">
+                        <Maximize2 className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+
+                    {/* Interactive Thumbnail Strip for Multi-Photo Events */}
+                    {allPosters.length > 1 && (
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 px-0.5">
+                        {allPosters.map((pUrl, pIdx) => (
+                          <button
+                            key={pIdx}
+                            type="button"
+                            onClick={() => setActivePhotoIndexByEvent((prev) => ({ ...prev, [ev.id]: pIdx }))}
+                            className={`relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
+                              pIdx === currentIdx
+                                ? 'border-purple-600 ring-2 ring-purple-300 dark:ring-purple-900 scale-105 shadow-sm'
+                                : 'border-slate-200 dark:border-slate-700 opacity-60 hover:opacity-100'
+                            }`}
+                            title={`View Photo #${pIdx + 1}`}
+                          >
+                            <img src={pUrl} alt={`Thumbnail ${pIdx + 1}`} className="w-full h-full object-cover" />
+                            {pIdx === 0 && (
+                              <span className="absolute bottom-0 inset-x-0 bg-purple-700/85 text-[8px] text-white font-bold text-center leading-tight py-0.5">
+                                Cover
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {/* Pinned Expand Badge at Top-Right */}
-                  <div className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs opacity-85 group-hover:opacity-100 transition-all shadow-sm">
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="flex flex-col gap-4 mt-auto">
@@ -5384,61 +5613,234 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Poster Photo */}
-              <div className="p-3 rounded-2xl bg-purple-50/50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-purple-900 dark:text-purple-300">
-                    <FileImage className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>Event Poster / Photo Media</span>
-                  </label>
-                  {formPosterUrl && (
+              {/* Event Posters & Photo Media Manager (Supports Multiple Posters & Photos) */}
+              <div className="p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-purple-200/80 dark:bg-purple-900/80 text-purple-700 dark:text-purple-300 flex items-center justify-center">
+                      <FileImage className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
+                        <span>Event Posters & Photo Media</span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/80 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
+                          {formPosterUrls.length} {formPosterUrls.length === 1 ? 'photo' : 'photos'}
+                        </span>
+                      </label>
+                      <p className="text-[10.5px] font-medium text-[#607494] dark:text-slate-400">
+                        Add promotional posters, seating maps, schedule infographics, or benefits charts.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setFormPosterUrl('')}
-                      className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                      onClick={() => setShowBatchPosterUrlInput(!showBatchPosterUrlInput)}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 text-[11px] font-bold cursor-pointer transition-colors"
                     >
-                      Remove photo
+                      {showBatchPosterUrlInput ? 'Hide Batch URLs' : 'Paste Multiple URLs'}
                     </button>
-                  )}
+                    {formPosterUrls.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Remove all photos for this event?')) {
+                            setFormPosterUrls([]);
+                            setFormPosterUrl('');
+                          }
+                        }}
+                        className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline px-2 py-1 cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={formPosterUrl}
-                    onChange={(e) => setFormPosterUrl(e.target.value)}
-                    placeholder="Paste image link URL (https://...)"
-                    className="flex-1 rounded-xl border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white"
-                  />
+                {/* Batch URLs Textarea (Collapsible) */}
+                {showBatchPosterUrlInput && (
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 space-y-2 animate-in fade-in duration-150">
+                    <label className="block text-[11px] font-bold text-[#1A3668] dark:text-slate-300">
+                      Paste Multiple Image URLs (One URL per line):
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={draftBatchPosterUrls}
+                      onChange={(e) => setDraftBatchPosterUrls(e.target.value)}
+                      placeholder={'https://example.com/poster1.jpg\nhttps://example.com/seating-map.jpg\nhttps://example.com/benefits-chart.jpg'}
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 text-xs font-mono text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400">
+                        URLs will be added to the event photo list.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleApplyBatchPosterUrls}
+                        style={{ backgroundColor: currentAccent.colorHex }}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-xs cursor-pointer hover:opacity-90"
+                      >
+                        + Add All URLs
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Photo by URL or File Upload */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex-1 flex gap-1.5">
+                    <input
+                      type="url"
+                      value={formNewPosterUrlInput}
+                      onChange={(e) => setFormNewPosterUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddPosterUrl();
+                        }
+                      }}
+                      placeholder="Paste image link URL (https://...)"
+                      className="flex-1 rounded-xl border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddPosterUrl}
+                      disabled={!formNewPosterUrlInput.trim()}
+                      className="px-3.5 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-800/80 text-purple-700 dark:text-purple-300 disabled:opacity-40 text-xs font-bold cursor-pointer shrink-0 transition-colors"
+                    >
+                      + Add URL
+                    </button>
+                  </div>
+
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handlePosterFileUpload}
                     accept="image/*"
+                    multiple
                     className="hidden"
                   />
                   <button
                     type="button"
                     disabled={isCompressingPoster}
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0 inline-flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0 inline-flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95"
                   >
-                    {isCompressingPoster && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    <span>{isCompressingPoster ? 'Optimizing...' : 'Upload File'}</span>
+                    {isCompressingPoster ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Optimizing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload File(s)</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
-                {formPosterUrl && (
-                  <div
-                    onClick={() => setEnlargedPhoto({ url: formPosterUrl, title: formTitle || 'Event Poster Preview' })}
-                    className="w-full h-28 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 flex items-center justify-center cursor-pointer group relative hover:border-purple-400 transition-colors shadow-2xs"
-                    title="Click to enlarge photo preview"
-                  >
-                    <img src={formPosterUrl} alt="Preview" className="h-full object-contain group-hover:scale-105 transition-transform" />
-                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1.5">
-                      <Maximize2 className="w-3.5 h-3.5" />
-                      <span>Click to enlarge full photo</span>
+                {/* Thumbnails Gallery Management */}
+                {formPosterUrls.length === 0 ? (
+                  <div className="py-6 px-4 rounded-xl border border-dashed border-purple-200 dark:border-purple-800/60 bg-white/50 dark:bg-slate-800/50 text-center flex flex-col items-center justify-center gap-1.5">
+                    <ImageIcon className="w-6 h-6 text-purple-400 opacity-60" />
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      No posters or photos added yet.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Upload from your device (you can select multiple files) or paste web links.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                      {formPosterUrls.map((pUrl, idx) => (
+                        <div
+                          key={idx}
+                          className={`group relative rounded-xl overflow-hidden bg-white dark:bg-slate-800 border-2 transition-all p-1.5 flex flex-col justify-between ${
+                            idx === 0
+                              ? 'border-purple-500 ring-2 ring-purple-300/50 dark:ring-purple-900 shadow-sm'
+                              : 'border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                          }`}
+                        >
+                          {/* Image preview with click to enlarge */}
+                          <div
+                            onClick={() => setEnlargedPhoto({
+                              url: pUrl,
+                              title: `${formTitle || 'Event Photo'} (#${idx + 1})`,
+                              photos: formPosterUrls,
+                              currentIndex: idx
+                            })}
+                            className="relative w-full h-24 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-900 cursor-pointer flex items-center justify-center mb-1.5"
+                            title="Click to preview full size"
+                          >
+                            <img src={pUrl} alt={`Photo #${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            {/* Badges on preview */}
+                            <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-black">
+                              #{idx + 1}
+                            </span>
+                            {idx === 0 && (
+                              <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-md bg-purple-600 text-white text-[9px] font-black uppercase tracking-wider shadow-xs">
+                                Cover
+                              </span>
+                            )}
+                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                              <Maximize2 className="w-4 h-4" />
+                            </div>
+                          </div>
+
+                          {/* Control buttons row */}
+                          <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100 dark:border-slate-700/80">
+                            <div className="flex items-center gap-1">
+                              {idx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetCoverPoster(idx)}
+                                  className="text-[10px] font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800 cursor-pointer"
+                                  title="Set as main cover poster"
+                                >
+                                  Make Cover
+                                </button>
+                              )}
+                              {idx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePoster(idx, idx - 1)}
+                                  className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 cursor-pointer"
+                                  title="Move earlier"
+                                >
+                                  <ChevronLeft className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {idx < formPosterUrls.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePoster(idx, idx + 1)}
+                                  className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 cursor-pointer"
+                                  title="Move later"
+                                >
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePoster(idx)}
+                              className="p-1 rounded hover:bg-rose-50 text-rose-500 dark:hover:bg-rose-950/60 cursor-pointer"
+                              title="Delete photo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+
+                    <p className="text-[10px] text-slate-400 px-0.5">
+                      💡 Tip: Photo #1 is displayed as the primary cover. You can reorder photos using the arrow buttons or click "Make Cover".
+                    </p>
                   </div>
                 )}
               </div>
@@ -7300,10 +7702,10 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6 animate-in fade-in duration-200 select-none"
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-5 animate-in fade-in duration-200 select-none"
           onClick={() => setEnlargedPhoto(null)}
         >
-          {/* Top Bar: Title, Open Original, Download & Close */}
+          {/* Top Bar: Title, Multi-photo counter, Open Original & Close */}
           <div
             className="w-full max-w-5xl flex items-center justify-between gap-3 text-white z-10"
             onClick={(e) => e.stopPropagation()}
@@ -7313,6 +7715,14 @@ export default function App() {
               <span className="text-sm sm:text-base font-extrabold truncate text-white tracking-tight">
                 {enlargedPhoto.title || 'Event Photo'}
               </span>
+              {enlargedPhoto.photos && enlargedPhoto.photos.length > 1 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/15 text-white text-xs font-bold shrink-0">
+                  <ImageIcon className="w-3 h-3 text-purple-300" />
+                  <span>
+                    {(enlargedPhoto.currentIndex ?? 0) + 1} / {enlargedPhoto.photos.length}
+                  </span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -7340,23 +7750,110 @@ export default function App() {
             </div>
           </div>
 
-          {/* Centered Image Container: clicks on open space bubble up to backdrop to close */}
-          <div className="relative flex-1 flex items-center justify-center my-2 max-h-[82vh] max-w-[95vw] w-full cursor-pointer">
+          {/* Centered Image Container with Navigation Arrows */}
+          <div className="relative flex-1 flex items-center justify-center my-2 max-h-[75vh] max-w-[95vw] w-full cursor-pointer">
+            {/* Previous Photo Button */}
+            {enlargedPhoto.photos && enlargedPhoto.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const prev = ((enlargedPhoto.currentIndex ?? 0) - 1 + enlargedPhoto.photos!.length) % enlargedPhoto.photos!.length;
+                  setEnlargedPhoto({
+                    ...enlargedPhoto,
+                    url: enlargedPhoto.photos![prev],
+                    currentIndex: prev
+                  });
+                }}
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition-all shadow-xl z-20 cursor-pointer active:scale-95"
+                title="Previous photo (←)"
+              >
+                <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
+              </button>
+            )}
+
             <img
               src={enlargedPhoto.url}
               alt={enlargedPhoto.title || 'Full resolution photo'}
-              className="max-h-[82vh] max-w-[92vw] object-contain rounded-2xl shadow-2xl border border-white/15 animate-in zoom-in-95 duration-200 cursor-default"
+              className="max-h-[75vh] max-w-[88vw] object-contain rounded-2xl shadow-2xl border border-white/15 animate-in zoom-in-95 duration-200 cursor-default"
               onClick={(e) => e.stopPropagation()}
             />
+
+            {/* Next Photo Button */}
+            {enlargedPhoto.photos && enlargedPhoto.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const next = ((enlargedPhoto.currentIndex ?? 0) + 1) % enlargedPhoto.photos!.length;
+                  setEnlargedPhoto({
+                    ...enlargedPhoto,
+                    url: enlargedPhoto.photos![next],
+                    currentIndex: next
+                  });
+                }}
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition-all shadow-xl z-20 cursor-pointer active:scale-95"
+                title="Next photo (→)"
+              >
+                <ChevronRight className="w-6 h-6 stroke-[2.5]" />
+              </button>
+            )}
           </div>
 
-          {/* Bottom Bar: Instructions */}
-          <div className="text-white/60 text-xs font-medium z-10 select-none pb-1 flex items-center gap-2 pointer-events-none">
-            <span>Click open space or press</span>
-            <kbd className="px-2 py-0.5 rounded bg-white/15 text-white font-mono text-[11px] font-bold">
-              Esc
-            </kbd>
-            <span>to close</span>
+          {/* Bottom Bar: Thumbnails (if multi-photo) & Instructions */}
+          <div
+            className="flex flex-col items-center gap-2 z-10 w-full max-w-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {enlargedPhoto.photos && enlargedPhoto.photos.length > 1 && (
+              <div className="flex items-center gap-2 overflow-x-auto max-w-full px-2 py-1 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10">
+                {enlargedPhoto.photos.map((pUrl, pIdx) => (
+                  <button
+                    key={pIdx}
+                    type="button"
+                    onClick={() => setEnlargedPhoto({
+                      ...enlargedPhoto,
+                      url: pUrl,
+                      currentIndex: pIdx
+                    })}
+                    className={`relative w-12 h-12 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
+                      pIdx === (enlargedPhoto.currentIndex ?? 0)
+                        ? 'border-purple-400 ring-2 ring-purple-400/50 scale-105 opacity-100 shadow-md'
+                        : 'border-white/20 opacity-50 hover:opacity-90'
+                    }`}
+                    title={`View photo #${pIdx + 1}`}
+                  >
+                    <img src={pUrl} alt={`Thumb #${pIdx + 1}`} className="w-full h-full object-cover" />
+                    {pIdx === 0 && (
+                      <span className="absolute bottom-0 inset-x-0 bg-purple-700/80 text-[7px] text-white font-bold text-center leading-tight">
+                        Cover
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="text-white/60 text-xs font-medium select-none flex items-center gap-2 pointer-events-none">
+              <span>Click open space or press</span>
+              <kbd className="px-2 py-0.5 rounded bg-white/15 text-white font-mono text-[11px] font-bold">
+                Esc
+              </kbd>
+              <span>to close</span>
+              {enlargedPhoto.photos && enlargedPhoto.photos.length > 1 && (
+                <>
+                  <span className="opacity-40">·</span>
+                  <span>Use</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/15 text-white font-mono text-[11px] font-bold">
+                    ←
+                  </kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/15 text-white font-mono text-[11px] font-bold">
+                    →
+                  </kbd>
+                  <span>to browse</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

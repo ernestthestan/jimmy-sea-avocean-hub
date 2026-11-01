@@ -83,3 +83,74 @@ export async function compressImageFile(
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Re-compresses an existing base64 data URL string if it exceeds a threshold (e.g. 150KB),
+ * ensuring any legacy large images or pasted base64 strings are reduced to ~80-150KB.
+ */
+export async function compressDataUrl(
+  dataUrl: string,
+  maxDimension = 1200,
+  initialQuality = 0.80
+): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return dataUrl;
+  if (dataUrl.startsWith('data:image/svg+xml')) return dataUrl;
+  // If already under 150KB, no recompression needed
+  if (dataUrl.length <= 150 * 1024) return dataUrl;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, width);
+      canvas.height = Math.max(1, height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      let quality = initialQuality;
+      let output = canvas.toDataURL('image/jpeg', quality);
+
+      if (output.length > 400 * 1024) {
+        output = canvas.toDataURL('image/jpeg', 0.68);
+      }
+      if (output.length > 300 * 1024) {
+        const smallCanvas = document.createElement('canvas');
+        smallCanvas.width = Math.round(width * 0.75);
+        smallCanvas.height = Math.round(height * 0.75);
+        const sCtx = smallCanvas.getContext('2d');
+        if (sCtx) {
+          sCtx.fillStyle = '#FFFFFF';
+          sCtx.fillRect(0, 0, smallCanvas.width, smallCanvas.height);
+          sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
+          output = smallCanvas.toDataURL('image/jpeg', 0.65);
+        }
+      }
+      resolve(output);
+    };
+    img.onerror = () => {
+      resolve(dataUrl);
+    };
+    img.src = dataUrl;
+  });
+}

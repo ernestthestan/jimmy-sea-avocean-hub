@@ -15,6 +15,10 @@
         "location": { "type": "string" },
         "locationUrl": { "type": "string" },
         "posterUrl": { "type": "string" },
+        "posterUrls": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "members": {
           "type": "array",
           "items": { "type": "string" }
@@ -27,6 +31,15 @@
           "type": "array",
           "items": { "type": "object" }
         },
+        "isAllDay": { "type": "boolean" },
+        "hasRegistration": { "type": "boolean" },
+        "registrationStartDate": { "type": "string" },
+        "registrationStartTime": { "type": "string" },
+        "registrationEndDate": { "type": "string" },
+        "registrationEndTime": { "type": "string" },
+        "registrationTimezone": { "type": "string" },
+        "registrationUrl": { "type": "string" },
+        "registrationNotes": { "type": "string" },
         "notes": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
