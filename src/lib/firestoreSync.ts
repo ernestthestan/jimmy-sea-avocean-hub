@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -436,6 +437,38 @@ export function subscribeToFanMessages(onUpdate: (messages: FanMessage[]) => voi
   );
 
   return unsubscribe;
+}
+
+export async function fetchFanMessagesFromFirestore(): Promise<FanMessage[]> {
+  if (isQuotaExceeded) {
+    try {
+      const saved = localStorage.getItem('avocean_fan_messages_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  try {
+    const messagesCol = collection(db, 'fan_messages');
+    const snapshot = await getDocs(messagesCol);
+    const msgs: FanMessage[] = [];
+    snapshot.forEach((d) => {
+      msgs.push(d.data() as FanMessage);
+    });
+    msgs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    try {
+      localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(msgs));
+    } catch {}
+    return msgs;
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    } else {
+      console.warn('Direct fetch fan messages error:', err);
+    }
+    return [];
+  }
 }
 
 export async function sendFanMessageToFirestore(msg: FanMessage): Promise<void> {

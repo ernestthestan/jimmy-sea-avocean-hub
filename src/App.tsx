@@ -82,6 +82,7 @@ import {
   subscribeToSettings,
   saveSettingsToFirestore,
   subscribeToFanMessages,
+  fetchFanMessagesFromFirestore,
   sendFanMessageToFirestore,
   updateFanMessageInFirestore,
   deleteFanMessageFromFirestore,
@@ -1845,20 +1846,11 @@ export default function App() {
   });
 
   // Real-Time Fan Messages Sync from Firestore across all devices (PC, Laptop, Phone)
-  useEffect(() => {
-    const unsubscribe = subscribeToFanMessages((cloudMsgs) => {
-      if (Array.isArray(cloudMsgs)) {
-        setFanMessages(cloudMsgs);
-        try {
-          localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(cloudMsgs));
-        } catch {}
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+  const [isRefreshingInbox, setIsRefreshingInbox] = useState<boolean>(false);
+  const [isSendingMessage, setIsSendingMessage] = useState<boolean>(false);
 
-  // Push local messages to cloud if any were submitted offline
   useEffect(() => {
+    // Initial push of any pending messages from localStorage to Firestore
     try {
       const saved = localStorage.getItem('avocean_fan_messages_v1');
       if (saved) {
@@ -1866,12 +1858,43 @@ export default function App() {
         if (Array.isArray(parsed)) {
           parsed.forEach((m) => {
             if (m.id && m.message && !m.id.startsWith('msg-sample-')) {
-              sendFanMessageToFirestore(m).catch(() => {});
+              sendFanMessageToFirestore(m).catch((e) =>
+                console.warn('Initial push of local message failed:', e)
+              );
             }
           });
         }
       }
     } catch {}
+
+    const unsubscribe = subscribeToFanMessages((cloudMsgs) => {
+      if (Array.isArray(cloudMsgs)) {
+        setFanMessages((prev) => {
+          // Identify any local messages not yet registered in cloud
+          const cloudIds = new Set(cloudMsgs.map((m) => m.id));
+          const unsynced = prev.filter(
+            (m) => !m.id.startsWith('msg-sample-') && !cloudIds.has(m.id)
+          );
+
+          // Push unsynced messages to Firestore
+          unsynced.forEach((m) => {
+            sendFanMessageToFirestore(m).catch((e) =>
+              console.warn('Syncing pending message to Firestore failed:', e)
+            );
+          });
+
+          const combined = [...cloudMsgs, ...unsynced];
+          combined.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+          try {
+            localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(combined));
+          } catch {}
+
+          return combined;
+        });
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Real-Time Fan Clubs & Food Projects Sync from Firestore across all devices
@@ -1905,6 +1928,26 @@ export default function App() {
     return fanMessages.filter((m) => !m.isRead).length;
   }, [fanMessages]);
 
+  const handleRefreshInbox = async () => {
+    setIsRefreshingInbox(true);
+    try {
+      const fresh = await fetchFanMessagesFromFirestore();
+      if (Array.isArray(fresh) && fresh.length > 0) {
+        setFanMessages(fresh);
+        try {
+          localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(fresh));
+        } catch {}
+        showToast(`Inbox refreshed! ${fresh.length} message${fresh.length > 1 ? 's' : ''} synced.`);
+      } else {
+        showToast('Inbox is up to date.');
+      }
+    } catch {
+      showToast('Could not refresh inbox. Checking cloud connection...');
+    } finally {
+      setIsRefreshingInbox(false);
+    }
+  };
+
   const handleSendFanMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!msgSenderName.trim()) {
@@ -1935,21 +1978,42 @@ export default function App() {
       isRead: false
     };
 
-    setFanMessages((prev) => [newMsg, ...prev]);
-    // Save to Firestore cloud database
-    sendFanMessageToFirestore(newMsg).catch((err) => console.warn('Could not sync message to Firestore:', err));
+    setIsSendingMessage(true);
 
-    setMessageSubmitted(true);
-    setTimeout(() => {
-      setMessageSubmitted(false);
-      setLeaveMessageModalOpen(false);
-      setMsgSenderName('');
-      setMsgEventTitle('');
-      setMsgEventDate('');
-      setMsgSourceUrl('');
-      setMsgContent('');
-      showToast('💌 Message sent to Admins & Owner! Thank you for the update.');
-    }, 1500);
+    try {
+      // Optimistic state update
+      setFanMessages((prev) => [newMsg, ...prev.filter((m) => m.id !== newMsg.id)]);
+      // Save directly to Firestore cloud database
+      await sendFanMessageToFirestore(newMsg);
+
+      setMessageSubmitted(true);
+      setTimeout(() => {
+        setMessageSubmitted(false);
+        setLeaveMessageModalOpen(false);
+        setMsgSenderName('');
+        setMsgEventTitle('');
+        setMsgEventDate('');
+        setMsgSourceUrl('');
+        setMsgContent('');
+        showToast('💌 Message sent in real time to Admins & Owner! Thank you.');
+      }, 1200);
+    } catch (err) {
+      console.warn('Could not sync message to Firestore:', err);
+      // Still keep locally and inform
+      setMessageSubmitted(true);
+      setTimeout(() => {
+        setMessageSubmitted(false);
+        setLeaveMessageModalOpen(false);
+        setMsgSenderName('');
+        setMsgEventTitle('');
+        setMsgEventDate('');
+        setMsgSourceUrl('');
+        setMsgContent('');
+        showToast('💌 Message saved! Will sync to all devices once online.');
+      }, 1200);
+    } finally {
+      setIsSendingMessage(false);
+    }
   };
 
   const handlePrefillEventFromMessage = (msg: FanMessage) => {
@@ -1964,20 +2028,30 @@ export default function App() {
     showToast('Event details pre-filled from message!');
   };
 
-  const handleMarkMessageRead = (id: string) => {
+  const handleMarkMessageRead = async (id: string) => {
     const target = fanMessages.find((m) => m.id === id);
     if (target) {
-      updateFanMessageInFirestore(id, { isRead: !target.isRead }).catch(() => {});
+      const nextRead = !target.isRead;
+      setFanMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, isRead: nextRead } : m))
+      );
+      try {
+        await updateFanMessageInFirestore(id, { isRead: nextRead });
+      } catch (e) {
+        console.warn('Could not update message read status in Firestore:', e);
+      }
     }
-    setFanMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, isRead: !m.isRead } : m))
-    );
   };
 
-  const handleDeleteMessage = (id: string) => {
-    deleteFanMessageFromFirestore(id).catch(() => {});
+  const handleDeleteMessage = async (id: string) => {
+    if (!window.confirm('Delete this message from the Inbox?')) return;
     setFanMessages((prev) => prev.filter((m) => m.id !== id));
-    showToast('Message removed');
+    try {
+      await deleteFanMessageFromFirestore(id);
+      showToast('Message removed');
+    } catch (e) {
+      console.warn('Could not delete message from Firestore:', e);
+    }
   };
 
   // --- Banner Photos Carousel & Sizing State (Admin & Owner) ---
@@ -9014,11 +9088,21 @@ export default function App() {
                   </button>
                   <button
                     type="submit"
+                    disabled={isSendingMessage}
                     style={{ backgroundColor: currentAccent.colorHex }}
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all hover:opacity-90"
+                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all hover:opacity-90 disabled:opacity-50"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Send Message</span>
+                    {isSendingMessage ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Sending in real time...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Send Message</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -9033,26 +9117,44 @@ export default function App() {
       {inboxModalOpen && canEditEvents && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center">
                   <Inbox className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
-                    Viewer Messages & Suggestions
-                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                      Viewer Messages & Suggestions
+                    </h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Live Cloud Sync</span>
+                    </span>
+                  </div>
                   <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
-                    Visible only to Admins and Owner ({fanMessages.length} total)
+                    Visible only to Admins and Owner ({fanMessages.length} total · {unreadMessageCount} unread)
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setInboxModalOpen(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleRefreshInbox}
+                  disabled={isRefreshingInbox}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 text-xs font-bold transition-all cursor-pointer border border-slate-200/80 dark:border-slate-700"
+                  title="Force re-sync inbox with cloud database"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 text-purple-600 dark:text-purple-400 ${isRefreshingInbox ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+                <button
+                  onClick={() => setInboxModalOpen(false)}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {fanMessages.length === 0 ? (
