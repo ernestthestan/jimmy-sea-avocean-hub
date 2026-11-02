@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ScheduleEvent, AppSettings, FanMessage } from '../App';
+import type { FanClub, FoodSupportProject } from '../types/fanhub';
 
 // Global Quota Exceeded state & listener registry
 let isQuotaExceeded = false;
@@ -454,3 +455,222 @@ export async function deleteFanMessageFromFirestore(id: string): Promise<void> {
     }
   }
 }
+
+/**
+ * 5. REAL-TIME FAN CLUBS DIRECTORY SYNC
+ */
+export function subscribeToFanClubs(
+  initialSampleClubs: FanClub[],
+  onUpdate: (clubs: FanClub[]) => void
+) {
+  // If quota was exceeded, use localStorage
+  const sampleClubPrefixes = ['fc-avocean-', 'fc-js-', 'fc-jimmy-', 'fc-sea-'];
+  const isSampleClub = (c: { id?: string }) => Boolean(c?.id && sampleClubPrefixes.some((p) => c.id!.startsWith(p)));
+
+  if (isQuotaExceeded) {
+    try {
+      const isInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
+      const saved = localStorage.getItem('avocean_fan_clubs_v3');
+      if (saved !== null) {
+        const filtered = (JSON.parse(saved) as FanClub[]).filter((c) => !isSampleClub(c));
+        onUpdate(filtered);
+        return () => {};
+      }
+      if (isInit) {
+        onUpdate([]);
+        return () => {};
+      }
+    } catch {}
+    onUpdate([]);
+    return () => {};
+  }
+
+  const clubsCol = collection(db, 'fan_clubs');
+  const unsubscribe = onSnapshot(
+    clubsCol,
+    async (snapshot) => {
+      const loaded: FanClub[] = [];
+      snapshot.forEach((d) => {
+        const club = d.data() as FanClub;
+        if (isSampleClub(club)) {
+          // Permanently purge legacy sample fan clubs as requested
+          deleteDoc(doc(db, 'fan_clubs', d.id)).catch(() => {});
+        } else {
+          loaded.push(club);
+        }
+      });
+
+      // Mark fanhub as initialized so samples are never re-seeded
+      try {
+        localStorage.setItem('avocean_fanhub_initialized', 'true');
+        await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true }).catch(() => {});
+      } catch {}
+
+      onUpdate(loaded);
+      try {
+        localStorage.setItem('avocean_fan_clubs_v3', JSON.stringify(loaded));
+      } catch {}
+    },
+    (err: any) => {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        notifyQuotaExceeded();
+        try {
+          const saved = localStorage.getItem('avocean_fan_clubs_v3');
+          if (saved !== null) {
+            onUpdate(JSON.parse(saved));
+            return;
+          }
+        } catch {}
+      } else {
+        console.warn('Fan clubs listener error:', err);
+      }
+    }
+  );
+
+  return unsubscribe;
+}
+
+export async function saveFanClubToFirestore(club: FanClub): Promise<void> {
+  try {
+    localStorage.setItem('avocean_fanhub_initialized', 'true');
+    if (!isQuotaExceeded) {
+      await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
+      await setDoc(doc(db, 'fan_clubs', club.id), sanitizeForFirestore(club));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    }
+  }
+}
+
+export async function deleteFanClubFromFirestore(clubId: string): Promise<void> {
+  try {
+    localStorage.setItem('avocean_fanhub_initialized', 'true');
+    if (!isQuotaExceeded) {
+      await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
+      await deleteDoc(doc(db, 'fan_clubs', clubId));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    }
+  }
+}
+
+/**
+ * 6. REAL-TIME FOOD SUPPORT PROJECTS SYNC
+ */
+export function subscribeToFoodProjects(
+  initialSampleProjects: FoodSupportProject[],
+  onUpdate: (projects: FoodSupportProject[]) => void
+) {
+  if (isQuotaExceeded) {
+    try {
+      const isInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
+      const saved = localStorage.getItem('avocean_food_projects_v3');
+      if (saved !== null) {
+        onUpdate(JSON.parse(saved));
+        return () => {};
+      }
+      if (isInit) {
+        onUpdate([]);
+        return () => {};
+      }
+    } catch {}
+    onUpdate(initialSampleProjects);
+    return () => {};
+  }
+
+  const projectsCol = collection(db, 'food_projects');
+  const unsubscribe = onSnapshot(
+    projectsCol,
+    async (snapshot) => {
+      const loaded: FoodSupportProject[] = [];
+      snapshot.forEach((d) => {
+        loaded.push(d.data() as FoodSupportProject);
+      });
+
+      if (snapshot.empty) {
+        try {
+          const metaSnap = await getDoc(doc(db, 'settings', 'fanhub_meta')).catch(() => null);
+          const isMetaInit = metaSnap?.exists();
+          const isLocalInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
+
+          if (isMetaInit || isLocalInit) {
+            // Intentionally empty (user deleted all projects)
+            onUpdate([]);
+            try {
+              localStorage.setItem('avocean_food_projects_v3', '[]');
+            } catch {}
+            return;
+          }
+
+          // First-time seed only
+          onUpdate(initialSampleProjects);
+          try {
+            localStorage.setItem('avocean_food_projects_v3', JSON.stringify(initialSampleProjects));
+            localStorage.setItem('avocean_fanhub_initialized', 'true');
+            await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true });
+            for (const p of initialSampleProjects) {
+              await setDoc(doc(db, 'food_projects', p.id), sanitizeForFirestore(p));
+            }
+          } catch (e) {}
+        } catch {
+          onUpdate([]);
+        }
+      } else {
+        onUpdate(loaded);
+        try {
+          localStorage.setItem('avocean_food_projects_v3', JSON.stringify(loaded));
+          localStorage.setItem('avocean_fanhub_initialized', 'true');
+        } catch {}
+      }
+    },
+    (err: any) => {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        notifyQuotaExceeded();
+        try {
+          const saved = localStorage.getItem('avocean_food_projects_v3');
+          if (saved !== null) {
+            onUpdate(JSON.parse(saved));
+            return;
+          }
+        } catch {}
+      } else {
+        console.warn('Food projects listener error:', err);
+      }
+    }
+  );
+
+  return unsubscribe;
+}
+
+export async function saveFoodProjectToFirestore(project: FoodSupportProject): Promise<void> {
+  try {
+    localStorage.setItem('avocean_fanhub_initialized', 'true');
+    if (!isQuotaExceeded) {
+      await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
+      await setDoc(doc(db, 'food_projects', project.id), sanitizeForFirestore(project));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    }
+  }
+}
+
+export async function deleteFoodProjectFromFirestore(projectId: string): Promise<void> {
+  try {
+    localStorage.setItem('avocean_fanhub_initialized', 'true');
+    if (!isQuotaExceeded) {
+      await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
+      await deleteDoc(doc(db, 'food_projects', projectId));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    }
+  }
+}
+

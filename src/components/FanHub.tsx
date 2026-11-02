@@ -30,8 +30,6 @@ import {
   AlertCircle,
   Languages,
   Image as ImageIcon,
-  Settings,
-  Smile,
   ChevronDown,
   Loader2,
   RotateCcw
@@ -45,8 +43,7 @@ import type {
   SocialLink,
   ProofMedia,
   SocialPlatform,
-  ClubCategory,
-  CategoryIconsConfig
+  ClubCategory
 } from '../types/fanhub';
 import type { ScheduleEvent, AccentChoice } from '../App';
 import { POPULAR_FAN_COUNTRIES } from '../data/countriesList';
@@ -82,6 +79,7 @@ interface FanHubProps {
   onSaveFoodProject: (project: FoodSupportProject) => void;
   onDeleteFoodProject: (projectId: string) => void;
   showToast: (msg: string) => void;
+  activeMemberIds?: string[];
 }
 
 export const FanHub: React.FC<FanHubProps> = ({
@@ -97,7 +95,8 @@ export const FanHub: React.FC<FanHubProps> = ({
   onDeleteFanClub,
   onSaveFoodProject,
   onDeleteFoodProject,
-  showToast
+  showToast,
+  activeMemberIds
 }) => {
   // Main sub-tab switcher: 'directory' | 'foodsupport'
   const [hubTab, setHubTab] = useState<'directory' | 'foodsupport'>(activeSubTab);
@@ -116,62 +115,15 @@ export const FanHub: React.FC<FanHubProps> = ({
     }
   };
 
-  // Default Category Icons
-  const DEFAULT_CATEGORY_ICONS: CategoryIconsConfig = {
-    everyone: '🥑',
-    duo: '🤝',
-    actor: '🎭',
-    jimmy: '🩺',
-    sea: '🌊',
-    avocean: '🥑'
-  };
 
-  // Category Icons State (persisted for Owner)
-  const [categoryIcons, setCategoryIcons] = useState<CategoryIconsConfig>(() => {
-    try {
-      const saved = localStorage.getItem('jimmysea_category_icons');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      // fallback
-    }
-    return DEFAULT_CATEGORY_ICONS;
-  });
-
-  // Category Icon Customization Modal State (for Owner)
-  const [isIconModalOpen, setIsIconModalOpen] = useState<boolean>(false);
-  const [tempCategoryIcons, setTempCategoryIcons] = useState<CategoryIconsConfig>(categoryIcons);
-
-  const saveCategoryIcons = (newIcons: CategoryIconsConfig) => {
-    setCategoryIcons(newIcons);
-    try {
-      localStorage.setItem('jimmysea_category_icons', JSON.stringify(newIcons));
-    } catch (e) {
-      // ignore
-    }
-    setIsIconModalOpen(false);
-    showToast('Category icons updated successfully!');
-  };
-
-  const resetCategoryIcons = () => {
-    setTempCategoryIcons(DEFAULT_CATEGORY_ICONS);
-    setCategoryIcons(DEFAULT_CATEGORY_ICONS);
-    try {
-      localStorage.removeItem('jimmysea_category_icons');
-    } catch (e) {
-      // ignore
-    }
-    showToast('Reset category icons to defaults');
-  };
 
   // Directory filter states
   const [directorySearch, setDirectorySearch] = useState<string>('');
-  const [directoryActorFilter, setDirectoryActorFilter] = useState<FanClubActor>('all');
   const [directoryCountryFilter, setDirectoryCountryFilter] = useState<string>('all');
 
   // Food support filter states
   const [supportSearch, setSupportSearch] = useState<string>('');
   const [supportStatusFilter, setSupportStatusFilter] = useState<'all' | ProjectStatus>('all');
-  const [supportActorFilter, setSupportActorFilter] = useState<FanClubActor>('all');
 
   // Selected target language per club card (default 'en')
   const [selectedClubLang, setSelectedClubLang] = useState<Record<string, string>>({});
@@ -313,9 +265,58 @@ export const FanHub: React.FC<FanHubProps> = ({
   const [editingProject, setEditingProject] = useState<FoodSupportProject | null>(null);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState<boolean>(false);
 
-  // Quick donation modal
+  // Quick donation / update funds modal
   const [donationModalProject, setDonationModalProject] = useState<FoodSupportProject | null>(null);
-  const [additionalDonationAmount, setAdditionalDonationAmount] = useState<string>('');
+  const [modalAmountMode, setModalAmountMode] = useState<'total' | 'add'>('total');
+  const [modalAmountValue, setModalAmountValue] = useState<string>('');
+
+  // Inline amount editing for Food Support (Clicking 32,000 on card)
+  const [editingAmountProjId, setEditingAmountProjId] = useState<string | null>(null);
+  const [inlineAmountText, setInlineAmountText] = useState<string>('');
+
+  const handleSaveInlineAmount = (proj: FoodSupportProject) => {
+    const parsedAmount = parseFloat(inlineAmountText.replace(/,/g, ''));
+    if (!isNaN(parsedAmount) && parsedAmount >= 0) {
+      const nextStatus: ProjectStatus =
+        parsedAmount >= proj.targetAmount && proj.status === 'open'
+          ? 'reached'
+          : parsedAmount < proj.targetAmount && proj.status === 'reached'
+          ? 'open'
+          : proj.status;
+      const updated: FoodSupportProject = {
+        ...proj,
+        currentAmount: parsedAmount,
+        status: nextStatus
+      };
+      onSaveFoodProject(updated);
+      setEditingAmountProjId(null);
+      showToast(`Updated raised amount to ${parsedAmount.toLocaleString()} ${proj.currency}!`);
+    } else {
+      showToast('Please enter a valid amount');
+    }
+  };
+
+  // Helper matching the top encircled member filter [All Members] [🥑 Jimmy] [🌊 Sea] [💚 Avocean]
+  const matchesActiveMembers = (actorValue?: string) => {
+    if (!activeMemberIds || activeMemberIds.length === 0 || activeMemberIds.length >= 3) {
+      return true;
+    }
+    const norm = (actorValue || '').toLowerCase();
+    const hasJimmy = activeMemberIds.includes('jimmy');
+    const hasSea = activeMemberIds.includes('sea');
+    const hasAvocean = activeMemberIds.includes('avocean');
+
+    if (hasJimmy && norm === 'jimmy') return true;
+    if (hasSea && norm === 'sea') return true;
+    if (hasAvocean && norm === 'avocean') return true;
+
+    if (hasJimmy && hasSea && (norm === 'duo' || norm === 'jimmysea')) return true;
+    if (hasJimmy && hasAvocean && (norm === 'jimmy_avocean' || norm === 'duo_jimmy_avocean')) return true;
+    if (hasSea && hasAvocean && (norm === 'sea_avocean' || norm === 'duo_sea_avocean')) return true;
+
+    if (norm === 'everyone') return true;
+    return false;
+  };
 
   // Media Lightbox
   const [lightboxMedia, setLightboxMedia] = useState<{ url: string; caption?: string; title?: string } | null>(null);
@@ -328,61 +329,99 @@ export const FanHub: React.FC<FanHubProps> = ({
     setTimeout(() => setCopiedHandle(null), 2000);
   };
 
-  // Category matching helper (handles Actor, Duo, Everyone)
+  // Category matching helper
   const matchCategory = (actorValue: string, filter: string) => {
     if (!filter || filter === 'all') return true;
     const norm = (actorValue || '').toLowerCase();
     if (filter === 'everyone') {
-      return norm === 'everyone' || norm === 'avocean';
+      return norm === 'everyone';
     }
     if (filter === 'duo') {
-      return norm === 'duo' || norm === 'jimmysea';
-    }
-    if (filter === 'actor') {
-      return norm === 'actor' || norm === 'jimmy' || norm === 'sea';
+      return norm === 'duo' || norm === 'jimmysea' || norm === 'jimmy_avocean' || norm === 'sea_avocean';
     }
     return norm === filter.toLowerCase();
   };
 
-  // Category badge with JimmySea purple-blue and Everyone purple-blue-green gradient & dynamic owner icons
+  // Category badge with original member icons:
+  // Everyone: 🥑🌊💚 | Duo: 🥑🌊, 🥑💚, 🌊💚 | Jimmy: 🥑 | Sea: 🌊 | Avocean: 💚
   const renderCategoryBadge = (actor: string) => {
     const norm = (actor || '').toLowerCase();
-    if (norm === 'everyone' || norm === 'avocean') {
+
+    // Everyone: 🥑🌊💚
+    if (norm === 'everyone') {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xs tracking-wider border border-white/20">
-          <span>{categoryIcons.everyone || '🥑'}</span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xs tracking-wider border border-white/20">
+          <span className="tracking-tight text-xs">🥑🌊💚</span>
           <span>EVERYONE</span>
         </span>
       );
     }
-    if (norm === 'duo' || norm === 'jimmysea') {
+
+    // Duo — Jimmy + Avocean: 🥑💚
+    if (norm === 'jimmy_avocean' || norm === 'duo_jimmy_avocean') {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 shadow-xs tracking-wider border border-white/20">
-          <span>{categoryIcons.duo || '🤝'}</span>
-          <span>DUO</span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 to-emerald-500 shadow-xs tracking-wider border border-white/20">
+          <span className="tracking-tight text-xs">🥑💚</span>
+          <span>DUO (JIMMY + AVOCEAN)</span>
         </span>
       );
     }
+
+    // Duo — Sea + Avocean: 🌊💚
+    if (norm === 'sea_avocean' || norm === 'duo_sea_avocean') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-sky-500 to-emerald-500 shadow-xs tracking-wider border border-white/20">
+          <span className="tracking-tight text-xs">🌊💚</span>
+          <span>DUO (SEA + AVOCEAN)</span>
+        </span>
+      );
+    }
+
+    // Duo — JimmySea: 🥑🌊
+    if (norm === 'duo' || norm === 'jimmysea') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 shadow-xs tracking-wider border border-white/20">
+          <span className="tracking-tight text-xs">🥑🌊</span>
+          <span>DUO (JIMMYSEA)</span>
+        </span>
+      );
+    }
+
+    // Jimmy: 🥑
     if (norm === 'jimmy') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-          <span>{categoryIcons.jimmy || '🩺'}</span>
-          <span>ACTOR (JIMMY)</span>
+          <span>🥑</span>
+          <span>JIMMY</span>
         </span>
       );
     }
+
+    // Sea: 🌊
     if (norm === 'sea') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-          <span>{categoryIcons.sea || '🌊'}</span>
-          <span>ACTOR (SEA)</span>
+          <span>🌊</span>
+          <span>SEA</span>
         </span>
       );
     }
+
+    // Avocean: 💚
+    if (norm === 'avocean') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+          <span>💚</span>
+          <span>AVOCEAN</span>
+        </span>
+      );
+    }
+
+    // Default fallback: Everyone 🥑🌊💚
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-        <span>{categoryIcons.actor || '🎭'}</span>
-        <span>ACTOR</span>
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xs tracking-wider border border-white/20">
+        <span className="tracking-tight text-xs">🥑🌊💚</span>
+        <span>EVERYONE</span>
       </span>
     );
   };
@@ -397,9 +436,9 @@ export const FanHub: React.FC<FanHubProps> = ({
     )
   ).map((str) => JSON.parse(str));
 
-  // Filtered fan clubs
+  // Filtered fan clubs (filtered by top member filter, country, and search)
   const filteredFanClubs = fanClubs.filter((club) => {
-    if (directoryActorFilter !== 'all' && !matchCategory(club.actor, directoryActorFilter)) {
+    if (!matchesActiveMembers(club.actor)) {
       return false;
     }
     if (directoryCountryFilter !== 'all' && club.countryCode !== directoryCountryFilter) {
@@ -417,12 +456,12 @@ export const FanHub: React.FC<FanHubProps> = ({
     return true;
   });
 
-  // Filtered food support projects
+  // Filtered food support projects (filtered by top member filter, status, and search)
   const filteredProjects = foodProjects.filter((proj) => {
-    if (supportStatusFilter !== 'all' && proj.status !== supportStatusFilter) {
+    if (!matchesActiveMembers(proj.actor)) {
       return false;
     }
-    if (supportActorFilter !== 'all' && !matchCategory(proj.actor, supportActorFilter)) {
+    if (supportStatusFilter !== 'all' && proj.status !== supportStatusFilter) {
       return false;
     }
     if (supportSearch.trim()) {
@@ -593,56 +632,8 @@ export const FanHub: React.FC<FanHubProps> = ({
               )}
             </div>
 
-            {/* Filter Pills */}
+            {/* Filter & Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Category Filter Pills: All | Actor | Duo | Everyone */}
-              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                {(
-                  [
-                    { key: 'all', label: 'All Fan Clubs' },
-                    { key: 'actor', label: `${categoryIcons.actor || '🎭'} Actor` },
-                    { key: 'duo', label: `${categoryIcons.duo || '🤝'} Duo` },
-                    { key: 'everyone', label: `${categoryIcons.everyone || '🥑'} Everyone` }
-                  ] as { key: FanClubActor; label: string }[]
-                ).map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setDirectoryActorFilter(opt.key)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      directoryActorFilter === opt.key
-                        ? opt.key === 'everyone'
-                          ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-xs font-extrabold'
-                          : opt.key === 'duo'
-                          ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 text-white shadow-xs font-extrabold'
-                          : opt.key === 'actor'
-                          ? 'bg-purple-600 text-white shadow-xs font-extrabold'
-                          : 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-
-                {/* Owner: Edit category icons button */}
-                {isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTempCategoryIcons({ ...categoryIcons });
-                      setIsIconModalOpen(true);
-                    }}
-                    className="ml-1 px-2 py-1 rounded-lg text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/60 transition-colors cursor-pointer flex items-center gap-1"
-                    title="Owner: Edit & Choose Category Icons"
-                  >
-                    <Settings className="w-3 h-3 text-purple-600" />
-                    <span>Edit Icons</span>
-                  </button>
-                )}
-              </div>
-
-
               {/* Country Select */}
               <select
                 value={directoryCountryFilter}
@@ -657,6 +648,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                   </option>
                 ))}
               </select>
+
 
               {/* Add Club Button (Admin / Owner) */}
               {canEdit && (
@@ -688,20 +680,54 @@ export const FanHub: React.FC<FanHubProps> = ({
           </div>
 
           {/* Clubs Grid */}
-          {filteredFanClubs.length === 0 ? (
+          {fanClubs.length === 0 ? (
+            <div className="bg-white/85 dark:bg-slate-900/85 rounded-3xl p-12 text-center border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
+              <Globe className="w-12 h-12 text-purple-400 dark:text-purple-500 animate-pulse" />
+              <h3 className="text-base sm:text-lg font-bold text-[#1A3668] dark:text-white">
+                No Fan Clubs Added Yet
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+                The directory is completely clear and ready! Admins and the owner can start adding official fan clubs from Thailand, Philippines, Japan, Vietnam, and worldwide.
+              </p>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingClub({
+                      id: `fc-${Date.now()}`,
+                      name: '',
+                      actor: 'everyone',
+                      countryCode: 'TH',
+                      countryName: 'Thailand',
+                      flagEmoji: '🇹🇭',
+                      description: '',
+                      handle: '',
+                      isOfficialOrVerified: true,
+                      socials: [{ platform: 'x', label: 'X (Twitter)', url: '' }]
+                    });
+                    setIsClubModalOpen(true);
+                  }}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add First Fan Club</span>
+                </button>
+              )}
+            </div>
+          ) : filteredFanClubs.length === 0 ? (
             <div className="bg-white/80 dark:bg-slate-900/80 rounded-3xl p-12 text-center border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
               <Globe className="w-10 h-10 text-slate-300 dark:text-slate-600" />
               <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
                 No Fan Clubs found
               </h3>
               <p className="text-xs text-slate-400 max-w-sm">
-                Try searching with a different country name or reset your actor filter.
+                Try searching with a different country name or reset your search.
               </p>
               <button
                 type="button"
                 onClick={() => {
                   setDirectorySearch('');
-                  setDirectoryActorFilter('all');
                   setDirectoryCountryFilter('all');
                 }}
                 className="px-4 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
@@ -716,10 +742,16 @@ export const FanHub: React.FC<FanHubProps> = ({
 
                 const normActor = (club.actor || '').toLowerCase();
                 const fallbackBannerClass =
-                  normActor === 'everyone' || normActor === 'avocean'
+                  normActor === 'everyone'
                     ? 'bg-gradient-to-r from-purple-700 via-sky-600 to-emerald-600'
                     : normActor === 'duo' || normActor === 'jimmysea'
                     ? 'bg-gradient-to-r from-purple-700 via-indigo-600 to-sky-600'
+                    : normActor === 'jimmy_avocean' || normActor === 'duo_jimmy_avocean'
+                    ? 'bg-gradient-to-r from-purple-700 to-emerald-600'
+                    : normActor === 'sea_avocean' || normActor === 'duo_sea_avocean'
+                    ? 'bg-gradient-to-r from-sky-600 to-emerald-600'
+                    : normActor === 'avocean'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-700'
                     : normActor === 'sea'
                     ? 'bg-gradient-to-r from-sky-600 to-blue-700'
                     : 'bg-gradient-to-r from-purple-800 to-indigo-700';
@@ -1035,53 +1067,6 @@ export const FanHub: React.FC<FanHubProps> = ({
                 ))}
               </div>
 
-              {/* Category Filter: All | Actor | Duo | Everyone */}
-              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                {(
-                  [
-                    { key: 'all', label: 'All Categories' },
-                    { key: 'actor', label: `${categoryIcons.actor || '🎭'} Actor` },
-                    { key: 'duo', label: `${categoryIcons.duo || '🤝'} Duo` },
-                    { key: 'everyone', label: `${categoryIcons.everyone || '🥑'} Everyone` }
-                  ] as { key: FanClubActor; label: string }[]
-                ).map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setSupportActorFilter(opt.key)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      supportActorFilter === opt.key
-                        ? opt.key === 'everyone'
-                          ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-xs font-extrabold'
-                          : opt.key === 'duo'
-                          ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 text-white shadow-xs font-extrabold'
-                          : opt.key === 'actor'
-                          ? 'bg-purple-600 text-white shadow-xs font-extrabold'
-                          : 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-
-                {/* Owner: Edit category icons button */}
-                {isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTempCategoryIcons({ ...categoryIcons });
-                      setIsIconModalOpen(true);
-                    }}
-                    className="ml-1 px-2 py-1 rounded-lg text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/60 transition-colors cursor-pointer flex items-center gap-1"
-                    title="Owner: Edit & Choose Category Icons"
-                  >
-                    <Settings className="w-3 h-3 text-purple-600" />
-                    <span>Edit Icons</span>
-                  </button>
-                )}
-              </div>
-
 
               {/* Add Project Button (Admin / Owner) */}
               {canEdit && (
@@ -1337,11 +1322,74 @@ export const FanHub: React.FC<FanHubProps> = ({
 
                       {/* GOAL & PROGRESS BAR */}
                       <div className="space-y-2 p-3.5 rounded-2xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700">
-                        <div className="flex items-center justify-between text-xs font-bold">
-                          <span className="text-slate-500 dark:text-slate-400">Project Goal:</span>
-                          <span className="text-sm font-extrabold text-[#1A3668] dark:text-white">
-                            {proj.currentAmount.toLocaleString()} / {proj.targetAmount.toLocaleString()} {proj.currency}
-                          </span>
+                        <div className="flex items-center justify-between text-xs font-bold gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500 dark:text-slate-400">Project Goal:</span>
+                            {canEdit && editingAmountProjId !== proj.id && (
+                              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hidden sm:inline">
+                                (Click amount to type)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            {editingAmountProjId === proj.id ? (
+                              <div className="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/80 px-2 py-0.5 rounded-xl border border-purple-300 dark:border-purple-600 shadow-xs">
+                                <input
+                                  type="number"
+                                  autoFocus
+                                  value={inlineAmountText}
+                                  onChange={(e) => setInlineAmountText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineAmount(proj);
+                                    if (e.key === 'Escape') setEditingAmountProjId(null);
+                                  }}
+                                  className="w-24 sm:w-28 px-2 py-0.5 text-xs font-black text-[#1A3668] dark:text-white bg-white dark:bg-slate-900 border border-purple-400 rounded-lg focus:outline-none"
+                                  placeholder="New total"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveInlineAmount(proj)}
+                                  className="p-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs"
+                                  title="Save new amount"
+                                >
+                                  <Check className="w-3 h-3 stroke-[3]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingAmountProjId(null)}
+                                  className="p-1 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-600 dark:text-slate-300 cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingAmountProjId(proj.id);
+                                      setInlineAmountText(String(proj.currentAmount));
+                                    }}
+                                    className="group/amt inline-flex items-center gap-1 font-extrabold text-sm text-[#1A3668] dark:text-white hover:text-purple-600 dark:hover:text-purple-300 px-1.5 py-0.5 rounded-lg hover:bg-purple-100/70 dark:hover:bg-purple-900/50 border border-transparent hover:border-purple-300 dark:hover:border-purple-600 transition-all cursor-pointer"
+                                    title="Click to type updated total amount directly"
+                                  >
+                                    <span>{proj.currentAmount.toLocaleString()}</span>
+                                    <Edit2 className="w-3 h-3 text-purple-500 opacity-70 group-hover/amt:opacity-100 transition-opacity" />
+                                  </button>
+                                ) : (
+                                  <span className="text-sm font-extrabold text-[#1A3668] dark:text-white">
+                                    {proj.currentAmount.toLocaleString()}
+                                  </span>
+                                )}
+                                <span className="text-sm font-extrabold text-[#1A3668] dark:text-white">
+                                  / {proj.targetAmount.toLocaleString()} {proj.currency}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Visual Progress Bar */}
@@ -1456,12 +1504,14 @@ export const FanHub: React.FC<FanHubProps> = ({
                               type="button"
                               onClick={() => {
                                 setDonationModalProject(proj);
-                                setAdditionalDonationAmount('');
+                                setModalAmountValue(String(proj.currentAmount));
+                                setModalAmountMode('total');
                               }}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold cursor-pointer flex items-center gap-1"
                               title="Update raised amount"
                             >
-                              + Add Funds
+                              <Edit2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              <span>Update Amount</span>
                             </button>
                           )}
                           <button
@@ -1560,11 +1610,13 @@ export const FanHub: React.FC<FanHubProps> = ({
                     onChange={(e) => setEditingClub({ ...editingClub, actor: e.target.value as any })}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
                   >
-                    <option value="everyone">{categoryIcons.everyone || '🥑'} Everyone (Jimmy + Sea + Avocean)</option>
-                    <option value="duo">{categoryIcons.duo || '🤝'} Duo (JimmySea)</option>
-                    <option value="actor">{categoryIcons.actor || '🎭'} Actor (Solo)</option>
-                    <option value="jimmy">{categoryIcons.jimmy || '🩺'} Actor — Jimmy Jitaraphol</option>
-                    <option value="sea">{categoryIcons.sea || '🌊'} Actor — Sea Tawinan</option>
+                    <option value="everyone">🥑🌊💚 Everyone (Jimmy + Sea + Avocean)</option>
+                    <option value="duo">🥑🌊 Duo — JimmySea (Jimmy + Sea)</option>
+                    <option value="jimmy_avocean">🥑💚 Duo — Jimmy + Avocean</option>
+                    <option value="sea_avocean">🌊💚 Duo — Sea + Avocean</option>
+                    <option value="jimmy">🥑 Jimmy Jitaraphol</option>
+                    <option value="sea">🌊 Sea Tawinan</option>
+                    <option value="avocean">💚 Avocean</option>
                   </select>
                 </div>
 
@@ -1916,11 +1968,13 @@ export const FanHub: React.FC<FanHubProps> = ({
                     onChange={(e) => setEditingProject({ ...editingProject, actor: e.target.value as any })}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
                   >
-                    <option value="everyone">{categoryIcons.everyone || '🥑'} Everyone (Jimmy + Sea + Avocean)</option>
-                    <option value="duo">{categoryIcons.duo || '🤝'} Duo (JimmySea)</option>
-                    <option value="actor">{categoryIcons.actor || '🎭'} Actor (Solo)</option>
-                    <option value="jimmy">{categoryIcons.jimmy || '🩺'} Actor — Jimmy</option>
-                    <option value="sea">{categoryIcons.sea || '🌊'} Actor — Sea</option>
+                    <option value="everyone">🥑🌊💚 Everyone (Jimmy + Sea + Avocean)</option>
+                    <option value="duo">🥑🌊 Duo — JimmySea (Jimmy + Sea)</option>
+                    <option value="jimmy_avocean">🥑💚 Duo — Jimmy + Avocean</option>
+                    <option value="sea_avocean">🌊💚 Duo — Sea + Avocean</option>
+                    <option value="jimmy">🥑 Jimmy Jitaraphol</option>
+                    <option value="sea">🌊 Sea Tawinan</option>
+                    <option value="avocean">💚 Avocean</option>
                   </select>
                 </div>
                 <div>
@@ -2318,29 +2372,93 @@ export const FanHub: React.FC<FanHubProps> = ({
       {donationModalProject && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-5 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-bold text-[#1A3668] dark:text-white mb-1">
-              Add Funds to Project
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 truncate">
-              {donationModalProject.title}
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                Update Raised Funds
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDonationModalProject(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 truncate">
+              {donationModalProject.title} (Goal: {donationModalProject.targetAmount.toLocaleString()} {donationModalProject.currency})
             </p>
+
+            {/* Mode Tabs: Set Total vs Add Funds */}
+            <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 mb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalAmountMode('total');
+                  setModalAmountValue(String(donationModalProject.currentAmount));
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  modalAmountMode === 'total'
+                    ? 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                New Total Amount
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalAmountMode('add');
+                  setModalAmountValue('');
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  modalAmountMode === 'add'
+                    ? 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                + Add Amount
+              </button>
+            </div>
 
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Amount to Add ({donationModalProject.currency})
+                  {modalAmountMode === 'total'
+                    ? `New Total Raised Amount (${donationModalProject.currency})`
+                    : `Amount to Add to Total (${donationModalProject.currency})`}
                 </label>
                 <input
                   type="number"
-                  min="1"
-                  value={additionalDonationAmount}
-                  onChange={(e) => setAdditionalDonationAmount(e.target.value)}
-                  placeholder="e.g. 2500"
+                  min="0"
+                  value={modalAmountValue}
+                  onChange={(e) => setModalAmountValue(e.target.value)}
+                  placeholder={modalAmountMode === 'total' ? String(donationModalProject.currentAmount) : 'e.g. 2500'}
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm font-bold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3">
+              {/* Quick shortcut pills */}
+              {modalAmountMode === 'add' ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-slate-400">Quick add:</span>
+                  {[500, 1000, 2500, 5000].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setModalAmountValue(String(amt))}
+                      className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-purple-100 dark:hover:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                    >
+                      +{amt.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 font-medium">
+                  Current: <strong>{donationModalProject.currentAmount.toLocaleString()} {donationModalProject.currency}</strong>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setDonationModalProject(null)}
@@ -2351,27 +2469,31 @@ export const FanHub: React.FC<FanHubProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const add = Number(additionalDonationAmount);
-                    if (add > 0) {
-                      const updatedAmount = donationModalProject.currentAmount + add;
+                    const entered = Number(modalAmountValue);
+                    if (!isNaN(entered) && entered >= 0) {
+                      const newTotal = modalAmountMode === 'total' ? entered : donationModalProject.currentAmount + entered;
                       const nextStatus: ProjectStatus =
-                        updatedAmount >= donationModalProject.targetAmount && donationModalProject.status === 'open'
+                        newTotal >= donationModalProject.targetAmount && donationModalProject.status === 'open'
                           ? 'reached'
+                          : newTotal < donationModalProject.targetAmount && donationModalProject.status === 'reached'
+                          ? 'open'
                           : donationModalProject.status;
 
                       onSaveFoodProject({
                         ...donationModalProject,
-                        currentAmount: updatedAmount,
+                        currentAmount: newTotal,
                         status: nextStatus
                       });
-                      showToast(`Added ${add.toLocaleString()} ${donationModalProject.currency} to project!`);
+                      showToast(`Updated raised amount to ${newTotal.toLocaleString()} ${donationModalProject.currency}!`);
+                      setDonationModalProject(null);
+                    } else {
+                      showToast('Please enter a valid amount');
                     }
-                    setDonationModalProject(null);
                   }}
                   style={{ backgroundColor: currentAccent.colorHex }}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer"
                 >
-                  Add Funds
+                  Save Amount
                 </button>
               </div>
             </div>
@@ -2413,278 +2535,7 @@ export const FanHub: React.FC<FanHubProps> = ({
           </div>
         </div>
       )}
-      {/* ============================================================== */}
-      {/* MODAL: CUSTOMIZE CATEGORY ICONS (OWNER ONLY)                   */}
-      {/* ============================================================== */}
-      {isIconModalOpen && isOwner && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-lg p-5 sm:p-6 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
-              <div className="flex items-center gap-2">
-                <Smile className="w-5 h-5 text-purple-600" />
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-[#1A3668] dark:text-white">
-                    Edit & Choose Category Icons
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Owner Settings: Customize icons for filters, pills, and dropdowns
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsIconModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="space-y-4">
-              {/* Category 1: Everyone */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1A3668] dark:text-white">
-                    🥑 Everyone (Jimmy + Sea + Avocean)
-                  </span>
-                  <span className="text-sm">{tempCategoryIcons.everyone}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={tempCategoryIcons.everyone}
-                    onChange={(e) =>
-                      setTempCategoryIcons({ ...tempCategoryIcons, everyone: e.target.value })
-                    }
-                    placeholder="e.g. 🥑"
-                    className="w-16 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-base font-bold text-[#1A3668] dark:text-white"
-                  />
-                  <div className="flex-1 flex items-center gap-1.5 flex-wrap">
-                    {['🥑', '💜', '💚', '🌈', '🌟', '✨', '👑', '🥟', '🍀', '🪐'].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() =>
-                          setTempCategoryIcons({ ...tempCategoryIcons, everyone: emoji })
-                        }
-                        className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-transform hover:scale-115 ${
-                          tempCategoryIcons.everyone === emoji
-                            ? 'bg-purple-200 dark:bg-purple-900 ring-2 ring-purple-500'
-                            : 'bg-white dark:bg-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Category 2: Duo */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1A3668] dark:text-white">
-                    🤝 Duo (JimmySea)
-                  </span>
-                  <span className="text-sm">{tempCategoryIcons.duo}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={tempCategoryIcons.duo}
-                    onChange={(e) =>
-                      setTempCategoryIcons({ ...tempCategoryIcons, duo: e.target.value })
-                    }
-                    placeholder="e.g. 🤝"
-                    className="w-16 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-base font-bold text-[#1A3668] dark:text-white"
-                  />
-                  <div className="flex-1 flex items-center gap-1.5 flex-wrap">
-                    {['🤝', '💜💙', '💜', '💙', '🤞', '🫂', '💫', '🪐', '🌙'].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => setTempCategoryIcons({ ...tempCategoryIcons, duo: emoji })}
-                        className={`h-7 px-1.5 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-transform hover:scale-115 ${
-                          tempCategoryIcons.duo === emoji
-                            ? 'bg-purple-200 dark:bg-purple-900 ring-2 ring-purple-500'
-                            : 'bg-white dark:bg-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Category 3: Actor (Solo) */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1A3668] dark:text-white">
-                    🎭 Actor (Solo)
-                  </span>
-                  <span className="text-sm">{tempCategoryIcons.actor}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={tempCategoryIcons.actor}
-                    onChange={(e) =>
-                      setTempCategoryIcons({ ...tempCategoryIcons, actor: e.target.value })
-                    }
-                    placeholder="e.g. 🎭"
-                    className="w-16 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-base font-bold text-[#1A3668] dark:text-white"
-                  />
-                  <div className="flex-1 flex items-center gap-1.5 flex-wrap">
-                    {['🎭', '🎬', '🌟', '⭐', '🎤', '🏆', '💎'].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => setTempCategoryIcons({ ...tempCategoryIcons, actor: emoji })}
-                        className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-transform hover:scale-115 ${
-                          tempCategoryIcons.actor === emoji
-                            ? 'bg-purple-200 dark:bg-purple-900 ring-2 ring-purple-500'
-                            : 'bg-white dark:bg-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Category 4: Actor — Jimmy */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1A3668] dark:text-white">
-                    🩺 Actor — Jimmy Jitaraphol
-                  </span>
-                  <span className="text-sm">{tempCategoryIcons.jimmy}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={tempCategoryIcons.jimmy}
-                    onChange={(e) =>
-                      setTempCategoryIcons({ ...tempCategoryIcons, jimmy: e.target.value })
-                    }
-                    placeholder="e.g. 🩺"
-                    className="w-16 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-base font-bold text-[#1A3668] dark:text-white"
-                  />
-                  <div className="flex-1 flex items-center gap-1.5 flex-wrap">
-                    {['🩺', '🦊', '💜', '💊', '👨‍⚕️', '👑', '🏥'].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => setTempCategoryIcons({ ...tempCategoryIcons, jimmy: emoji })}
-                        className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-transform hover:scale-115 ${
-                          tempCategoryIcons.jimmy === emoji
-                            ? 'bg-purple-200 dark:bg-purple-900 ring-2 ring-purple-500'
-                            : 'bg-white dark:bg-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Category 5: Actor — Sea */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1A3668] dark:text-white">
-                    🌊 Actor — Sea Tawinan
-                  </span>
-                  <span className="text-sm">{tempCategoryIcons.sea}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={tempCategoryIcons.sea}
-                    onChange={(e) =>
-                      setTempCategoryIcons({ ...tempCategoryIcons, sea: e.target.value })
-                    }
-                    placeholder="e.g. 🌊"
-                    className="w-16 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-base font-bold text-[#1A3668] dark:text-white"
-                  />
-                  <div className="flex-1 flex items-center gap-1.5 flex-wrap">
-                    {['🌊', '💙', '🏸', '🏄', '🐬', '🏖️', '🫧'].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => setTempCategoryIcons({ ...tempCategoryIcons, sea: emoji })}
-                        className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-transform hover:scale-115 ${
-                          tempCategoryIcons.sea === emoji
-                            ? 'bg-purple-200 dark:bg-purple-900 ring-2 ring-purple-500'
-                            : 'bg-white dark:bg-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Preview of Badges */}
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 space-y-1.5">
-                <span className="block text-[11px] font-bold text-slate-500">Live Preview:</span>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xs">
-                    <span>{tempCategoryIcons.everyone || '🥑'}</span>
-                    <span>EVERYONE</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 shadow-xs">
-                    <span>{tempCategoryIcons.duo || '🤝'}</span>
-                    <span>DUO</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-100 text-indigo-700">
-                    <span>{tempCategoryIcons.actor || '🎭'}</span>
-                    <span>ACTOR</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-purple-100 text-purple-700">
-                    <span>{tempCategoryIcons.jimmy || '🩺'}</span>
-                    <span>JIMMY</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 text-sky-700">
-                    <span>{tempCategoryIcons.sea || '🌊'}</span>
-                    <span>SEA</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={resetCategoryIcons}
-                  className="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-rose-500 cursor-pointer"
-                >
-                  Reset Defaults
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsIconModalOpen(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => saveCategoryIcons(tempCategoryIcons)}
-                    style={{ backgroundColor: currentAccent.colorHex }}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer"
-                  >
-                    Save Category Icons
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

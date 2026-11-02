@@ -13,6 +13,18 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Fan Clubs Directory: Publicly readable; writable for directory management
+    match /fan_clubs/{clubId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Food Support Projects: Publicly readable; writable for food project management
+    match /food_projects/{projectId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Fan Messages: Anyone can create a message; readable and manageable
     match /fan_messages/{messageId} {
       allow create: if request.resource.data.message is string;

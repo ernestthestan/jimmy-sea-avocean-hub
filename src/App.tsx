@@ -82,6 +82,12 @@ import {
   sendFanMessageToFirestore,
   updateFanMessageInFirestore,
   deleteFanMessageFromFirestore,
+  subscribeToFanClubs,
+  saveFanClubToFirestore,
+  deleteFanClubFromFirestore,
+  subscribeToFoodProjects,
+  saveFoodProjectToFirestore,
+  deleteFoodProjectFromFirestore,
   onQuotaExceededChange,
   type LiveStats
 } from './lib/firestoreSync';
@@ -1367,25 +1373,27 @@ export default function App() {
   // --- Fan Clubs Directory & Food Support State ---
   const [fanClubs, setFanClubs] = useState<FanClub[]>(() => {
     try {
-      const saved = localStorage.getItem('avocean_fan_clubs_v2') || localStorage.getItem('avocean_fan_clubs_v1');
-      if (saved) {
-        const parsed: FanClub[] = JSON.parse(saved);
-        if (parsed.some((c) => c.actor === 'everyone' || c.actor === 'avocean')) {
-          return parsed;
-        }
+      const saved = localStorage.getItem('avocean_fan_clubs_v3');
+      if (saved !== null) {
+        const sampleClubPrefixes = ['fc-avocean-', 'fc-js-', 'fc-jimmy-', 'fc-sea-'];
+        const filtered = (JSON.parse(saved) as FanClub[]).filter(
+          (c) => !sampleClubPrefixes.some((p) => c.id?.startsWith(p))
+        );
+        return filtered;
       }
     } catch {}
-    return INITIAL_FAN_CLUBS;
+    return [];
   });
 
   const [foodProjects, setFoodProjects] = useState<FoodSupportProject[]>(() => {
     try {
-      const saved = localStorage.getItem('avocean_food_projects_v2') || localStorage.getItem('avocean_food_projects_v1');
-      if (saved) {
-        const parsed: FoodSupportProject[] = JSON.parse(saved);
-        if (parsed.some((p) => p.actor === 'everyone' || p.actor === 'avocean')) {
-          return parsed;
-        }
+      const isInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
+      const saved = localStorage.getItem('avocean_food_projects_v3');
+      if (saved !== null) {
+        return JSON.parse(saved);
+      }
+      if (isInit) {
+        return [];
       }
     } catch {}
     return INITIAL_FOOD_SUPPORT_PROJECTS;
@@ -1396,10 +1404,12 @@ export default function App() {
       const exists = prev.some((c) => c.id === club.id);
       const next = exists ? prev.map((c) => (c.id === club.id ? club : c)) : [club, ...prev];
       try {
-        localStorage.setItem('avocean_fan_clubs_v2', JSON.stringify(next));
+        localStorage.setItem('avocean_fan_clubs_v3', JSON.stringify(next));
+        localStorage.setItem('avocean_fanhub_initialized', 'true');
       } catch {}
       return next;
     });
+    saveFanClubToFirestore(club);
     showToast(`Fan club "${club.name}" saved!`);
   };
 
@@ -1407,10 +1417,12 @@ export default function App() {
     setFanClubs((prev) => {
       const next = prev.filter((c) => c.id !== clubId);
       try {
-        localStorage.setItem('avocean_fan_clubs_v2', JSON.stringify(next));
+        localStorage.setItem('avocean_fan_clubs_v3', JSON.stringify(next));
+        localStorage.setItem('avocean_fanhub_initialized', 'true');
       } catch {}
       return next;
     });
+    deleteFanClubFromFirestore(clubId);
     showToast('Fan club removed from directory.');
   };
 
@@ -1419,10 +1431,12 @@ export default function App() {
       const exists = prev.some((p) => p.id === project.id);
       const next = exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
       try {
-        localStorage.setItem('avocean_food_projects_v2', JSON.stringify(next));
+        localStorage.setItem('avocean_food_projects_v3', JSON.stringify(next));
+        localStorage.setItem('avocean_fanhub_initialized', 'true');
       } catch {}
       return next;
     });
+    saveFoodProjectToFirestore(project);
     showToast(`Food support project "${project.title}" saved!`);
   };
 
@@ -1430,10 +1444,12 @@ export default function App() {
     setFoodProjects((prev) => {
       const next = prev.filter((p) => p.id !== projectId);
       try {
-        localStorage.setItem('avocean_food_projects_v2', JSON.stringify(next));
+        localStorage.setItem('avocean_food_projects_v3', JSON.stringify(next));
+        localStorage.setItem('avocean_fanhub_initialized', 'true');
       } catch {}
       return next;
     });
+    deleteFoodProjectFromFirestore(projectId);
     showToast('Food support project removed.');
   };
 
@@ -1739,6 +1755,20 @@ export default function App() {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  // Real-Time Fan Clubs & Food Projects Sync from Firestore across all devices
+  useEffect(() => {
+    const unsubClubs = subscribeToFanClubs(INITIAL_FAN_CLUBS, (cloudClubs) => {
+      setFanClubs(cloudClubs);
+    });
+    const unsubProjects = subscribeToFoodProjects(INITIAL_FOOD_SUPPORT_PROJECTS, (cloudProjects) => {
+      setFoodProjects(cloudProjects);
+    });
+    return () => {
+      unsubClubs();
+      unsubProjects();
+    };
   }, []);
 
   useEffect(() => {
@@ -5120,6 +5150,7 @@ export default function App() {
           onSaveFoodProject={handleSaveFoodProject}
           onDeleteFoodProject={handleDeleteFoodProject}
           showToast={showToast}
+          activeMemberIds={activeMemberIds}
         />
       )}
 

@@ -1,21 +1,23 @@
 export type FanClubActor =
   | 'all'
-  | 'actor'
   | 'duo'
   | 'everyone'
   | 'jimmysea'
   | 'jimmy'
   | 'sea'
-  | 'avocean';
+  | 'avocean'
+  | 'jimmy_avocean'
+  | 'sea_avocean';
 
 export type ClubCategory =
-  | 'actor'
   | 'duo'
   | 'everyone'
   | 'jimmysea'
   | 'jimmy'
   | 'sea'
-  | 'avocean';
+  | 'avocean'
+  | 'jimmy_avocean'
+  | 'sea_avocean';
 
 export type SocialPlatform = 'x' | 'instagram' | 'tiktok' | 'facebook' | 'line' | 'discord' | 'youtube' | 'weibo' | 'web';
 
@@ -88,13 +90,5 @@ export interface FoodSupportProject {
   updatedAt?: string;
 }
 
-export interface CategoryIconsConfig {
-  everyone: string;
-  duo: string;
-  actor: string;
-  jimmy: string;
-  sea: string;
-  avocean: string;
-}
 
 
