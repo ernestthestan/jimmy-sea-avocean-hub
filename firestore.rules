@@ -27,7 +27,8 @@ service cloud.firestore {
 
     // Fan Messages: Anyone can create a message; readable and manageable across all devices
     match /fan_messages/{messageId} {
-      allow read, write: if true;
+      allow read, delete: if true;
+      allow create, update: if messageId != 'test-msg-1793660834733' && !messageId.matches('^temp-test.*');
     }
 
     // Admin & Owner Accounts: Secure email/password credentials and profile records

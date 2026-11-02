@@ -1683,6 +1683,10 @@ export default function App() {
   // Active photo index for events with multiple posters/photos (eventId -> photoIndex)
   const [activePhotoIndexByEvent, setActivePhotoIndexByEvent] = useState<Record<string, number>>({});
 
+  // Viewer & Inbox message modal states
+  const [leaveMessageModalOpen, setLeaveMessageModalOpen] = useState<boolean>(false);
+  const [inboxModalOpen, setInboxModalOpen] = useState<boolean>(false);
+
   // Extended Event Description states (Reader modal & card view expand)
   const [descriptionModalEvent, setDescriptionModalEvent] = useState<ScheduleEvent | null>(null);
   const [descriptionModalFontSize, setDescriptionModalFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
@@ -1693,6 +1697,14 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (inboxModalOpen) {
+          setInboxModalOpen(false);
+          return;
+        }
+        if (leaveMessageModalOpen) {
+          setLeaveMessageModalOpen(false);
+          return;
+        }
         if (descriptionModalEvent) {
           setDescriptionModalEvent(null);
           return;
@@ -1719,7 +1731,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enlargedPhoto, descriptionModalEvent]);
+  }, [enlargedPhoto, descriptionModalEvent, inboxModalOpen, leaveMessageModalOpen]);
 
   // --- Personal Accent Color Choice (Purple, Blue, Green) ---
   const [accentColor, setAccentColor] = useState<AccentChoice>(() => {
@@ -1824,12 +1836,28 @@ export default function App() {
   }, []);
 
   // --- "Leave a message" State (Viewers submit; only Admin & Owner can read) ---
-  const [leaveMessageModalOpen, setLeaveMessageModalOpen] = useState<boolean>(false);
-  const [inboxModalOpen, setInboxModalOpen] = useState<boolean>(false);
+  const INITIAL_FAN_MESSAGES: FanMessage[] = useMemo(
+    () => [
+      {
+        id: 'msg-sample-1',
+        senderName: 'PolcaAvocean',
+        eventTitle: 'JimmySea Special Live Stream on GMMTV Official',
+        eventDate: '2026-11-08',
+        sourceUrl: 'https://x.com/gmmtvofficial',
+        message: 'Hi admins & owner! Official GMMTV account just posted that Jimmy and Sea will be guests for an online shopping live stream next Sunday at 19:00 BKK. Could you add it to the schedule? 🥑🌊',
+        createdAt: '2026-10-27T10:30:00Z',
+        isRead: false
+      }
+    ],
+    []
+  );
+
   const [fanMessages, setFanMessages] = useState<FanMessage[]>(() => {
     try {
+      const isInit = localStorage.getItem('avocean_inbox_initialized') === 'true';
       const saved = localStorage.getItem('avocean_fan_messages_v1');
-      if (saved) return JSON.parse(saved);
+      if (saved !== null) return JSON.parse(saved);
+      if (isInit) return [];
     } catch {}
     return [
       {
@@ -1850,52 +1878,11 @@ export default function App() {
   const [isSendingMessage, setIsSendingMessage] = useState<boolean>(false);
 
   useEffect(() => {
-    // Initial push of any pending messages from localStorage to Firestore
-    try {
-      const saved = localStorage.getItem('avocean_fan_messages_v1');
-      if (saved) {
-        const parsed: FanMessage[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((m) => {
-            if (m.id && m.message && !m.id.startsWith('msg-sample-')) {
-              sendFanMessageToFirestore(m).catch((e) =>
-                console.warn('Initial push of local message failed:', e)
-              );
-            }
-          });
-        }
-      }
-    } catch {}
-
-    const unsubscribe = subscribeToFanMessages((cloudMsgs) => {
-      if (Array.isArray(cloudMsgs)) {
-        setFanMessages((prev) => {
-          // Identify any local messages not yet registered in cloud
-          const cloudIds = new Set(cloudMsgs.map((m) => m.id));
-          const unsynced = prev.filter(
-            (m) => !m.id.startsWith('msg-sample-') && !cloudIds.has(m.id)
-          );
-
-          // Push unsynced messages to Firestore
-          unsynced.forEach((m) => {
-            sendFanMessageToFirestore(m).catch((e) =>
-              console.warn('Syncing pending message to Firestore failed:', e)
-            );
-          });
-
-          const combined = [...cloudMsgs, ...unsynced];
-          combined.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-
-          try {
-            localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(combined));
-          } catch {}
-
-          return combined;
-        });
-      }
+    const unsubscribe = subscribeToFanMessages(INITIAL_FAN_MESSAGES, (cloudMsgs) => {
+      setFanMessages(cloudMsgs);
     });
     return () => unsubscribe();
-  }, []);
+  }, [INITIAL_FAN_MESSAGES]);
 
   // Real-Time Fan Clubs & Food Projects Sync from Firestore across all devices
   useEffect(() => {
@@ -2045,7 +2032,13 @@ export default function App() {
 
   const handleDeleteMessage = async (id: string) => {
     if (!window.confirm('Delete this message from the Inbox?')) return;
-    setFanMessages((prev) => prev.filter((m) => m.id !== id));
+    setFanMessages((prev) => {
+      const updated = prev.filter((m) => m.id !== id);
+      try {
+        localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     try {
       await deleteFanMessageFromFirestore(id);
       showToast('Message removed');
@@ -7436,8 +7429,21 @@ export default function App() {
       {/* MODAL: SECURE EMAIL & PASSWORD LOGIN & ADMIN REGISTRATION       */}
       {/* ============================================================== */}
       {loginModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+        <div
+          onClick={() => {
+            setLoginModalOpen(false);
+            setLoginError('');
+            setRegError('');
+            setLoginPasswordInput('');
+            setRegPasswordInput('');
+            setRegConfirmPasswordInput('');
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+          >
             {/* Top Close & Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
@@ -8243,8 +8249,14 @@ export default function App() {
       {/* MODAL 2: CUSTOMIZE BANNER, GREETING & MEMBER PILLS (OWNER)     */}
       {/* ============================================================== */}
       {settingsModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto border border-slate-100 dark:border-slate-800">
+        <div
+          onClick={() => setSettingsModalOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto border border-slate-100 dark:border-slate-800 cursor-default"
+          >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-[#1A3668] dark:text-white">
                 Customize Banner, Header & Members
@@ -8967,8 +8979,14 @@ export default function App() {
       {/* MODAL 4: LEAVE A MESSAGE (VIEWERS & FANS)                       */}
       {/* ============================================================== */}
       {leaveMessageModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+        <div
+          onClick={() => setLeaveMessageModalOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+          >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-2xl bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 flex items-center justify-center">
@@ -9115,8 +9133,14 @@ export default function App() {
       {/* MODAL 5: INBOX (ADMINS & OWNER ONLY)                           */}
       {/* ============================================================== */}
       {inboxModalOpen && canEditEvents && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+        <div
+          onClick={() => setInboxModalOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+          >
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center">

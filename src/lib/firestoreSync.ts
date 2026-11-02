@@ -409,8 +409,24 @@ export async function saveSettingsToFirestore(settings: AppSettings): Promise<vo
 /**
  * 4. REAL-TIME FAN MESSAGES SYNC
  */
-export function subscribeToFanMessages(onUpdate: (messages: FanMessage[]) => void) {
+export function subscribeToFanMessages(
+  initialSampleMessages: FanMessage[],
+  onUpdate: (messages: FanMessage[]) => void
+) {
   if (isQuotaExceeded) {
+    try {
+      const isInit = localStorage.getItem('avocean_inbox_initialized') === 'true';
+      const saved = localStorage.getItem('avocean_fan_messages_v1');
+      if (saved !== null) {
+        onUpdate(JSON.parse(saved));
+        return () => {};
+      }
+      if (isInit) {
+        onUpdate([]);
+        return () => {};
+      }
+    } catch {}
+    onUpdate(initialSampleMessages);
     return () => {};
   }
 
@@ -418,18 +434,64 @@ export function subscribeToFanMessages(onUpdate: (messages: FanMessage[]) => voi
 
   const unsubscribe = onSnapshot(
     messagesCol,
-    (snapshot) => {
+    async (snapshot) => {
       const msgs: FanMessage[] = [];
       snapshot.forEach((d) => {
-        msgs.push(d.data() as FanMessage);
+        if (d.id !== 'test-msg-1793660834733') {
+          msgs.push(d.data() as FanMessage);
+        }
       });
       // Sort newest first
-      msgs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      onUpdate(msgs);
+      msgs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      if (snapshot.empty || msgs.length === 0) {
+        try {
+          const metaSnap = await getDoc(doc(db, 'settings', 'inbox_meta')).catch(() => null);
+          const isMetaInit = metaSnap?.exists();
+          const isLocalInit = localStorage.getItem('avocean_inbox_initialized') === 'true';
+
+          if (isMetaInit || isLocalInit) {
+            // Intentionally empty (admin/owner deleted all messages)
+            onUpdate([]);
+            try {
+              localStorage.setItem('avocean_fan_messages_v1', '[]');
+            } catch {}
+            return;
+          }
+
+          // First-time seed only
+          if (initialSampleMessages && initialSampleMessages.length > 0) {
+            onUpdate(initialSampleMessages);
+            try {
+              localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(initialSampleMessages));
+              localStorage.setItem('avocean_inbox_initialized', 'true');
+              await setDoc(doc(db, 'settings', 'inbox_meta'), { initialized: true });
+              for (const m of initialSampleMessages) {
+                await setDoc(doc(db, 'fan_messages', m.id), sanitizeForFirestore(m));
+              }
+            } catch (e) {}
+          }
+        } catch {
+          onUpdate([]);
+        }
+      } else {
+        onUpdate(msgs);
+        try {
+          localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(msgs));
+          localStorage.setItem('avocean_inbox_initialized', 'true');
+        } catch {}
+      }
     },
     (err: any) => {
       if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
         notifyQuotaExceeded();
+        try {
+          const saved = localStorage.getItem('avocean_fan_messages_v1');
+          if (saved !== null) {
+            onUpdate(JSON.parse(saved));
+            return;
+          }
+        } catch {}
       } else {
         console.warn('Fan messages listener error:', err);
       }
@@ -454,7 +516,9 @@ export async function fetchFanMessagesFromFirestore(): Promise<FanMessage[]> {
     const snapshot = await getDocs(messagesCol);
     const msgs: FanMessage[] = [];
     snapshot.forEach((d) => {
-      msgs.push(d.data() as FanMessage);
+      if (d.id !== 'test-msg-1793660834733') {
+        msgs.push(d.data() as FanMessage);
+      }
     });
     msgs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     try {
@@ -472,9 +536,14 @@ export async function fetchFanMessagesFromFirestore(): Promise<FanMessage[]> {
 }
 
 export async function sendFanMessageToFirestore(msg: FanMessage): Promise<void> {
+  if (msg.id === 'test-msg-1793660834733') return;
   if (isQuotaExceeded) {
     throw new Error('Cloud messaging is temporarily paused due to free quota limit. Please try again tomorrow.');
   }
+  try {
+    localStorage.setItem('avocean_inbox_initialized', 'true');
+    await setDoc(doc(db, 'settings', 'inbox_meta'), { initialized: true }, { merge: true });
+  } catch {}
   const msgRef = doc(db, 'fan_messages', msg.id);
   const clean = sanitizeForFirestore(msg);
   await setDoc(msgRef, clean);
@@ -488,8 +557,17 @@ export async function updateFanMessageInFirestore(id: string, updates: Partial<F
 }
 
 export async function deleteFanMessageFromFirestore(id: string): Promise<void> {
+  try {
+    localStorage.setItem('avocean_inbox_initialized', 'true');
+    const local = localStorage.getItem('avocean_fan_messages_v1');
+    if (local) {
+      const parsed: FanMessage[] = JSON.parse(local);
+      localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(parsed.filter((m) => m.id !== id)));
+    }
+  } catch {}
   if (isQuotaExceeded) return;
   try {
+    await setDoc(doc(db, 'settings', 'inbox_meta'), { initialized: true }, { merge: true });
     const msgRef = doc(db, 'fan_messages', id);
     await deleteDoc(msgRef);
   } catch (error: any) {
@@ -733,7 +811,11 @@ export interface AdminAccount {
 }
 
 export const normalizeAccountEmail = (email: string): string => {
-  return email.trim().toLowerCase();
+  const clean = email.trim().toLowerCase();
+  if (clean === 'ernestthestan' || clean === 'ernest') {
+    return 'ernestthestan@gmail.com';
+  }
+  return clean;
 };
 
 export const DEFAULT_ACCOUNTS: Record<string, AdminAccount> = {
