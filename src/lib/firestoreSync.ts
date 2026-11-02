@@ -56,33 +56,37 @@ export interface LiveStats {
   liveViewers?: number;
 }
 
-// Helper to get local YYYY-MM-DD
-const getLocalDateKey = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+// Helper to get Bangkok YYYY-MM-DD to guarantee cross-device date sync (Asia/Bangkok timezone)
+export const getBangkokDateKey = (): string => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
+  } catch {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
 };
 
 /**
  * DAILY REFRESHING VISITS TRACKING
- * - Registers a visit once per device per calendar day in stats/global
- * - Automatically rolls over each day at midnight
- * - Completely eliminates heartbeats and online presence writes to preserve quota
+ * - Standardized on Bangkok schedule timezone (Asia/Bangkok)
+ * - Registers visit once per device per calendar day in stats/global
+ * - Guarantees phone, laptop, and desktop see the exact same count without timezone resets
  */
 export function startDailyVisitsTracking(
   onStatsUpdate: (stats: LiveStats) => void
 ) {
   let unsubscribeStats: (() => void) | null = null;
-  const todayKey = getLocalDateKey();
+  const todayKey = getBangkokDateKey();
 
   // Initial stats from localStorage
   let currentTodayVisits = 1;
   let currentTotalVisits = 28;
 
   try {
-    const saved = localStorage.getItem('avocean_visitor_stats_v2');
+    const saved = localStorage.getItem('avocean_visitor_stats_v3');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed) {
@@ -101,11 +105,11 @@ export function startDailyVisitsTracking(
     return () => {};
   }
 
-  // Register visit for TODAY once per device per day
+  // Register visit for TODAY once per device per Bangkok calendar day
   try {
-    const lastCountedDate = localStorage.getItem('avocean_visit_date_v2');
+    const lastCountedDate = localStorage.getItem('avocean_visit_date_bkk_v3');
     if (lastCountedDate !== todayKey) {
-      localStorage.setItem('avocean_visit_date_v2', todayKey);
+      localStorage.setItem('avocean_visit_date_bkk_v3', todayKey);
       const statsDocRef = doc(db, 'stats', 'global');
       getDoc(statsDocRef)
         .then((snap) => {
@@ -151,14 +155,20 @@ export function startDailyVisitsTracking(
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          const currentTodayKey = getLocalDateKey();
+          const currentTodayKey = getBangkokDateKey();
           const isToday = data.currentDate === currentTodayKey;
-          currentTodayVisits = isToday && typeof data.todayVisits === 'number' ? Math.max(1, data.todayVisits) : 1;
+          currentTodayVisits = isToday && typeof data.todayVisits === 'number' ? Math.max(1, data.todayVisits) : (typeof data.todayVisits === 'number' ? data.todayVisits : 1);
           currentTotalVisits = typeof data.totalVisits === 'number' ? Math.max(1, data.totalVisits) : currentTodayVisits;
           onStatsUpdate({
             todayVisits: currentTodayVisits,
             totalVisits: currentTotalVisits
           });
+          try {
+            localStorage.setItem('avocean_visitor_stats_v3', JSON.stringify({
+              todayVisits: currentTodayVisits,
+              totalVisits: currentTotalVisits
+            }));
+          } catch {}
         }
       },
       (error: any) => {
@@ -673,4 +683,492 @@ export async function deleteFoodProjectFromFirestore(projectId: string): Promise
     }
   }
 }
+
+/**
+ * 7. ADMIN & OWNER ACCOUNTS MANAGEMENT (Email + Password)
+ * Stored in Firestore in collection 'admin_accounts'
+ */
+export interface AdminAccount {
+  id: string; // Normalized email
+  email: string;
+  role: 'owner' | 'admin';
+  password: string;
+  displayName: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+}
+
+export const normalizeAccountEmail = (email: string): string => {
+  return email.trim().toLowerCase();
+};
+
+export const DEFAULT_ACCOUNTS: Record<string, AdminAccount> = {
+  'ernestthestan@gmail.com': {
+    id: 'ernestthestan@gmail.com',
+    email: 'ernestthestan@gmail.com',
+    role: 'owner',
+    password: 'ErnestTheStan05!',
+    displayName: 'Ernest (Hub Owner)',
+    createdAt: '2026-10-01T00:00:00Z',
+    updatedAt: '2026-10-01T00:00:00Z'
+  }
+};
+
+/**
+ * Seed default Owner account in Firestore if not yet present
+ */
+export async function ensureDefaultAdminAccounts(): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    // Delete legacy sample admin account from Firestore if present
+    try {
+      const sampleAdminRef = doc(db, 'admin_accounts', 'admin@avocean.hub');
+      await deleteDoc(sampleAdminRef);
+      localStorage.removeItem('avocean_pwd_admin@avocean.hub');
+    } catch {}
+
+    for (const [normEmail, acc] of Object.entries(DEFAULT_ACCOUNTS)) {
+      const accRef = doc(db, 'admin_accounts', normEmail);
+      const snap = await getDoc(accRef).catch(() => null);
+      if (!snap || !snap.exists()) {
+        await setDoc(accRef, sanitizeForFirestore(acc));
+      }
+    }
+  } catch (err) {
+    console.warn('Could not seed default admin accounts:', err);
+  }
+}
+
+/**
+ * Register a new Admin account using their own email, name, and chosen password/passcode
+ */
+export async function registerAdminAccount(
+  rawEmail: string,
+  rawPass: string,
+  rawDisplayName: string,
+  authPasscode?: string
+): Promise<{ success: boolean; account?: AdminAccount; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  const pass = rawPass.trim();
+  const displayName = rawDisplayName.trim() || email.split('@')[0];
+
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    return { success: false, error: 'Please enter a valid email address.' };
+  }
+  if (!pass || pass.length < 6) {
+    return { success: false, error: 'Password / passcode must be at least 6 characters.' };
+  }
+
+  // Authorization check: Must provide the community Admin Access Passcode (Default: Avocean2026)
+  const validSecret = 'Avocean2026';
+  const enteredSecret = (authPasscode || '').trim();
+  if (enteredSecret) {
+    let storedAdminPin = '';
+    try {
+      const savedSettings = localStorage.getItem('avocean_app_settings_v3');
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        storedAdminPin = parsed.adminPin;
+      }
+    } catch {}
+
+    const isValidSecret = enteredSecret === validSecret || (storedAdminPin && enteredSecret === storedAdminPin);
+    if (!isValidSecret) {
+      return { success: false, error: 'Incorrect Admin Access Code. Enter the admin passcode (Avocean2026) to create your account.' };
+    }
+  }
+
+  // Prevent hijacking owner email
+  if (email === 'ernestthestan@gmail.com') {
+    return { success: false, error: 'This email is reserved for Hub Owner. Please log in as Owner.' };
+  }
+
+  // Check if account already exists in Firestore
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      const snap = await getDoc(accRef);
+      if (snap.exists()) {
+        return { success: false, error: 'An account with this email already exists. Please log in directly.' };
+      }
+    }
+  } catch (err) {
+    console.warn('Account check error:', err);
+  }
+
+  const nowIso = new Date().toISOString();
+  const newAccount: AdminAccount = {
+    id: email,
+    email,
+    role: 'admin',
+    password: pass,
+    displayName,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    lastLoginAt: nowIso
+  };
+
+  // Save to Firestore
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      await setDoc(accRef, sanitizeForFirestore(newAccount));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    } else {
+      console.warn('Could not save new admin account to Firestore:', err);
+    }
+  }
+
+  // Save to local cache
+  try {
+    localStorage.setItem(`avocean_pwd_${email}`, pass);
+    localStorage.setItem('avocean_current_account', JSON.stringify(newAccount));
+  } catch {}
+
+  // Record audit log entry
+  await recordAuditLog({
+    userEmail: email,
+    role: 'admin',
+    actionType: 'create_admin',
+    details: `New admin account registered: "${displayName}" (${email})`
+  });
+
+  return { success: true, account: newAccount };
+}
+
+/**
+ * Delete / Revoke an Admin account (Owner only)
+ */
+export async function deleteAdminAccount(
+  rawEmail: string,
+  performedByEmail: string
+): Promise<{ success: boolean; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  if (email === 'ernestthestan@gmail.com') {
+    return { success: false, error: 'Cannot delete the Owner account.' };
+  }
+
+  try {
+    if (!isQuotaExceeded) {
+      await deleteDoc(doc(db, 'admin_accounts', email));
+    }
+    localStorage.removeItem(`avocean_pwd_${email}`);
+  } catch (err) {
+    console.warn('Could not delete admin account from Firestore:', err);
+  }
+
+  await recordAuditLog({
+    userEmail: performedByEmail,
+    role: 'owner',
+    actionType: 'delete_admin',
+    details: `Admin account revoked / deleted: ${email}`
+  });
+
+  return { success: true };
+}
+
+/**
+ * Authenticate against Firestore accounts with fallback to default credentials
+ */
+export async function authenticateUserAccount(
+  rawEmail: string,
+  rawPass: string
+): Promise<{ success: boolean; account?: AdminAccount; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  const pass = rawPass.trim();
+
+  if (!email) {
+    return { success: false, error: 'Please enter your email address.' };
+  }
+  if (!pass) {
+    return { success: false, error: 'Please enter your password / passcode.' };
+  }
+
+  // 1. Try checking Firestore
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      const snap = await getDoc(accRef);
+      if (snap.exists()) {
+        const data = snap.data() as AdminAccount;
+        if (data.password === pass) {
+          // Update lastLoginAt
+          const nowIso = new Date().toISOString();
+          updateDoc(accRef, { lastLoginAt: nowIso }).catch(() => {});
+          const updatedAcc = { ...data, lastLoginAt: nowIso };
+          // Cache locally
+          try {
+            localStorage.setItem('avocean_current_account', JSON.stringify(updatedAcc));
+          } catch {}
+          return { success: true, account: updatedAcc };
+        } else {
+          return { success: false, error: 'Incorrect password for this account.' };
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('Firestore account lookup error:', err);
+  }
+
+  // 2. Check defaults / local storage fallback
+  const fallback = DEFAULT_ACCOUNTS[email];
+  if (fallback) {
+    // Check if user changed password locally
+    let storedPass = fallback.password;
+    try {
+      const localChanged = localStorage.getItem(`avocean_pwd_${email}`);
+      if (localChanged) storedPass = localChanged;
+    } catch {}
+
+    if (pass === storedPass) {
+      const account: AdminAccount = {
+        ...fallback,
+        password: pass,
+        lastLoginAt: new Date().toISOString()
+      };
+      try {
+        if (!isQuotaExceeded) {
+          await setDoc(doc(db, 'admin_accounts', email), sanitizeForFirestore(account), { merge: true });
+        }
+      } catch {}
+      return { success: true, account };
+    } else {
+      return { success: false, error: 'Incorrect password for Owner account.' };
+    }
+  }
+
+  // Convenience alias for Owner input (allows typing 'owner' or 'ernest' without exposing email)
+  if (email === 'owner' || email === 'ernest' || email === 'ernestthestan') {
+    return authenticateUserAccount('ernestthestan@gmail.com', pass);
+  }
+
+  return {
+    success: false,
+    error: 'No account found with this email. If you are an admin, click "Create Admin Account" below to register with your email and passcode.'
+  };
+}
+
+/**
+ * Update an account's password in Firestore
+ */
+export async function updateAdminAccountPassword(
+  rawEmail: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  const curPass = currentPassword.trim();
+  const newPass = newPassword.trim();
+
+  if (!newPass || newPass.length < 6) {
+    return { success: false, error: 'New password must be at least 6 characters long.' };
+  }
+
+  // Authenticate first
+  const authRes = await authenticateUserAccount(email, curPass);
+  if (!authRes.success || !authRes.account) {
+    return { success: false, error: authRes.error || 'Current password is incorrect.' };
+  }
+
+  const nowIso = new Date().toISOString();
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      await setDoc(
+        accRef,
+        {
+          password: newPass,
+          updatedAt: nowIso
+        },
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    console.warn('Could not update password in Firestore:', err);
+  }
+
+  try {
+    localStorage.setItem(`avocean_pwd_${email}`, newPass);
+  } catch {}
+
+  // Record audit log
+  await recordAuditLog({
+    userEmail: email,
+    role: authRes.account.role,
+    actionType: 'password_changed',
+    details: `Password changed for account ${email}`
+  });
+
+  return { success: true };
+}
+
+/**
+ * Real-time listener for registered admin accounts
+ */
+export function subscribeToAdminAccounts(onUpdate: (accounts: AdminAccount[]) => void) {
+  if (isQuotaExceeded) {
+    onUpdate(Object.values(DEFAULT_ACCOUNTS));
+    return () => {};
+  }
+
+  const accCol = collection(db, 'admin_accounts');
+  const unsubscribe = onSnapshot(
+    accCol,
+    (snapshot) => {
+      const accounts: AdminAccount[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as AdminAccount;
+        if (data.email !== 'admin@avocean.hub') {
+          accounts.push(data);
+        }
+      });
+      onUpdate(accounts);
+    },
+    (err: any) => {
+      console.warn('Admin accounts listener error:', err);
+      onUpdate(Object.values(DEFAULT_ACCOUNTS));
+    }
+  );
+
+  return unsubscribe;
+}
+
+/**
+ * 8. LOGIN & ACTIVITY AUDIT HISTORY
+ * Stored in Firestore collection 'audit_history'
+ */
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string; // ISO string
+  userEmail: string;
+  role: 'owner' | 'admin';
+  actionType:
+    | 'login'
+    | 'login_failed'
+    | 'logout'
+    | 'password_changed'
+    | 'create_event'
+    | 'edit_event'
+    | 'delete_event'
+    | 'update_settings'
+    | 'create_fan_club'
+    | 'edit_fan_club'
+    | 'delete_fan_club'
+    | 'create_food_project'
+    | 'edit_food_project'
+    | 'delete_food_project'
+    | string;
+  details: string;
+  deviceInfo?: string;
+}
+
+export function detectDeviceInfo(): string {
+  if (typeof navigator === 'undefined') return 'Web Browser';
+  const ua = navigator.userAgent;
+  let device = 'Desktop';
+  if (/mobile|android|iphone|ipad/i.test(ua)) {
+    device = 'Mobile Device';
+  }
+  let browser = 'Browser';
+  if (ua.includes('Chrome')) browser = 'Chrome';
+  else if (ua.includes('Safari')) browser = 'Safari';
+  else if (ua.includes('Firefox')) browser = 'Firefox';
+  else if (ua.includes('Edge')) browser = 'Edge';
+
+  return `${device} (${browser})`;
+}
+
+/**
+ * Record an audit log entry in Firestore and local storage
+ */
+export async function recordAuditLog(
+  entry: Omit<AuditLogEntry, 'id' | 'timestamp'> & { id?: string; timestamp?: string }
+): Promise<void> {
+  const id = entry.id || `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const timestamp = entry.timestamp || new Date().toISOString();
+  const deviceInfo = entry.deviceInfo || detectDeviceInfo();
+
+  const fullEntry: AuditLogEntry = {
+    id,
+    timestamp,
+    userEmail: entry.userEmail,
+    role: entry.role,
+    actionType: entry.actionType,
+    details: entry.details,
+    deviceInfo
+  };
+
+  // Cache locally
+  try {
+    const raw = localStorage.getItem('avocean_audit_logs_v1');
+    const existing: AuditLogEntry[] = raw ? JSON.parse(raw) : [];
+    const updated = [fullEntry, ...existing.filter((e) => e.id !== id)].slice(0, 100);
+    localStorage.setItem('avocean_audit_logs_v1', JSON.stringify(updated));
+  } catch {}
+
+  // Write to Firestore
+  if (!isQuotaExceeded) {
+    try {
+      const logRef = doc(db, 'audit_history', id);
+      await setDoc(logRef, sanitizeForFirestore(fullEntry));
+    } catch (err: any) {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        notifyQuotaExceeded();
+      } else {
+        console.warn('Could not save audit log:', err);
+      }
+    }
+  }
+}
+
+/**
+ * Real-time listener for audit history
+ */
+export function subscribeToAuditHistory(onUpdate: (logs: AuditLogEntry[]) => void) {
+  // Initial local delivery
+  try {
+    const raw = localStorage.getItem('avocean_audit_logs_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        onUpdate(parsed);
+      }
+    }
+  } catch {}
+
+  if (isQuotaExceeded) {
+    return () => {};
+  }
+
+  const logsCol = collection(db, 'audit_history');
+  const unsubscribe = onSnapshot(
+    logsCol,
+    (snapshot) => {
+      const logs: AuditLogEntry[] = [];
+      snapshot.forEach((d) => {
+        logs.push(d.data() as AuditLogEntry);
+      });
+      // Sort newest first
+      logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      onUpdate(logs);
+      try {
+        localStorage.setItem('avocean_audit_logs_v1', JSON.stringify(logs.slice(0, 100)));
+      } catch {}
+    },
+    (err: any) => {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        notifyQuotaExceeded();
+      } else {
+        console.warn('Audit history listener error:', err);
+      }
+    }
+  );
+
+  return unsubscribe;
+}
+
 

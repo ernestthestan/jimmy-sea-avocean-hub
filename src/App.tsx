@@ -89,7 +89,18 @@ import {
   saveFoodProjectToFirestore,
   deleteFoodProjectFromFirestore,
   onQuotaExceededChange,
-  type LiveStats
+  ensureDefaultAdminAccounts,
+  authenticateUserAccount,
+  registerAdminAccount,
+  deleteAdminAccount,
+  subscribeToAdminAccounts,
+  updateAdminAccountPassword,
+  recordAuditLog,
+  subscribeToAuditHistory,
+  getBangkokDateKey,
+  type LiveStats,
+  type AdminAccount,
+  type AuditLogEntry
 } from './lib/firestoreSync';
 import {
   TRANSLATION_LANGUAGES,
@@ -1322,22 +1333,57 @@ export default function App() {
   const isAdmin = userRole === 'admin';
   const canEditEvents = isOwner || isAdmin;
 
-  // Login Modal State (Distinct Owner and Admin logins)
-  const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
-  const [loginRoleTab, setLoginRoleTab] = useState<'admin' | 'owner'>('owner');
-  const [loginPinInput, setLoginPinInput] = useState<string>('');
-  const [loginPinError, setLoginPinError] = useState<string>('');
-  const [showLoginPin, setShowLoginPin] = useState<boolean>(false);
+  // Current Logged-in User Account State (Email & Password Auth)
+  const [currentAccount, setCurrentAccount] = useState<AdminAccount | null>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_current_account');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
-  // Dedicated Passcode Management Modal State (Owner can manage both Owner & Admin codes)
-  const [changePasscodeModalOpen, setChangePasscodeModalOpen] = useState<boolean>(false);
-  const [passcodeModalTab, setPasscodeModalTab] = useState<'owner' | 'admin'>('owner');
-  const [currentOwnerPinCheck, setCurrentOwnerPinCheck] = useState<string>('');
-  const [newOwnerPinInput, setNewOwnerPinInput] = useState<string>('');
-  const [confirmOwnerPinInput, setConfirmOwnerPinInput] = useState<string>('');
-  const [newAdminPinInput, setNewAdminPinInput] = useState<string>('');
-  const [passcodeError, setPasscodeError] = useState<string>('');
-  const [showPasscodeField, setShowPasscodeField] = useState<boolean>(false);
+  const currentUserEmail = currentAccount?.email || (userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'visitor');
+
+  // Login & Admin Registration Modal State
+  const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
+  const [loginMode, setLoginMode] = useState<'signin' | 'register'>('signin');
+  const [loginRoleTab, setLoginRoleTab] = useState<'admin' | 'owner'>('owner');
+  const [loginEmailInput, setLoginEmailInput] = useState<string>('');
+  const [loginPasswordInput, setLoginPasswordInput] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
+  const [loginLoading, setLoginLoading] = useState<boolean>(false);
+  const [showLoginPassword, setShowLoginPassword] = useState<boolean>(false);
+
+  // Admin Account Creation (Register with own email and passcodes)
+  const [regEmailInput, setRegEmailInput] = useState<string>('');
+  const [regDisplayNameInput, setRegDisplayNameInput] = useState<string>('');
+  const [regPasswordInput, setRegPasswordInput] = useState<string>('');
+  const [regConfirmPasswordInput, setRegConfirmPasswordInput] = useState<string>('');
+  const [regAdminPasscodeInput, setRegAdminPasscodeInput] = useState<string>('Avocean2026');
+  const [regError, setRegError] = useState<string>('');
+  const [regLoading, setRegLoading] = useState<boolean>(false);
+  const [showRegPassword, setShowRegPassword] = useState<boolean>(false);
+
+  // Registered Admin Accounts List (Real-time Firestore sync)
+  const [registeredAdmins, setRegisteredAdmins] = useState<AdminAccount[]>([]);
+  const [adminAccountsModalOpen, setAdminAccountsModalOpen] = useState<boolean>(false);
+
+  // Change Password Modal State (Admins can change default Avocean2026 to their own; Owner can change ErnestTheStan05!)
+  const [changePasswordModalOpen, setChangePasswordModalOpen] = useState<boolean>(false);
+  const [changePassEmail, setChangePassEmail] = useState<string>('');
+  const [currentPasswordInput, setCurrentPasswordInput] = useState<string>('');
+  const [newPasswordInput, setNewPasswordInput] = useState<string>('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState<string>('');
+  const [passwordError, setPasswordError] = useState<string>('');
+  const [showPasswordField, setShowPasswordField] = useState<boolean>(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState<boolean>(false);
+
+  // Log In & Activity Audit History Modal State
+  const [auditModalOpen, setAuditModalOpen] = useState<boolean>(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditFilterTab, setAuditFilterTab] = useState<'all' | 'logins' | 'events' | 'fanhub' | 'settings'>('all');
+  const [auditSearchQuery, setAuditSearchQuery] = useState<string>('');
 
   // Visitor's Detected Local Timezone (e.g. "Asia/Bangkok", "America/New_York", "Europe/London")
   const userLocalTimezone = useMemo(() => {
@@ -1410,10 +1456,17 @@ export default function App() {
       return next;
     });
     saveFanClubToFirestore(club);
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: userRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'edit_fan_club',
+      details: `Saved fan club "${club.name}" (${club.countryName || 'Global'})`
+    }).catch(() => {});
     showToast(`Fan club "${club.name}" saved!`);
   };
 
   const handleDeleteFanClub = (clubId: string) => {
+    const targetClub = fanClubs.find((c) => c.id === clubId);
     setFanClubs((prev) => {
       const next = prev.filter((c) => c.id !== clubId);
       try {
@@ -1423,6 +1476,12 @@ export default function App() {
       return next;
     });
     deleteFanClubFromFirestore(clubId);
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: userRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'delete_fan_club',
+      details: `Deleted fan club "${targetClub ? targetClub.name : clubId}"`
+    }).catch(() => {});
     showToast('Fan club removed from directory.');
   };
 
@@ -1437,10 +1496,17 @@ export default function App() {
       return next;
     });
     saveFoodProjectToFirestore(project);
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: userRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'edit_food_project',
+      details: `Saved food project "${project.title}" (Progress: ${project.currentAmount.toLocaleString()} / ${project.targetAmount.toLocaleString()} ${project.currency})`
+    }).catch(() => {});
     showToast(`Food support project "${project.title}" saved!`);
   };
 
   const handleDeleteFoodProject = (projectId: string) => {
+    const targetProj = foodProjects.find((p) => p.id === projectId);
     setFoodProjects((prev) => {
       const next = prev.filter((p) => p.id !== projectId);
       try {
@@ -1450,6 +1516,12 @@ export default function App() {
       return next;
     });
     deleteFoodProjectFromFirestore(projectId);
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: userRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'delete_food_project',
+      details: `Deleted food project "${targetProj ? targetProj.title : projectId}"`
+    }).catch(() => {});
     showToast('Food support project removed.');
   };
 
@@ -1680,9 +1752,10 @@ export default function App() {
     };
   });
 
-  // Verify connection to Firestore on boot
+  // Verify connection to Firestore and ensure default accounts on boot
   useEffect(() => {
     testFirestoreConnection();
+    ensureDefaultAdminAccounts();
   }, []);
 
   // Daily Refreshing Visits Sync from Firestore
@@ -1690,7 +1763,7 @@ export default function App() {
     const unsubscribe = startDailyVisitsTracking((stats) => {
       setVisitorStats(stats);
       try {
-        localStorage.setItem('avocean_visitor_stats_v2', JSON.stringify(stats));
+        localStorage.setItem('avocean_visitor_stats_v3', JSON.stringify(stats));
       } catch {}
     });
     return () => unsubscribe();
@@ -1705,6 +1778,22 @@ export default function App() {
       } catch {}
     });
     return () => unsubscribe();
+  }, []);
+
+  // Real-Time Audit History Sync from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToAuditHistory((logs) => {
+      setAuditLogs(logs);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-Time Admin Accounts Sync from Firestore
+  useEffect(() => {
+    const unsub = subscribeToAdminAccounts((accounts) => {
+      setRegisteredAdmins(accounts.filter((a) => a.role === 'admin'));
+    });
+    return () => unsub();
   }, []);
 
   // Ensure detailEvent is always valid and does not reference a deleted event
@@ -1747,14 +1836,34 @@ export default function App() {
     ];
   });
 
-  // Real-Time Fan Messages Sync from Firestore
+  // Real-Time Fan Messages Sync from Firestore across all devices (PC, Laptop, Phone)
   useEffect(() => {
     const unsubscribe = subscribeToFanMessages((cloudMsgs) => {
-      if (cloudMsgs && cloudMsgs.length > 0) {
+      if (Array.isArray(cloudMsgs)) {
         setFanMessages(cloudMsgs);
+        try {
+          localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(cloudMsgs));
+        } catch {}
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  // Push local messages to cloud if any were submitted offline
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('avocean_fan_messages_v1');
+      if (saved) {
+        const parsed: FanMessage[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((m) => {
+            if (m.id && m.message && !m.id.startsWith('msg-sample-')) {
+              sendFanMessageToFirestore(m).catch(() => {});
+            }
+          });
+        }
+      }
+    } catch {}
   }, []);
 
   // Real-Time Fan Clubs & Food Projects Sync from Firestore across all devices
@@ -2225,125 +2334,212 @@ export default function App() {
     }
   }, [userReminders]);
 
-  // Open Login Modal with specific tab
-  const openLoginModal = (targetRole: 'admin' | 'owner' = 'owner') => {
+  // Open Login Modal with specific tab and mode
+  const openLoginModal = (targetRole: 'admin' | 'owner' = 'owner', mode: 'signin' | 'register' = 'signin') => {
+    setLoginMode(mode);
     setLoginRoleTab(targetRole);
-    setLoginPinInput('');
-    setLoginPinError('');
-    setShowLoginPin(false);
+    setLoginEmailInput('');
+    setLoginPasswordInput('');
+    setLoginError('');
+    setShowLoginPassword(false);
+    setRegError('');
+    setRegEmailInput('');
+    setRegDisplayNameInput('');
+    setRegPasswordInput('');
+    setRegConfirmPasswordInput('');
+    setRegAdminPasscodeInput('Avocean2026');
+    setShowRegPassword(false);
     setLoginModalOpen(true);
   };
 
-  // Verify Login for Owner vs Admin
-  const handleVerifyLogin = (e: React.FormEvent) => {
+  // Submit Admin Account Registration (with own email and passcodes)
+  const handleRegisterAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const entered = loginPinInput.trim();
-    const correctOwnerPin = settings.ownerPin || 'ErnestTheStan05!';
-    const correctAdminPin = settings.adminPin || 'Avocean2026';
+    setRegError('');
 
-    if (loginRoleTab === 'owner') {
-      if (entered === correctOwnerPin) {
-        setUserRole('owner');
-        setIsEditMode(true);
-        setLoginModalOpen(false);
-        setLoginPinInput('');
-        setLoginPinError('');
-        showToast('👑 Owner Mode unlocked! Full access granted.');
-      } else if (entered === correctAdminPin) {
-        setLoginPinError('This is the Admin helper passcode. Switch to the Admin tab to log in as Admin.');
-      } else {
-        setLoginPinError('Incorrect Owner passcode. Please try again.');
-      }
-    } else {
-      // Admin role tab
-      if (entered === correctAdminPin) {
+    if (regPasswordInput !== regConfirmPasswordInput) {
+      setRegError('Password and confirmation do not match.');
+      return;
+    }
+    if (regPasswordInput.length < 6) {
+      setRegError('Password / passcode must be at least 6 characters.');
+      return;
+    }
+
+    setRegLoading(true);
+    try {
+      const res = await registerAdminAccount(
+        regEmailInput,
+        regPasswordInput,
+        regDisplayNameInput,
+        regAdminPasscodeInput
+      );
+
+      if (res.success && res.account) {
         setUserRole('admin');
+        setCurrentAccount(res.account);
         setIsEditMode(true);
         setLoginModalOpen(false);
-        setLoginPinInput('');
-        setLoginPinError('');
-        showToast('🛡️ Admin Mode unlocked! You can now add and edit calendar events.');
-      } else if (entered === correctOwnerPin) {
-        // Owner entered master passcode in admin tab
-        setUserRole('owner');
-        setIsEditMode(true);
-        setLoginModalOpen(false);
-        setLoginPinInput('');
-        setLoginPinError('');
-        showToast('👑 Owner passcode recognized! Full Owner Mode unlocked.');
+        setRegEmailInput('');
+        setRegDisplayNameInput('');
+        setRegPasswordInput('');
+        setRegConfirmPasswordInput('');
+        setRegError('');
+
+        try {
+          localStorage.setItem('avocean_current_account', JSON.stringify(res.account));
+          localStorage.setItem(STORAGE_ROLE_KEY, 'admin');
+        } catch {}
+
+        showToast(`🎉 Admin account created! Welcome, ${res.account.displayName}.`);
       } else {
-        setLoginPinError('Incorrect Admin passcode. Please try again.');
+        setRegError(res.error || 'Could not create admin account. Please check your details.');
       }
+    } catch (err: any) {
+      setRegError(err?.message || 'Error creating account. Please try again.');
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
+  // Revoke / Delete Admin Account (Owner only)
+  const handleDeleteAdmin = async (emailToDelete: string) => {
+    if (!isOwner) return;
+    if (!window.confirm(`Revoke and remove admin account "${emailToDelete}"? They will no longer be able to log in.`)) {
+      return;
+    }
+    try {
+      const res = await deleteAdminAccount(emailToDelete, currentUserEmail);
+      if (res.success) {
+        showToast(`Admin account "${emailToDelete}" removed.`);
+      } else {
+        showToast(res.error || 'Could not remove admin account.');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error removing admin account.');
+    }
+  };
+
+  // Verify Login with Email and Password
+  const handleVerifyLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+
+    try {
+      const email = loginEmailInput.trim();
+      const pass = loginPasswordInput.trim();
+      const res = await authenticateUserAccount(email, pass);
+
+      if (res.success && res.account) {
+        setUserRole(res.account.role);
+        setCurrentAccount(res.account);
+        setIsEditMode(true);
+        setLoginModalOpen(false);
+        setLoginPasswordInput('');
+        setLoginError('');
+
+        try {
+          localStorage.setItem('avocean_current_account', JSON.stringify(res.account));
+          localStorage.setItem(STORAGE_ROLE_KEY, res.account.role);
+        } catch {}
+
+        // Audit Log
+        recordAuditLog({
+          userEmail: res.account.email,
+          role: res.account.role,
+          actionType: 'login',
+          details: `Logged in as ${res.account.role === 'owner' ? 'Owner' : 'Admin'} (${res.account.displayName})`
+        }).catch(() => {});
+
+        showToast(
+          res.account.role === 'owner'
+            ? '👑 Owner Mode unlocked! Full access granted.'
+            : '🛡️ Admin Mode unlocked! You can now add and edit calendar events.'
+        );
+      } else {
+        const errorMsg = res.error || 'Invalid email or password.';
+        setLoginError(errorMsg);
+
+        // Audit Log for failed login
+        recordAuditLog({
+          userEmail: email || 'unknown@avocean',
+          role: 'admin',
+          actionType: 'login_failed',
+          details: `Failed login attempt with email "${email}": ${errorMsg}`
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || 'Authentication error. Please try again.');
+    } finally {
+      setLoginLoading(false);
     }
   };
 
   const handleLogout = () => {
+    const prevEmail = currentUserEmail;
+    const prevRole = userRole;
+
+    recordAuditLog({
+      userEmail: prevEmail,
+      role: prevRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'logout',
+      details: `User ${prevEmail} logged out from ${prevRole} session`
+    }).catch(() => {});
+
     setUserRole('visitor');
+    setCurrentAccount(null);
     setIsEditMode(false);
-    showToast('Switched to Visitor View.');
+    try {
+      localStorage.removeItem('avocean_current_account');
+      localStorage.setItem(STORAGE_ROLE_KEY, 'visitor');
+    } catch {}
+    showToast('Logged out. Switched to Visitor View.');
   };
 
-  // Submit Change Owner Passcode
-  const handleChangeOwnerPasscode = (e: React.FormEvent) => {
-    e.preventDefault();
-    const currentSavedOwner = settings.ownerPin || 'ErnestTheStan05!';
-    if (currentOwnerPinCheck.trim() !== currentSavedOwner) {
-      setPasscodeError('Current owner passcode is incorrect.');
-      return;
-    }
-    if (!newOwnerPinInput.trim()) {
-      setPasscodeError('New owner passcode cannot be empty.');
-      return;
-    }
-    if (newOwnerPinInput.trim().length < 4) {
-      setPasscodeError('Passcode should be at least 4 characters long.');
-      return;
-    }
-    if (newOwnerPinInput !== confirmOwnerPinInput) {
-      setPasscodeError('New passcode and confirmation do not match.');
-      return;
-    }
-
-    const updated = newOwnerPinInput.trim();
-    const updatedSettings: AppSettings = { ...settings, ownerPin: updated };
-    setSettings(updatedSettings);
-    setDraftOwnerPin(updated);
-    try {
-      localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
-    } catch {}
-    saveSettingsToFirestore(updatedSettings).catch(() => {});
-    setChangePasscodeModalOpen(false);
-    setCurrentOwnerPinCheck('');
-    setNewOwnerPinInput('');
-    setConfirmOwnerPinInput('');
-    setPasscodeError('');
-    showToast('Owner passcode updated successfully!');
+  // Open Change Password Modal
+  const openChangePasswordModal = (targetEmail?: string) => {
+    const email = targetEmail || currentAccount?.email || '';
+    setChangePassEmail(email);
+    setCurrentPasswordInput('');
+    setNewPasswordInput('');
+    setConfirmPasswordInput('');
+    setPasswordError('');
+    setShowPasswordField(false);
+    setChangePasswordModalOpen(true);
   };
 
-  // Submit Change Admin (Helper) Passcode
-  const handleChangeAdminPasscode = (e: React.FormEvent) => {
+  // Submit Password Change
+  const handleSubmitChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminPinInput.trim()) {
-      setPasscodeError('Admin passcode cannot be empty.');
+    setPasswordError('');
+
+    if (newPasswordInput !== confirmPasswordInput) {
+      setPasswordError('New password and confirmation do not match.');
       return;
     }
-    if (newAdminPinInput.trim().length < 4) {
-      setPasscodeError('Admin passcode should be at least 4 characters long.');
+    if (newPasswordInput.length < 6) {
+      setPasswordError('Password must be at least 6 characters long.');
       return;
     }
 
-    const updated = newAdminPinInput.trim();
-    const updatedSettings: AppSettings = { ...settings, adminPin: updated };
-    setSettings(updatedSettings);
-    setDraftAdminPin(updated);
+    setIsUpdatingPassword(true);
     try {
-      localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
-    } catch {}
-    saveSettingsToFirestore(updatedSettings).catch(() => {});
-    setChangePasscodeModalOpen(false);
-    setNewAdminPinInput('');
-    setPasscodeError('');
-    showToast('Admin helper passcode updated! Share it with your event helpers.');
+      const res = await updateAdminAccountPassword(changePassEmail, currentPasswordInput, newPasswordInput);
+      if (res.success) {
+        setChangePasswordModalOpen(false);
+        setCurrentPasswordInput('');
+        setNewPasswordInput('');
+        setConfirmPasswordInput('');
+        showToast(`Password successfully updated for ${changePassEmail}!`);
+      } else {
+        setPasswordError(res.error || 'Could not update password. Please verify current password.');
+      }
+    } catch (err: any) {
+      setPasswordError(err?.message || 'Error updating password.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   // Toggle Member Filter Pill
@@ -2706,6 +2902,14 @@ export default function App() {
         setDetailEvent(newEvent);
       }
 
+      // Record Audit Log
+      recordAuditLog({
+        userEmail: currentUserEmail,
+        role: userRole === 'owner' ? 'owner' : 'admin',
+        actionType: editingEvent ? 'edit_event' : 'create_event',
+        details: `${editingEvent ? 'Updated' : 'Added'} event "${newEvent.title}" (${newEvent.date}${newEvent.time ? ` at ${newEvent.time}` : ''})`
+      }).catch(() => {});
+
       setSelectedDateStr(formDate);
       setSelectedDayActiveEventId(null);
       const dt = parseDateKey(formDate);
@@ -2730,11 +2934,20 @@ export default function App() {
       }
       return;
     }
+    const targetEv = events.find((ev) => ev.id === eventId);
     const updated = events.filter((ev) => ev.id !== eventId);
     setEvents(updated);
     try {
       localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
     } catch {}
+
+    // Record Audit Log
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: 'owner',
+      actionType: 'delete_event',
+      details: `Deleted event "${targetEv ? targetEv.title : eventId}" (${targetEv ? targetEv.date : ''})`
+    }).catch(() => {});
 
     // Purge translation cache for deleted event
     setTranslationsCache((prev) => {
@@ -3301,6 +3514,12 @@ export default function App() {
     setSettings(updatedSettings);
     localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
     saveSettingsToFirestore(updatedSettings).catch((err) => console.warn('Could not sync settings to Firestore:', err));
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: 'owner',
+      actionType: 'update_settings',
+      details: `Updated hub settings: title="${updatedSettings.bannerTitle}", subtitle="${updatedSettings.bannerSubtitle}", icon="${updatedSettings.websiteIcon}"`
+    }).catch(() => {});
     setSettingsModalOpen(false);
     showToast('Banner, Website Icon & Settings updated!');
   };
@@ -4366,22 +4585,34 @@ export default function App() {
                 <span className="hidden sm:inline">Backup</span>
               </button>
 
+              {/* Activity History Button (Owner & Admins) */}
               <button
-                onClick={() => {
-                  setPasscodeModalTab('owner');
-                  setCurrentOwnerPinCheck('');
-                  setNewOwnerPinInput('');
-                  setConfirmOwnerPinInput('');
-                  setNewAdminPinInput('');
-                  setPasscodeError('');
-                  setShowPasscodeField(false);
-                  setChangePasscodeModalOpen(true);
-                }}
+                onClick={() => setAuditModalOpen(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
-                title="Manage Owner & Admin Passcodes"
+                title="View Log In & Activity Audit History"
+              >
+                <ClipboardList className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span className="hidden sm:inline">Activity History</span>
+              </button>
+
+              {/* Change Password Button */}
+              <button
+                onClick={() => openChangePasswordModal()}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
+                title="Change Account Password"
               >
                 <Key className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span className="hidden sm:inline">Passcodes</span>
+                <span className="hidden sm:inline">Password</span>
+              </button>
+
+              {/* Admin Accounts Management Button (Owner Only) */}
+              <button
+                onClick={() => setAdminAccountsModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
+                title="Manage Registered Admin Accounts"
+              >
+                <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="hidden sm:inline">Admins ({registeredAdmins.length})</span>
               </button>
 
               <button
@@ -4403,6 +4634,26 @@ export default function App() {
             </div>
           ) : isAdmin ? (
             <div className="flex items-center gap-2">
+              {/* Activity History Button for Admin */}
+              <button
+                onClick={() => setAuditModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
+                title="View Log In & Activity Audit History"
+              >
+                <ClipboardList className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="hidden sm:inline">Activity History</span>
+              </button>
+
+              {/* Change Password Button for Admin */}
+              <button
+                onClick={() => openChangePasswordModal()}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
+                title="Change Admin Password"
+              >
+                <Key className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="hidden sm:inline">Password</span>
+              </button>
+
               <button
                 onClick={() => openAddEventModal(selectedDateStr)}
                 style={{ backgroundColor: currentAccent.colorHex }}
@@ -4618,21 +4869,12 @@ export default function App() {
             {isOwner && (
               <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
                 <button
-                  onClick={() => {
-                    setPasscodeModalTab('owner');
-                    setCurrentOwnerPinCheck('');
-                    setNewOwnerPinInput('');
-                    setConfirmOwnerPinInput('');
-                    setNewAdminPinInput('');
-                    setPasscodeError('');
-                    setShowPasscodeField(false);
-                    setChangePasscodeModalOpen(true);
-                  }}
+                  onClick={() => openChangePasswordModal()}
                   className="px-3 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#1A3668] dark:text-white text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center gap-1.5 border border-slate-200/80 dark:border-slate-700"
-                  title="Manage Owner & Admin Passcodes"
+                  title="Change Account Password"
                 >
                   <Key className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span className="hidden sm:inline">Passcodes</span>
+                  <span className="hidden sm:inline">Password</span>
                 </button>
                 <button
                   onClick={openSettingsModal}
@@ -7071,145 +7313,395 @@ export default function App() {
       )}
 
       {/* ============================================================== */}
-      {/* MODAL: SEPARATE OWNER & ADMIN LOGIN MODAL                      */}
+      {/* MODAL: SECURE EMAIL & PASSWORD LOGIN & ADMIN REGISTRATION       */}
       {/* ============================================================== */}
       {loginModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             {/* Top Close & Header */}
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    loginRoleTab === 'owner'
+                  className={`w-9 h-9 rounded-2xl flex items-center justify-center ${
+                    loginMode === 'register'
+                      ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                      : loginRoleTab === 'owner'
                       ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
                       : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
                   }`}
                 >
-                  {loginRoleTab === 'owner' ? <Crown className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                  {loginMode === 'register' ? (
+                    <Sparkles className="w-4 h-4" />
+                  ) : loginRoleTab === 'owner' ? (
+                    <Crown className="w-4 h-4" />
+                  ) : (
+                    <Shield className="w-4 h-4" />
+                  )}
                 </div>
-                <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
-                  {loginRoleTab === 'owner' ? 'Owner Sign In' : 'Admin Sign In'}
-                </h3>
+                <div>
+                  <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                    {loginMode === 'register'
+                      ? 'Create Admin Account'
+                      : loginRoleTab === 'owner'
+                      ? 'Owner Sign In'
+                      : 'Admin Sign In'}
+                  </h3>
+                  <p className="text-[11px] font-semibold text-slate-400">
+                    {loginMode === 'register'
+                      ? 'Use your own email & passcode to join the admin team'
+                      : 'Protected with Email & Password'}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setLoginModalOpen(false);
-                  setLoginPinError('');
-                  setLoginPinInput('');
+                  setLoginError('');
+                  setRegError('');
+                  setLoginPasswordInput('');
+                  setRegPasswordInput('');
+                  setRegConfirmPasswordInput('');
                 }}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Role Switcher Tabs */}
+            {/* Mode Switcher Tabs: Sign In vs Create Admin Account */}
             <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-4">
               <button
                 type="button"
                 onClick={() => {
-                  setLoginRoleTab('owner');
-                  setLoginPinError('');
+                  setLoginMode('signin');
+                  setLoginError('');
+                  setRegError('');
                 }}
                 className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  loginRoleTab === 'owner'
-                    ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs'
+                  loginMode === 'signin'
+                    ? 'bg-white dark:bg-slate-900 text-[#1A3668] dark:text-white shadow-xs'
                     : 'text-[#607494] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
                 }`}
               >
-                <Crown className="w-3.5 h-3.5" />
-                <span>Owner</span>
+                <Key className="w-3.5 h-3.5" />
+                <span>Sign In</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
+                  setLoginMode('register');
                   setLoginRoleTab('admin');
-                  setLoginPinError('');
+                  setLoginError('');
+                  setRegError('');
                 }}
                 className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  loginRoleTab === 'admin'
+                  loginMode === 'register'
                     ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs'
                     : 'text-[#607494] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
                 }`}
               >
-                <Shield className="w-3.5 h-3.5" />
-                <span>Admin (Helpers)</span>
+                <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Create Admin Account</span>
               </button>
             </div>
 
-            <p className="text-xs text-[#607494] dark:text-slate-400 mb-4">
-              {loginRoleTab === 'owner'
-                ? 'Owner has full control to customize the banner, edit members, manage passcodes, and add or delete events.'
-                : 'Admins can add or edit events in the calendar to help keep the schedule up to date.'}
-            </p>
-
-            <form onSubmit={handleVerifyLogin} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                  {loginRoleTab === 'owner' ? 'Owner Passcode' : 'Admin Passcode'}
-                </label>
-                <div className="relative">
-                  <input
-                    type={showLoginPin ? 'text' : 'password'}
-                    required
-                    value={loginPinInput}
-                    onChange={(e) => {
-                      setLoginPinInput(e.target.value);
-                      setLoginPinError('');
-                    }}
-                    placeholder={loginRoleTab === 'owner' ? 'Enter owner passcode' : 'Enter admin passcode'}
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 pr-10 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                    autoFocus
-                  />
+            {loginMode === 'signin' ? (
+              <>
+                {/* Role Switcher Tabs for Sign In */}
+                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-4">
                   <button
                     type="button"
-                    onClick={() => setShowLoginPin(!showLoginPin)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    onClick={() => {
+                      setLoginRoleTab('owner');
+                      setLoginEmailInput('');
+                      setLoginError('');
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      loginRoleTab === 'owner'
+                        ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs'
+                        : 'text-[#607494] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+                    }`}
                   >
-                    {showLoginPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <Crown className="w-3.5 h-3.5" />
+                    <span>Owner</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginRoleTab('admin');
+                      setLoginEmailInput('');
+                      setLoginError('');
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      loginRoleTab === 'admin'
+                        ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs'
+                        : 'text-[#607494] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+                    }`}
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Admin (Helpers)</span>
                   </button>
                 </div>
-                {loginPinError && (
-                  <p className="text-[11px] font-bold text-rose-600 mt-1.5">
-                    {loginPinError}
-                  </p>
-                )}
-              </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginModalOpen(false);
-                    setLoginPinError('');
-                    setLoginPinInput('');
-                  }}
-                  className="px-3.5 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className={`px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all ${
-                    loginRoleTab === 'owner'
-                      ? 'bg-[#7C3AED] hover:bg-[#6D28D9]'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {loginRoleTab === 'owner' ? 'Unlock Owner Access' : 'Unlock Admin Access'}
-                </button>
-              </div>
-            </form>
+                <form onSubmit={handleVerifyLogin} className="space-y-3.5">
+                  {/* Email Address */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={loginEmailInput}
+                      onChange={(e) => {
+                        setLoginEmailInput(e.target.value);
+                        setLoginError('');
+                      }}
+                      placeholder={
+                        loginRoleTab === 'owner'
+                          ? 'Enter Owner email or username'
+                          : 'Enter your registered admin email'
+                      }
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400">
+                        Password / Passcode
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showLoginPassword ? 'text' : 'password'}
+                        required
+                        value={loginPasswordInput}
+                        onChange={(e) => {
+                          setLoginPasswordInput(e.target.value);
+                          setLoginError('');
+                        }}
+                        placeholder="Enter your password / passcode"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {loginError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
+                      {loginError}
+                    </div>
+                  )}
+
+                  {/* Admin Sign Up Callout */}
+                  {loginRoleTab === 'admin' && (
+                    <div className="p-3 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 flex items-center justify-between gap-2">
+                      <div className="text-[11px] font-semibold text-blue-900 dark:text-blue-200">
+                        New admin helper without an account?
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginMode('register');
+                          setLoginError('');
+                          setRegError('');
+                        }}
+                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline shrink-0 cursor-pointer"
+                      >
+                        Create one here →
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginModalOpen(false);
+                        setLoginError('');
+                        setLoginPasswordInput('');
+                      }}
+                      className="px-3.5 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loginLoading}
+                      className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all ${
+                        loginRoleTab === 'owner'
+                          ? 'bg-[#7C3AED] hover:bg-[#6D28D9]'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {loginLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      <span>{loginRoleTab === 'owner' ? 'Sign In as Owner' : 'Sign In as Admin'}</span>
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              /* CREATE ADMIN ACCOUNT REGISTRATION FORM */
+              <form onSubmit={handleRegisterAdmin} className="space-y-3">
+                {/* Admin's Own Email Address */}
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                    Your Email Address <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={regEmailInput}
+                    onChange={(e) => {
+                      setRegEmailInput(e.target.value);
+                      setRegError('');
+                    }}
+                    placeholder="Enter your personal or admin email (e.g. name@gmail.com)"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Admin Display Name */}
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                    Your Name / Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={regDisplayNameInput}
+                    onChange={(e) => setRegDisplayNameInput(e.target.value)}
+                    placeholder="e.g. Sarah (PH Admin) or Admin Alex"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+
+                {/* Chosen Admin Passcode / Password */}
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                    Your Chosen Passcode / Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showRegPassword ? 'text' : 'password'}
+                      required
+                      value={regPasswordInput}
+                      onChange={(e) => {
+                        setRegPasswordInput(e.target.value);
+                        setRegError('');
+                      }}
+                      placeholder="At least 6 characters"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPassword(!showRegPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Confirm Chosen Passcode */}
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                    Confirm Chosen Passcode / Password <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type={showRegPassword ? 'text' : 'password'}
+                    required
+                    value={regConfirmPasswordInput}
+                    onChange={(e) => {
+                      setRegConfirmPasswordInput(e.target.value);
+                      setRegError('');
+                    }}
+                    placeholder="Repeat your chosen passcode"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+
+                {/* Admin Authorization Access Passcode */}
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-[#1A3668] dark:text-slate-200">
+                      Admin Authorization Code
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Default: <code className="font-bold text-blue-600 dark:text-blue-400">Avocean2026</code>
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={regAdminPasscodeInput}
+                    onChange={(e) => setRegAdminPasscodeInput(e.target.value)}
+                    placeholder="Avocean2026"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                  />
+                  <p className="text-[10.5px] font-medium text-[#607494] dark:text-slate-400">
+                    Enter the community admin code to verify your authorization to add and edit events.
+                  </p>
+                </div>
+
+                {regError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
+                    {regError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginMode('signin');
+                      setLoginRoleTab('admin');
+                      setRegError('');
+                      setLoginError('');
+                    }}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    ← Back to Sign In
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLoginModalOpen(false)}
+                      className="px-3.5 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={regLoading}
+                      className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer active:scale-95 transition-all"
+                    >
+                      {regLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      <span>Create & Sign In</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
 
       {/* ============================================================== */}
-      {/* MODAL: PASSCODE MANAGEMENT (OWNER ONLY)                        */}
+      {/* MODAL: CHANGE PASSWORD (ADMIN & OWNER)                         */}
       {/* ============================================================== */}
-      {changePasscodeModalOpen && (
+      {changePasswordModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
@@ -7219,236 +7711,410 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
-                    Passcode Management
+                    Change Password
                   </h3>
                   <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
-                    Manage Owner and Admin security passcodes
+                    Set your own personal password to keep your account safe
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setChangePasscodeModalOpen(false);
-                  setPasscodeError('');
-                  setCurrentOwnerPinCheck('');
-                  setNewOwnerPinInput('');
-                  setConfirmOwnerPinInput('');
-                  setNewAdminPinInput('');
-                }}
+                onClick={() => setChangePasswordModalOpen(false)}
                 className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Passcode Tabs: Owner Code vs Admin Helper Code */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setPasscodeModalTab('owner');
-                  setPasscodeError('');
-                }}
-                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  passcodeModalTab === 'owner'
-                    ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs'
-                    : 'text-[#607494] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-                }`}
-              >
-                <Crown className="w-3.5 h-3.5" />
-                <span>Owner Passcode</span>
-              </button>
+            <form onSubmit={handleSubmitChangePassword} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                  Account Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={changePassEmail}
+                  onChange={(e) => setChangePassEmail(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white"
+                />
+              </div>
 
+              <div>
+                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                  Current Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPasswordField ? 'text' : 'password'}
+                    required
+                    value={currentPasswordInput}
+                    onChange={(e) => {
+                      setCurrentPasswordInput(e.target.value);
+                      setPasswordError('');
+                    }}
+                    placeholder="Enter current password"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordField(!showPasswordField)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPasswordField ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                  New Password
+                </label>
+                <input
+                  type={showPasswordField ? 'text' : 'password'}
+                  required
+                  value={newPasswordInput}
+                  onChange={(e) => {
+                    setNewPasswordInput(e.target.value);
+                    setPasswordError('');
+                  }}
+                  placeholder="Enter new password (at least 6 characters)"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type={showPasswordField ? 'text' : 'password'}
+                  required
+                  value={confirmPasswordInput}
+                  onChange={(e) => {
+                    setConfirmPasswordInput(e.target.value);
+                    setPasswordError('');
+                  }}
+                  placeholder="Confirm new password"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              {passwordError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
+                  {passwordError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordModalOpen(false)}
+                  className="px-4 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all"
+                >
+                  {isUpdatingPassword && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Save New Password</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: REGISTERED ADMIN ACCOUNTS MANAGEMENT (OWNER ONLY)       */}
+      {/* ============================================================== */}
+      {adminAccountsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg p-6 max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                    Registered Admin Accounts
+                  </h3>
+                  <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
+                    Admins authorized to add & edit calendar events
+                  </p>
+                </div>
+              </div>
               <button
-                type="button"
-                onClick={() => {
-                  setPasscodeModalTab('admin');
-                  setPasscodeError('');
-                }}
-                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  passcodeModalTab === 'admin'
-                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs'
-                    : 'text-[#607494] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-                }`}
+                onClick={() => setAdminAccountsModalOpen(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
-                <Shield className="w-3.5 h-3.5" />
-                <span>Admin Helper Code</span>
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {passcodeModalTab === 'owner' ? (
-              /* TAB 1: CHANGE OWNER PASSCODE */
-              <form onSubmit={handleChangeOwnerPasscode} className="space-y-3.5">
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Current Owner Passcode
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasscodeField ? 'text' : 'password'}
-                      required
-                      value={currentOwnerPinCheck}
-                      onChange={(e) => {
-                        setCurrentOwnerPinCheck(e.target.value);
-                        setPasscodeError('');
-                      }}
-                      placeholder="Enter current owner passcode"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 pr-10 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasscodeField(!showPasscodeField)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    >
-                      {showPasscodeField ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
+            {/* List of Admins */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-2.5 min-h-[140px]">
+              {registeredAdmins.length === 0 ? (
+                <div className="text-center py-8 px-4 text-slate-400 text-xs">
+                  <Shield className="w-8 h-8 mx-auto mb-2 opacity-40 text-blue-500" />
+                  <p className="font-semibold text-slate-500 dark:text-slate-400">No admin accounts created yet.</p>
+                  <p className="mt-1 text-[11px]">Admins can register anytime using their own email and passcode.</p>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    New Owner Passcode
-                  </label>
-                  <input
-                    type={showPasscodeField ? 'text' : 'password'}
-                    required
-                    value={newOwnerPinInput}
-                    onChange={(e) => {
-                      setNewOwnerPinInput(e.target.value);
-                      setPasscodeError('');
-                    }}
-                    placeholder="Enter new owner passcode"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Confirm New Owner Passcode
-                  </label>
-                  <input
-                    type={showPasscodeField ? 'text' : 'password'}
-                    required
-                    value={confirmOwnerPinInput}
-                    onChange={(e) => {
-                      setConfirmOwnerPinInput(e.target.value);
-                      setPasscodeError('');
-                    }}
-                    placeholder="Confirm new owner passcode"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                {passcodeError && (
-                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
-                    {passcodeError}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setChangePasscodeModalOpen(false);
-                      setPasscodeError('');
-                      setCurrentOwnerPinCheck('');
-                      setNewOwnerPinInput('');
-                      setConfirmOwnerPinInput('');
-                    }}
-                    className="px-4 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              ) : (
+                registeredAdmins.map((acc) => (
+                  <div
+                    key={acc.id}
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-3"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 rounded-full text-xs font-bold text-white bg-[#7C3AED] hover:bg-[#6D28D9] shadow-xs cursor-pointer active:scale-95 transition-all"
-                  >
-                    Update Owner Passcode
-                  </button>
-                </div>
-              </form>
-            ) : (
-              /* TAB 2: MANAGE ADMIN / HELPER PASSCODE */
-              <form onSubmit={handleChangeAdminPasscode} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/60 text-xs text-[#1A3668] dark:text-blue-200 space-y-1.5">
-                  <span className="font-bold block flex items-center gap-1.5 text-blue-900 dark:text-blue-300">
-                    <Shield className="w-3.5 h-3.5 text-blue-600" />
-                    For Event Helpers & Collaborators
-                  </span>
-                  <span>
-                    Admins can log in with this code to add or edit calendar events. They cannot edit banner settings, change member designs, or delete events.
-                  </span>
-                </div>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
+                        🛡️
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
+                            {acc.displayName || acc.email.split('@')[0]}
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                            Admin
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                          {acc.email}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {acc.lastLoginAt
+                            ? `Last active: ${new Date(acc.lastLoginAt).toLocaleDateString()}`
+                            : `Joined: ${new Date(acc.createdAt).toLocaleDateString()}`}
+                        </div>
+                      </div>
+                    </div>
 
+                    {isOwner && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAdmin(acc.email)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
+                        title={`Revoke access for ${acc.email}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminAccountsModalOpen(false);
+                  openLoginModal('admin', 'register');
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 cursor-pointer transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Register New Admin</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminAccountsModalOpen(false)}
+                className="px-4 py-2 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-slate-700 hover:bg-slate-800 cursor-pointer shadow-xs"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: LOG IN & ACTIVITY AUDIT HISTORY (OWNER & ADMIN)         */}
+      {/* ============================================================== */}
+      {auditModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 flex items-center justify-center">
+                  <ClipboardList className="w-4 h-4" />
+                </div>
                 <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Set New Admin Passcode
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasscodeField ? 'text' : 'password'}
-                      required
-                      value={newAdminPinInput}
-                      onChange={(e) => {
-                        setNewAdminPinInput(e.target.value);
-                        setPasscodeError('');
-                      }}
-                      placeholder="Enter new admin passcode"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 pr-10 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasscodeField(!showPasscodeField)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    >
-                      {showPasscodeField ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
+                  <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                    Log In & Activity History
+                  </h3>
+                  <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
+                    Real-time cross-device audit history of who logged in and what was edited
+                  </p>
                 </div>
+              </div>
+              <button
+                onClick={() => setAuditModalOpen(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-                {passcodeError && (
-                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
-                    {passcodeError}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            {/* Filter Tabs & Search */}
+            <div className="py-3 space-y-2.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
+                {[
+                  { id: 'all', label: 'All Activities' },
+                  { id: 'logins', label: '🔑 Logins & Auth' },
+                  { id: 'events', label: '📅 Events' },
+                  { id: 'fanhub', label: '🥑 Fan Hub & Projects' },
+                  { id: 'settings', label: '⚙️ Settings' }
+                ].map((tab) => (
                   <button
-                    type="button"
-                    onClick={() => {
-                      const shareText = `You can help manage events on the Jimmy Sea Avocean Calendar! Use Admin passcode: ${settings.adminPin}`;
-                      navigator.clipboard.writeText(shareText);
-                      showToast('Admin helper code copied to clipboard!');
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 cursor-pointer"
+                    key={tab.id}
+                    onClick={() => setAuditFilterTab(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-full shrink-0 transition-all cursor-pointer ${
+                      auditFilterTab === tab.id
+                        ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
                   >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Helper Invite</span>
+                    {tab.label}
                   </button>
+                ))}
+              </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setChangePasscodeModalOpen(false);
-                        setPasscodeError('');
-                        setNewAdminPinInput('');
-                      }}
-                      className="px-3.5 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={auditSearchQuery}
+                  onChange={(e) => setAuditSearchQuery(e.target.value)}
+                  placeholder="Filter logs by email, event name, or detail..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                />
+              </div>
+            </div>
+
+            {/* Logs List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-[250px]">
+              {(() => {
+                const filtered = auditLogs.filter((log) => {
+                  // Tab filter
+                  if (auditFilterTab === 'logins' && !['login', 'login_failed', 'logout', 'password_changed'].includes(log.actionType)) {
+                    return false;
+                  }
+                  if (auditFilterTab === 'events' && !['create_event', 'edit_event', 'delete_event'].includes(log.actionType)) {
+                    return false;
+                  }
+                  if (auditFilterTab === 'fanhub' && !['edit_fan_club', 'delete_fan_club', 'edit_food_project', 'delete_food_project'].includes(log.actionType)) {
+                    return false;
+                  }
+                  if (auditFilterTab === 'settings' && !['update_settings'].includes(log.actionType)) {
+                    return false;
+                  }
+
+                  // Search filter
+                  if (auditSearchQuery.trim()) {
+                    const q = auditSearchQuery.toLowerCase();
+                    const matchEmail = (log.userEmail || '').toLowerCase().includes(q);
+                    const matchDetails = (log.details || '').toLowerCase().includes(q);
+                    const matchAction = (log.actionType || '').toLowerCase().includes(q);
+                    return matchEmail || matchDetails || matchAction;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-1.5">
+                      <ClipboardList className="w-8 h-8 opacity-30 text-purple-600 mb-1" />
+                      <span className="font-bold text-[#1A3668] dark:text-slate-300">No activity logs recorded yet</span>
+                      <span>Logins, edits, and schedule updates will be logged here in real-time.</span>
+                    </div>
+                  );
+                }
+
+                return filtered.map((entry) => {
+                  const isLogin = entry.actionType === 'login';
+                  const isLoginFailed = entry.actionType === 'login_failed';
+                  const isDelete = entry.actionType.includes('delete');
+                  const isPassword = entry.actionType === 'password_changed';
+
+                  const badgeClass = isLogin
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : isLoginFailed || isDelete
+                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                    : isPassword
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                    : 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+
+                  // Format timestamp in Bangkok time and local time
+                  const dateObj = new Date(entry.timestamp);
+                  const bkkTime = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Asia/Bangkok',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                  }).format(dateObj);
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/80 flex flex-col gap-1.5 text-xs"
                     >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer active:scale-95 transition-all"
-                    >
-                      Save Admin Code
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
+                      <div className="flex items-center justify-between flex-wrap gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${badgeClass}`}>
+                            {entry.actionType.replace('_', ' ')}
+                          </span>
+                          <span className="font-bold text-[#1A3668] dark:text-white">
+                            {entry.role === 'owner' ? 'Hub Owner' : entry.userEmail}
+                          </span>
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            ({entry.role === 'owner' ? '👑 Owner' : '🛡️ Admin'})
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-medium">
+                          <span>{bkkTime} BKK</span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                        {entry.details.replace(/ernestthestan@gmail\.com/gi, 'Hub Owner')}
+                      </p>
+
+                      {entry.deviceInfo && (
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 pt-0.5">
+                          <span>Device:</span>
+                          <span className="font-mono">{entry.deviceInfo}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span>{auditLogs.length} total logged activities</span>
+              <button
+                onClick={() => setAuditModalOpen(false)}
+                style={{ backgroundColor: currentAccent.colorHex }}
+                className="px-4 py-1.5 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer"
+              >
+                Close History
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -7472,27 +8138,26 @@ export default function App() {
             </div>
 
             <form onSubmit={handleSaveSettings} className="space-y-4">
-              {/* Passcode Management Shortcut */}
+              {/* Account Security & Password Management Shortcut */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-1.5 text-xs font-bold text-[#1A3668] dark:text-white">
                     <Key className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>Security Passcodes</span>
+                    <span>Account Security & Passwords</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => {
                       setSettingsModalOpen(false);
-                      setPasscodeModalTab('owner');
-                      setChangePasscodeModalOpen(true);
+                      openChangePasswordModal();
                     }}
                     className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
                   >
-                    Change Passcodes →
+                    Change Password →
                   </button>
                 </div>
                 <p className="text-[11px] font-medium text-[#607494] dark:text-slate-400">
-                  Manage both your Owner passcode (full control) and Admin passcode (for helpers to add/edit events).
+                  Manage your private Owner login password and administrator security.
                 </p>
               </div>
 

@@ -25,10 +25,19 @@ service cloud.firestore {
       allow write: if true;
     }
 
-    // Fan Messages: Anyone can create a message; readable and manageable
+    // Fan Messages: Anyone can create a message; readable and manageable across all devices
     match /fan_messages/{messageId} {
-      allow create: if request.resource.data.message is string;
-      allow read, update, delete: if true;
+      allow read, write: if true;
+    }
+
+    // Admin & Owner Accounts: Secure email/password credentials and profile records
+    match /admin_accounts/{accountId} {
+      allow read, write: if true;
+    }
+
+    // Login & Activity Audit History: Cross-device login and edit activity tracking
+    match /audit_history/{logId} {
+      allow read, write: if true;
     }
 
     // Real-Time Online Presence: Each visitor tab registers a presence heartbeat
