@@ -23,6 +23,9 @@ import {
   RotateCcw,
   Globe,
   Share2,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
   HeartHandshake,
   Tv,
   Lock,
@@ -191,13 +194,16 @@ export interface UserReminder {
 
 export type TitleSizeChoice = 'compact' | 'medium' | 'large' | 'xlarge';
 export type SubtitleSizeChoice = 'small' | 'medium' | 'large' | 'xlarge';
+export type HeaderAlignmentChoice = 'left' | 'center' | 'right';
 
 export interface AppSettings {
   greeting: string;
+  greetingSize?: SubtitleSizeChoice;
   bannerTitle: string;
   bannerTitleSize?: TitleSizeChoice;
   bannerSubtitle: string;
   bannerSubtitleSize?: SubtitleSizeChoice;
+  headerAlignment?: HeaderAlignmentChoice;
   bannerTag?: string;
   bannerImageUrl: string;
   bannerPhotos?: string[]; // Multiple photos carousel
@@ -553,10 +559,12 @@ export const ACCENT_THEMES: Record<
 
 const DEFAULT_SETTINGS: AppSettings = {
   greeting: 'Hey ErnestTheStan!',
+  greetingSize: 'small',
   bannerTitle: 'JIMMY SEA AVOCEAN HUB',
   bannerTitleSize: 'medium',
   bannerSubtitle: 'Official Fan Schedule, Appearances & Trending Projects 🥑🌊💚',
   bannerSubtitleSize: 'medium',
+  headerAlignment: 'left',
   bannerImageUrl: '',
   bannerPhotos: [],
   bannerFit: 'cover',
@@ -2218,10 +2226,12 @@ export default function App() {
 
   // Settings Form State
   const [draftGreeting, setDraftGreeting] = useState<string>(settings.greeting);
+  const [draftGreetingSize, setDraftGreetingSize] = useState<SubtitleSizeChoice>(settings.greetingSize || 'small');
   const [draftBannerTitle, setDraftBannerTitle] = useState<string>(settings.bannerTitle || 'JIMMY SEA AVOCEAN HUB');
   const [draftBannerTitleSize, setDraftBannerTitleSize] = useState<TitleSizeChoice>(settings.bannerTitleSize || 'medium');
   const [draftBannerSubtitle, setDraftBannerSubtitle] = useState<string>(settings.bannerSubtitle);
   const [draftBannerSubtitleSize, setDraftBannerSubtitleSize] = useState<SubtitleSizeChoice>(settings.bannerSubtitleSize || 'medium');
+  const [draftHeaderAlignment, setDraftHeaderAlignment] = useState<HeaderAlignmentChoice>(settings.headerAlignment || 'left');
   const [draftBannerTag, setDraftBannerTag] = useState<string>(settings.bannerTag || '');
   const [draftBannerImageUrl, setDraftBannerImageUrl] = useState<string>(settings.bannerImageUrl);
   const [draftBannerPhotos, setDraftBannerPhotos] = useState<string[]>(() => {
@@ -2241,7 +2251,7 @@ export default function App() {
   const [draftMembers, setDraftMembers] = useState<Member[]>(settings.members);
   const [importJsonText, setImportJsonText] = useState<string>('');
 
-  // Sizing classes for editable Hub Title & Subtitle
+  // Sizing classes for editable Hub Title, Subtitle & Top Greeting
   const titleSizeClass = useMemo(() => {
     const sz = settings.bannerTitleSize || 'medium';
     if (sz === 'compact') return 'text-xl sm:text-2xl lg:text-[26px]';
@@ -2257,6 +2267,14 @@ export default function App() {
     if (sz === 'xlarge') return 'text-base sm:text-lg';
     return 'text-xs sm:text-sm'; // medium
   }, [settings.bannerSubtitleSize]);
+
+  const greetingSizeClass = useMemo(() => {
+    const sz = settings.greetingSize || 'small';
+    if (sz === 'medium') return 'text-xs sm:text-sm';
+    if (sz === 'large') return 'text-sm sm:text-base';
+    if (sz === 'xlarge') return 'text-base sm:text-lg';
+    return 'text-[11px] sm:text-xs'; // small default
+  }, [settings.greetingSize]);
 
   // Dynamically update the browser tab icon (favicon) when websiteIcon changes
   useEffect(() => {
@@ -3426,10 +3444,12 @@ export default function App() {
     setShowBatchUrlInput(false);
     setCopiedBannerUrlIdx(null);
     setDraftGreeting(settings.greeting || DEFAULT_SETTINGS.greeting);
+    setDraftGreetingSize(settings.greetingSize || 'small');
     setDraftBannerTitle(settings.bannerTitle || 'JIMMY SEA AVOCEAN HUB');
     setDraftBannerTitleSize(settings.bannerTitleSize || 'medium');
     setDraftBannerSubtitle(settings.bannerSubtitle ?? DEFAULT_SETTINGS.bannerSubtitle);
     setDraftBannerSubtitleSize(settings.bannerSubtitleSize || 'medium');
+    setDraftHeaderAlignment(settings.headerAlignment || 'left');
     setDraftBannerTag(settings.bannerTag ?? '');
     setDraftBannerPreset(settings.bannerPreset || 'avocean-dream');
     setDraftOwnerPin(settings.ownerPin || 'ErnestTheStan05!');
@@ -3491,12 +3511,14 @@ export default function App() {
     const updatedSettings: AppSettings = {
       ...settings,
       greeting: draftGreeting.trim() || 'Hey ErnestTheStan!',
+      greetingSize: draftGreetingSize,
       bannerTitle: draftBannerTitle.trim() || 'JIMMY SEA AVOCEAN HUB',
       bannerTitleSize: draftBannerTitleSize,
       bannerSubtitle:
         draftBannerSubtitle.trim() ||
         'Official Fan Schedule, Appearances & Trending Projects 🥑🌊💚',
       bannerSubtitleSize: draftBannerSubtitleSize,
+      headerAlignment: draftHeaderAlignment,
       bannerTag: draftBannerTag.trim() || '',
       bannerImageUrl: primaryBannerImage,
       bannerPhotos: cleanBannerPhotos,
@@ -4847,11 +4869,29 @@ export default function App() {
       <div className="w-full max-w-[1340px] mb-6">
         <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] p-5 sm:p-6 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-4">
           {/* Top Row: Title, Badges, Greeting & Owner Quick Actions */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <div className={`flex flex-col md:flex-row gap-4 ${
+            (settings.headerAlignment || 'left') === 'center'
+              ? 'items-center justify-between'
+              : (settings.headerAlignment || 'left') === 'right'
+              ? 'items-start md:items-center justify-between'
+              : 'items-start md:items-center justify-between'
+          }`}>
+            <div className={`flex flex-col flex-1 w-full ${
+              (settings.headerAlignment || 'left') === 'center'
+                ? 'items-center text-center mx-auto'
+                : (settings.headerAlignment || 'left') === 'right'
+                ? 'items-end text-right'
+                : 'items-start text-left'
+            }`}>
+              <div className={`flex items-center gap-2 mb-1.5 flex-wrap ${
+                (settings.headerAlignment || 'left') === 'center'
+                  ? 'justify-center'
+                  : (settings.headerAlignment || 'left') === 'right'
+                  ? 'justify-end'
+                  : 'justify-start'
+              }`}>
                 <TrioBadges members={settings.members} size="sm" />
-                <span className="text-xs font-semibold text-[#607494] dark:text-slate-400">
+                <span className={`${greetingSizeClass} font-semibold text-[#607494] dark:text-slate-400`}>
                   {settings.greeting}
                 </span>
               </div>
@@ -4867,7 +4907,13 @@ export default function App() {
 
             {/* Owner quick action buttons on the right side if logged in as Owner */}
             {isOwner && (
-              <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+              <div className={`flex items-center gap-2 shrink-0 ${
+                (settings.headerAlignment || 'left') === 'center'
+                  ? 'self-center md:self-center'
+                  : (settings.headerAlignment || 'left') === 'right'
+                  ? 'self-end md:self-center'
+                  : 'self-start md:self-center'
+              }`}>
                 <button
                   onClick={() => openChangePasswordModal()}
                   className="px-3 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#1A3668] dark:text-white text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center gap-1.5 border border-slate-200/80 dark:border-slate-700"
@@ -8621,17 +8667,95 @@ export default function App() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                  Top Greeting Subtitle
-                </label>
+              {/* Hub Title & Header Alignment (Owner Only: Left, Center, Right) */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-[#1A3668] dark:text-white">
+                    <AlignLeft className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Hub Title & Header Alignment</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    Owner Editable
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#607494] dark:text-slate-400">
+                  Align Hub Title, Header Subtitle & Top Greeting to the left, center, or right.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: 'left', label: 'Left', icon: AlignLeft },
+                      { id: 'center', label: 'Center', icon: AlignCenter },
+                      { id: 'right', label: 'Right', icon: AlignRight }
+                    ] as const
+                  ).map((opt) => {
+                    const Icon = opt.icon;
+                    const isSelected = draftHeaderAlignment === opt.id;
+                    return (
+                      <button
+                        type="button"
+                        key={opt.id}
+                        onClick={() => setDraftHeaderAlignment(opt.id)}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer flex items-center justify-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-[#1A3668] dark:bg-purple-600 text-white border-[#1A3668] dark:border-purple-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-900 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Top Greeting Subtitle & Font Size (Owner Only) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400">
+                    Top Greeting Subtitle
+                  </label>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    Owner Editable
+                  </span>
+                </div>
                 <input
                   type="text"
                   value={draftGreeting}
                   onChange={(e) => setDraftGreeting(e.target.value)}
                   placeholder="Hey ErnestTheStan!"
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-sm font-semibold text-[#1A3668] dark:text-white"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-500"
                 />
+                <div>
+                  <span className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    Greeting Font Size
+                  </span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(
+                      [
+                        { id: 'small', label: 'Small', sub: '11px' },
+                        { id: 'medium', label: 'Medium', sub: '13px' },
+                        { id: 'large', label: 'Large', sub: '15px' },
+                        { id: 'xlarge', label: 'X-Large', sub: '17px' }
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        type="button"
+                        key={opt.id}
+                        onClick={() => setDraftGreetingSize(opt.id)}
+                        className={`py-1.5 px-1 rounded-xl text-center text-xs font-bold cursor-pointer transition-all border ${
+                          draftGreetingSize === opt.id
+                            ? 'bg-[#1A3668] dark:bg-purple-600 text-white border-transparent shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <div className="leading-tight">{opt.label}</div>
+                        <div className="text-[9px] opacity-75">{opt.sub}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Members */}
