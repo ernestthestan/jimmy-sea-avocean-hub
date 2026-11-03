@@ -43,10 +43,11 @@ import {
   ImageIcon,
   ArrowUp,
   ArrowDown,
+  ArrowUpDown,
   Copy
 } from 'lucide-react';
 import type { CareerProject, ProjectCategory, ProjectArtist, ProjectStatus, ProjectLink, ActorProfile } from '../types/projects';
-import { PROJECT_CATEGORIES } from '../types/projects';
+import { PROJECT_CATEGORIES, getProjectChronologicalScore } from '../types/projects';
 import { INITIAL_ACTOR_PROFILES } from '../data/initialActorProfiles';
 import { subscribeToActorProfiles, saveActorProfilesToFirestore } from '../lib/firestoreSync';
 import { TRANSLATION_LANGUAGES, translateText } from '../lib/translateService';
@@ -912,9 +913,12 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     return counts;
   }, [projects, activeMemberIds]);
 
-  // Filtered and searched projects
+  // Sorting Order State ('newest' = newest on left, 'oldest' = oldest on left, 'az' = alphabetical)
+  const [projectSortOrder, setProjectSortOrder] = useState<'newest' | 'oldest' | 'az'>('newest');
+
+  // Filtered, searched and chronologically sorted projects
   const filteredProjects = useMemo(() => {
-    return projects.filter((p) => {
+    const list = projects.filter((p) => {
       // 1. Top member filter
       if (activeMemberIds && activeMemberIds.length > 0 && activeMemberIds.length < 3) {
         if (p.artist === 'jimmysea') {
@@ -957,7 +961,36 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       }
       return true;
     });
-  }, [projects, activeMemberIds, selectedCategory, searchQuery]);
+
+    // Chronological sorting: Default newest first (e.g. My Magic Prophecy on left, Vice Versa on right)
+    return list.sort((a, b) => {
+      if (projectSortOrder === 'oldest') {
+        return getProjectChronologicalScore(a) - getProjectChronologicalScore(b);
+      }
+      if (projectSortOrder === 'az') {
+        return (a.englishTitle || a.title).localeCompare(b.englishTitle || b.title);
+      }
+      // 'newest' default: newest on top-left, oldest at the end
+      return getProjectChronologicalScore(b) - getProjectChronologicalScore(a);
+    });
+  }, [projects, activeMemberIds, selectedCategory, searchQuery, projectSortOrder]);
+
+  // Status Filter State ('all' | 'upcoming' | 'airing' | 'past')
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'upcoming' | 'airing' | 'past'>('all');
+
+  // Partitioned projects by status in exact user-requested order: Upcoming, Airing, Past Projects
+  const upcomingProjects = useMemo(
+    () => filteredProjects.filter((p) => p.status === 'upcoming'),
+    [filteredProjects]
+  );
+  const airingProjects = useMemo(
+    () => filteredProjects.filter((p) => p.status === 'ongoing' || p.status === 'active'),
+    [filteredProjects]
+  );
+  const pastProjects = useMemo(
+    () => filteredProjects.filter((p) => p.status === 'released' || (p.status !== 'upcoming' && p.status !== 'ongoing' && p.status !== 'active')),
+    [filteredProjects]
+  );
 
   const openAddModal = () => {
     setEditingProject(null);
@@ -1273,13 +1306,14 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
   const getStatusBadge = (status: ProjectStatus) => {
     switch (status) {
-      case 'released':
-        return { label: 'Released', color: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
-      case 'ongoing':
-      case 'active':
-        return { label: 'Active / Ongoing', color: 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800' };
       case 'upcoming':
         return { label: 'Upcoming', color: 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800' };
+      case 'ongoing':
+      case 'active':
+        return { label: 'Airing', color: 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800' };
+      case 'released':
+      default:
+        return { label: 'Past Projects', color: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
     }
   };
 
@@ -1967,6 +2001,49 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
               })}
             </nav>
 
+            {/* Release Status Quick Filter in Sidebar */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 px-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 block mb-1">
+                Release Status
+              </span>
+              <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0 scrollbar-none">
+                {[
+                  { id: 'all', label: 'All Projects', emoji: '✨', count: filteredProjects.length },
+                  { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
+                  { id: 'airing', label: 'Airing', emoji: '📺', count: airingProjects.length },
+                  { id: 'past', label: 'Past Projects', emoji: '🎬', count: pastProjects.length },
+                ].map((st) => {
+                  const isSel = selectedStatus === st.id;
+                  return (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => setSelectedStatus(st.id as any)}
+                      className={`inline-flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer text-left w-full ${
+                        isSel
+                          ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
+                          : 'bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span>{st.emoji}</span>
+                        <span className="truncate">{st.label}</span>
+                      </div>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${
+                          isSel
+                            ? 'bg-white/20 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {st.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Language Selector for Descriptions */}
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 px-2">
               <div className="flex items-center justify-between mb-1.5">
@@ -2018,6 +2095,94 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 <X className="w-4 h-4" />
               </button>
             )}
+          </div>
+
+          {/* Status Navigation Tabs (Upcoming, Airing, Past Projects) */}
+          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 pl-1">
+                Status:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedStatus('all')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedStatus === 'all'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                }`}
+              >
+                <span>✨ All Works</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  selectedStatus === 'all' ? 'bg-white/20 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                }`}>
+                  {filteredProjects.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStatus('upcoming')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedStatus === 'upcoming'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200/60 dark:border-amber-900/50'
+                }`}
+              >
+                <span>🕒 Upcoming</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  selectedStatus === 'upcoming' ? 'bg-white/25 text-white' : 'bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200'
+                }`}>
+                  {upcomingProjects.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStatus('airing')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedStatus === 'airing'
+                    ? 'bg-sky-500 text-white shadow-xs'
+                    : 'bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200/60 dark:border-sky-900/50'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span>📺 Airing</span>
+                  {airingProjects.length > 0 && (
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                    </span>
+                  )}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  selectedStatus === 'airing' ? 'bg-white/25 text-white' : 'bg-sky-200/80 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200'
+                }`}>
+                  {airingProjects.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStatus('past')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedStatus === 'past'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-900/50'
+                }`}
+              >
+                <span>🎬 Past Projects</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  selectedStatus === 'past' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200'
+                }`}>
+                  {pastProjects.length}
+                </span>
+              </button>
+            </div>
+
+            <div className="text-[11px] font-semibold text-slate-400 px-1 hidden sm:block">
+              Organized: Upcoming → Airing → Past Projects
+            </div>
           </div>
 
           {/* Projects View Controls: Poster Display Ratio & Global Font Size */}
@@ -2099,6 +2264,46 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Chronological Sorting Order Toggle (Newest First on Left vs Oldest First) */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-[#526586] dark:text-slate-400 flex items-center gap-1">
+                <ArrowUpDown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Sort:</span>
+              </span>
+              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectSortOrder('newest');
+                    showToast('Sorted Newest First (Left: Newest → Right: Oldest)');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    projectSortOrder === 'newest'
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="Newest projects on the left (e.g. My Magic Prophecy first, Vice Versa last)"
+                >
+                  📅 Newest First
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectSortOrder('oldest');
+                    showToast('Sorted Oldest First (Left: Oldest → Right: Newest)');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    projectSortOrder === 'oldest'
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="Oldest projects on the left (e.g. Vice Versa first, My Magic Prophecy last)"
+                >
+                  ⏳ Oldest First
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Projects Cards Grid */}
@@ -2139,8 +2344,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5 xl:gap-6">
-              {filteredProjects.map((proj) => {
+            (() => {
+              const renderProjectCard = (proj: CareerProject) => {
                 const artistInfo = getArtistLabel(proj.artist);
                 const statusInfo = getStatusBadge(proj.status);
                 const cardLang = projectCardLangs[proj.id] || targetLang || 'en';
@@ -2683,8 +2888,154 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              };
+
+              const renderProjectGrid = (projectList: CareerProject[]) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5 xl:gap-6">
+                  {projectList.map((p) => renderProjectCard(p))}
+                </div>
+              );
+
+              return (
+                <div className="space-y-8">
+                  {/* 1. UPCOMING SECTION */}
+                  {(selectedStatus === 'all' || selectedStatus === 'upcoming') && (
+                    upcomingProjects.length > 0 ? (
+                      <section className="space-y-4 pt-1">
+                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-amber-400/40 dark:border-amber-700/50">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center text-lg shadow-2xs border border-amber-200/60 dark:border-amber-800">
+                              🕒
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                                  Upcoming
+                                </h3>
+                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                  {upcomingProjects.length} {upcomingProjects.length === 1 ? 'project' : 'projects'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                Anticipated future premieres, announced works &amp; upcoming releases
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        {renderProjectGrid(upcomingProjects)}
+                      </section>
+                    ) : selectedStatus === 'upcoming' ? (
+                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-amber-300/80 dark:border-amber-800/80 flex flex-col items-center justify-center gap-2">
+                        <div className="text-3xl">🕒</div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Upcoming Projects Found</h4>
+                        <p className="text-xs text-slate-500 max-w-sm">
+                          No upcoming projects match your selected filters. Click &quot;+ Add Project&quot; above to announce upcoming works.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStatus('all')}
+                          className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
+                        >
+                          View All Projects
+                        </button>
+                      </div>
+                    ) : null
+                  )}
+
+                  {/* 2. AIRING SECTION */}
+                  {(selectedStatus === 'all' || selectedStatus === 'airing') && (
+                    airingProjects.length > 0 ? (
+                      <section className="space-y-4 pt-1">
+                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-sky-400/40 dark:border-sky-700/50">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-2xl bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 flex items-center justify-center text-lg shadow-2xs border border-sky-200/60 dark:border-sky-800">
+                              📺
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                                  <span>Airing</span>
+                                  <span className="flex h-2.5 w-2.5 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
+                                  </span>
+                                </h3>
+                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                                  {airingProjects.length} {airingProjects.length === 1 ? 'project' : 'projects'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                Currently broadcasting series, on-air episodes &amp; active campaigns
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        {renderProjectGrid(airingProjects)}
+                      </section>
+                    ) : selectedStatus === 'airing' ? (
+                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-sky-300/80 dark:border-sky-800/80 flex flex-col items-center justify-center gap-2">
+                        <div className="text-3xl">📺</div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Currently Airing Projects Found</h4>
+                        <p className="text-xs text-slate-500 max-w-sm">
+                          No active or on-air series match your selected filters.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStatus('all')}
+                          className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
+                        >
+                          View All Projects
+                        </button>
+                      </div>
+                    ) : null
+                  )}
+
+                  {/* 3. PAST PROJECTS SECTION */}
+                  {(selectedStatus === 'all' || selectedStatus === 'past') && (
+                    pastProjects.length > 0 ? (
+                      <section className="space-y-4 pt-1">
+                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-emerald-400/40 dark:border-emerald-700/50">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-lg shadow-2xs border border-emerald-200/60 dark:border-emerald-800">
+                              🎬
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                                  Past Projects
+                                </h3>
+                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  {pastProjects.length} {pastProjects.length === 1 ? 'project' : 'projects'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                Concluded series, released filmography, past music videos &amp; brand archives
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        {renderProjectGrid(pastProjects)}
+                      </section>
+                    ) : selectedStatus === 'past' ? (
+                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-emerald-300/80 dark:border-emerald-800/80 flex flex-col items-center justify-center gap-2">
+                        <div className="text-3xl">🎬</div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Past Projects Found</h4>
+                        <p className="text-xs text-slate-500 max-w-sm">
+                          No concluded or past projects match your selected filters.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStatus('all')}
+                          className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
+                        >
+                          View All Projects
+                        </button>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              );
+            })()
           )}
         </main>
       </div>
@@ -3023,13 +3374,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     Status
                   </label>
                   <select
-                    value={formStatus}
+                    value={formStatus === 'active' ? 'ongoing' : formStatus}
                     onChange={(e) => setFormStatus(e.target.value as ProjectStatus)}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                   >
-                    <option value="released">Released / Concluded</option>
-                    <option value="active">Active / Ongoing</option>
-                    <option value="upcoming">Upcoming</option>
+                    <option value="upcoming">🕒 Upcoming</option>
+                    <option value="ongoing">📺 Airing</option>
+                    <option value="released">🎬 Past Projects</option>
                   </select>
                 </div>
               </div>

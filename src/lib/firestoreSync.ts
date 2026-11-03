@@ -14,6 +14,7 @@ import { db } from './firebase';
 import type { ScheduleEvent, AppSettings, FanMessage } from '../App';
 import type { FanClub, FoodSupportProject } from '../types/fanhub';
 import type { CareerProject, ActorProfile } from '../types/projects';
+import { getProjectChronologicalScore } from '../types/projects';
 
 // Global Quota Exceeded state & listener registry
 let isQuotaExceeded = false;
@@ -1158,6 +1159,9 @@ export function subscribeToCareerProjects(
           loaded.push(data);
         }
       });
+
+      // Sort newest first chronologically (e.g. My Magic Prophecy on left, Vice Versa on right)
+      loaded.sort((a, b) => getProjectChronologicalScore(b) - getProjectChronologicalScore(a));
 
       // Broadcast all live projects directly from Firestore
       onUpdate(loaded);

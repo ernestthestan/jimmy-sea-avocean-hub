@@ -105,3 +105,54 @@ export interface ActorProfile {
   avatarZoom?: number; // scale multiplier e.g. 1.0, 1.1
 }
 
+/**
+ * Computes a numeric timestamp score for sorting projects chronologically.
+ * Higher scores represent newer projects (e.g. 2026/2025 "My Magic Prophecy" > 2023 "Last Twilight" > 2022 "Vice Versa").
+ */
+export function getProjectChronologicalScore(p: CareerProject): number {
+  // 1. Check explicit releaseDate e.g. "2025-06-01" or "2022-07-16"
+  if (p.releaseDate) {
+    const d = new Date(p.releaseDate);
+    if (!isNaN(d.getTime())) {
+      return d.getTime();
+    }
+  }
+
+  // 2. Parse year string e.g. "2025", "2024–2025", "Dec 2023 – Jan 2024", "Jul 2022"
+  const rawSources = [p.year || '', p.filmedPeriod || '', p.title || '', p.englishTitle || ''].join(' ');
+  const yearMatches = rawSources.match(/\b(20\d{2}|19\d{2})\b/g);
+  let latestYear = 0;
+  if (yearMatches && yearMatches.length > 0) {
+    latestYear = Math.max(...yearMatches.map((y) => parseInt(y, 10)));
+  }
+
+  // Check known titles if year is not explicitly provided
+  if (!latestYear) {
+    const lower = `${p.title} ${p.englishTitle || ''}`.toLowerCase();
+    if (lower.includes('magic prophecy')) latestYear = 2026;
+    else if (lower.includes('scarlet heart')) latestYear = 2026;
+    else if (lower.includes('last twilight')) latestYear = 2023;
+    else if (lower.includes('vice versa')) latestYear = 2022;
+    else if (lower.includes('bad buddy')) latestYear = 2021;
+    else if (lower.includes('55:15') || lower.includes('never too late')) latestYear = 2021;
+    else if (lower.includes('our skyy 2') || lower.includes('ourskyy')) latestYear = 2023;
+    else if (p.status === 'upcoming') latestYear = 2026;
+    else if (p.status === 'ongoing' || p.status === 'active') latestYear = 2025;
+    else latestYear = 2020;
+  }
+
+  // Check month names e.g. "Dec 2023", "July 2022"
+  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  let monthIndex = 0;
+  const lowerSources = rawSources.toLowerCase();
+  for (let m = 0; m < monthNames.length; m++) {
+    if (lowerSources.includes(monthNames[m])) {
+      monthIndex = m + 1;
+    }
+  }
+
+  // Construct millisecond estimate
+  return new Date(latestYear, Math.max(0, monthIndex - 1), 1).getTime();
+}
+
+
