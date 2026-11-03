@@ -628,8 +628,29 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const [formWatchLinks, setFormWatchLinks] = useState<ProjectLink[]>([
     { label: 'YouTube Official Playlist', url: '', platform: 'YouTube' }
   ]);
+  const [formTwitterUrl, setFormTwitterUrl] = useState<string>('');
+  const [formInstagramUrl, setFormInstagramUrl] = useState<string>('');
+  const [formOfficialWebsiteUrl, setFormOfficialWebsiteUrl] = useState<string>('');
+  const [formCustomWebsites, setFormCustomWebsites] = useState<Array<{ id: string; label: string; url: string }>>([]);
 
-  // Multi-Photo Poster / Media Preview, Auto-Fit & Adjustment State
+  const handleAddProjectCustomWebsite = () => {
+    setFormCustomWebsites((prev) => [
+      ...prev,
+      { id: `proj-web-${Date.now()}-${Math.random()}`, label: 'Official Website', url: '' }
+    ]);
+  };
+
+  const handleUpdateProjectCustomWebsite = (idx: number, field: 'label' | 'url', val: string) => {
+    setFormCustomWebsites((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return copy;
+    });
+  };
+
+  const handleRemoveProjectCustomWebsite = (idx: number) => {
+    setFormCustomWebsites((prev) => prev.filter((_, i) => i !== idx));
+  };
   const posterFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingPoster, setIsUploadingPoster] = useState<boolean>(false);
   const [posterLoadError, setPosterLoadError] = useState<boolean>(false);
@@ -923,6 +944,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormPlatform('GMMTV / YouTube');
     setFormHighlight('');
     setFormTags('#JimmySea #Avocean');
+    setFormTwitterUrl('');
+    setFormInstagramUrl('');
+    setFormOfficialWebsiteUrl('');
+    setFormCustomWebsites([]);
     setFormWatchLinks([
       { label: 'YouTube Official Playlist', url: '', platform: 'YouTube' }
     ]);
@@ -976,6 +1001,12 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormPlatform(proj.platform || '');
     setFormHighlight(proj.highlight || '');
     setFormTags((proj.tags || []).join(' '));
+    setFormTwitterUrl(proj.twitterUrl || '');
+    setFormInstagramUrl(proj.instagramUrl || '');
+    setFormOfficialWebsiteUrl(proj.officialWebsiteUrl || '');
+    setFormCustomWebsites(
+      (proj.customWebsites || []).map((w, idx) => ({ id: `site-${idx}-${Date.now()}`, label: w.label || 'Official Website', url: w.url }))
+    );
     // Load watchLinks or fall back to primaryLink + extraLinks
     const existingLinks = proj.watchLinks && proj.watchLinks.length > 0
       ? proj.watchLinks
@@ -1048,6 +1079,20 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     const cleanMedia = formMediaPhotos.map((p) => p.trim()).filter(Boolean);
     const primaryPoster = cleanMedia[0] || formImageUrl.trim() || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
 
+    const normalizeSocialUrl = (urlStr: string, platformType: 'x' | 'instagram') => {
+      const trimmed = urlStr.trim();
+      if (!trimmed) return undefined;
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+      const cleanHandle = trimmed.replace(/^@/, '');
+      if (platformType === 'x') return `https://x.com/${cleanHandle}`;
+      if (platformType === 'instagram') return `https://instagram.com/${cleanHandle}`;
+      return trimmed;
+    };
+
+    const validCustomWebsites = formCustomWebsites
+      .map((w) => ({ label: w.label.trim() || 'Official Website', url: w.url.trim() }))
+      .filter((w) => w.url.length > 0);
+
     const projectToSave: CareerProject = {
       id: editingProject ? editingProject.id : `proj-${formCategory}-${Date.now()}`,
       title: formTitle.trim(),
@@ -1073,6 +1118,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       primaryLink: validWatchLinks[0]?.url || undefined,
       extraLinks: validWatchLinks.length > 1 ? validWatchLinks.slice(1) : undefined,
       watchLinks: validWatchLinks.length > 0 ? validWatchLinks : undefined,
+      twitterUrl: normalizeSocialUrl(formTwitterUrl, 'x'),
+      instagramUrl: normalizeSocialUrl(formInstagramUrl, 'instagram'),
+      officialWebsiteUrl: formOfficialWebsiteUrl.trim() || undefined,
+      customWebsites: validCustomWebsites.length > 0 ? validCustomWebsites : undefined,
       highlight: formHighlight.trim() || undefined,
       tags: tagsArray.length > 0 ? tagsArray : undefined,
       updatedAt: new Date().toISOString()
@@ -2180,24 +2229,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               </>
                             )}
 
-                            {/* Bottom Image Overlay: Release Year & Status */}
-                            <div className="absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-2 flex-wrap pointer-events-none">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {proj.year && (
-                                  <span className="text-[11px] font-bold text-white/95 bg-black/60 backdrop-blur-sm px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-white/10">
-                                    <Calendar className="w-3 h-3 text-purple-300" />
-                                    <span>{proj.year}</span>
-                                  </span>
-                                )}
-                                {displayFilmedPeriod && (
-                                  <span className="text-[10px] font-bold text-emerald-300 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md flex items-center gap-1 border border-emerald-500/20">
-                                    <Clapperboard className="w-3 h-3 text-emerald-400" />
-                                    <span>Filmed: {displayFilmedPeriod}</span>
-                                  </span>
-                                )}
-                              </div>
-
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${statusInfo.color}`}>
+                            {/* Bottom Image Overlay: Status Badge */}
+                            <div className="absolute bottom-3 right-3 z-30 pointer-events-none">
+                              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-xs ${statusInfo.color}`}>
                                 {statusInfo.label}
                               </span>
                             </div>
@@ -2372,6 +2406,24 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           </div>
                         )}
 
+                        {/* Release / On-Air Period and Filmed Month / Year (Above Description / Synopsis) */}
+                        {(proj.year || displayFilmedPeriod) && (
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            {proj.year && (
+                              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700/70 ${typo.meta}`}>
+                                <Calendar className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                                <span>{proj.year}</span>
+                              </div>
+                            )}
+                            {displayFilmedPeriod && (
+                              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/70 ${typo.meta}`}>
+                                <Clapperboard className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                <span>Filmed: {displayFilmedPeriod}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Description & Overview */}
                         <div className="space-y-1.5 pt-0.5">
                           <div className="flex items-center justify-between gap-2">
@@ -2403,6 +2455,83 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                     {/* Where to Watch & Official Links Section */}
                     <div className="p-5 pt-0 space-y-3">
+                      {/* Official Show Social Accounts & Websites */}
+                      {(proj.twitterUrl || proj.instagramUrl || proj.officialWebsiteUrl || (proj.customWebsites && proj.customWebsites.length > 0)) && (
+                        <div className="p-3 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200/70 dark:border-purple-900/60 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className={`font-black uppercase tracking-wider text-purple-900 dark:text-purple-300 flex items-center gap-1.5 ${typo.meta}`}>
+                              <Globe className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                              <span>Official Show Accounts &amp; Websites</span>
+                            </span>
+                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                              Verified
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
+                            {proj.twitterUrl && (
+                              <a
+                                href={proj.twitterUrl.startsWith('http') ? proj.twitterUrl : `https://x.com/${proj.twitterUrl.replace(/^@/, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs hover:border-purple-300 cursor-pointer"
+                                title="Official Show X / Twitter"
+                              >
+                                <span>𝕏</span>
+                                <span>Official X</span>
+                                <ExternalLink className="w-3 h-3 text-slate-400" />
+                              </a>
+                            )}
+
+                            {proj.instagramUrl && (
+                              <a
+                                href={proj.instagramUrl.startsWith('http') ? proj.instagramUrl : `https://instagram.com/${proj.instagramUrl.replace(/^@/, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-pink-50 dark:hover:bg-pink-950/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-900/70 transition-all shadow-2xs hover:border-pink-300 cursor-pointer"
+                                title="Official Show Instagram"
+                              >
+                                <span>📸</span>
+                                <span>Official IG</span>
+                                <ExternalLink className="w-3 h-3 text-pink-400" />
+                              </a>
+                            )}
+
+                            {proj.officialWebsiteUrl && (
+                              <a
+                                href={proj.officialWebsiteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs hover:border-purple-300 cursor-pointer"
+                                title="Official Show Website"
+                              >
+                                <Globe className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                <span>Official Website</span>
+                                <ExternalLink className="w-3 h-3 text-slate-400" />
+                              </a>
+                            )}
+
+                            {proj.customWebsites && proj.customWebsites.map((site, sIdx) => {
+                              if (!site.url) return null;
+                              return (
+                                <a
+                                  key={sIdx}
+                                  href={site.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs hover:border-purple-300 cursor-pointer"
+                                  title={site.label || site.url}
+                                >
+                                  <Globe className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                  <span className="truncate max-w-[170px]">{site.label || 'Website'}</span>
+                                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {allWatchLinks.length > 0 && (
                         <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/80 space-y-2">
                           <div className="flex items-center justify-between">
@@ -3434,6 +3563,106 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       </button>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* OFFICIAL SHOW SOCIAL MEDIA & SHOW WEBSITES */}
+              <div className="p-3.5 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Official Show Social Accounts &amp; Websites</span>
+                  </label>
+                  <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
+                    Series / Project Accounts
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                      <span>𝕏 Official Show Twitter / X</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formTwitterUrl}
+                      onChange={(e) => setFormTwitterUrl(e.target.value)}
+                      placeholder="e.g. @ViceVersaSeries or https://x.com/..."
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                      <span>📸 Official Show Instagram</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formInstagramUrl}
+                      onChange={(e) => setFormInstagramUrl(e.target.value)}
+                      placeholder="e.g. @viceversaseries or https://instagram.com/..."
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Globe className="w-3 h-3 text-purple-500" />
+                      <span>Official Websites &amp; External Links ({formCustomWebsites.length})</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAddProjectCustomWebsite}
+                      className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                    >
+                      + Add Website
+                    </button>
+                  </div>
+
+                  {formCustomWebsites.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleAddProjectCustomWebsite}
+                      className="w-full py-2 px-3 border border-dashed border-purple-300/80 dark:border-purple-800/80 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:border-purple-500 hover:text-purple-600 cursor-pointer text-left transition-colors flex items-center justify-between bg-white/60 dark:bg-slate-900/60"
+                    >
+                      <span>Add official show website (e.g. GMMTV Show Page, Merch Shop, Fan Page)...</span>
+                      <span className="text-purple-600 dark:text-purple-400 font-black">+ Add</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                      {formCustomWebsites.map((site, idx) => (
+                        <div
+                          key={site.id || idx}
+                          className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center gap-2"
+                        >
+                          <input
+                            type="text"
+                            value={site.label}
+                            onChange={(e) => handleUpdateProjectCustomWebsite(idx, 'label', e.target.value)}
+                            placeholder="Site Label (e.g. GMMTV Official Site)"
+                            className="w-1/3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white"
+                          />
+                          <input
+                            type="url"
+                            value={site.url}
+                            onChange={(e) => handleUpdateProjectCustomWebsite(idx, 'url', e.target.value)}
+                            placeholder="https://..."
+                            className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProjectCustomWebsite(idx)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                            title="Remove website"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

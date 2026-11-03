@@ -5803,85 +5803,88 @@ export default function App() {
       {/* Bubble 3: Fan Hub (Fan Clubs / Food Support)                   */}
       {/* ============================================================== */}
       <div className="fixed bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-16px)] justify-center flex-wrap sm:flex-nowrap pointer-events-none">
-        {/* Bubble 1: Schedule Navigation */}
-        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
-          <button
-            onClick={() => setActiveTab('calendar')}
-            style={activeTab === 'calendar' ? { backgroundColor: currentAccent.colorHex } : {}}
-            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-              activeTab === 'calendar'
-                ? 'text-white shadow-sm'
-                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-            }`}
-            title="View Calendar schedule"
-          >
-            <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-            <span>Calendar</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('list')}
-            style={activeTab === 'list' ? { backgroundColor: currentAccent.colorHex } : {}}
-            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-              activeTab === 'list'
-                ? 'text-white shadow-sm'
-                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-            }`}
-            title="View List schedule"
-          >
-            <ListIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-            <span>List</span>
-          </button>
+        {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
+        <div className="p-[2px] rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-emerald-400 shadow-xl shadow-purple-500/15 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1">
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+                activeTab === 'calendar'
+                  ? 'bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 text-white shadow-md shadow-purple-500/25 font-black'
+                  : 'text-[#526586] dark:text-slate-300 hover:text-[#1A3668] dark:hover:text-white hover:bg-purple-50/60 dark:hover:bg-purple-950/40'
+              }`}
+              title="View Calendar schedule"
+            >
+              <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>Calendar</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('list')}
+              className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+                activeTab === 'list'
+                  ? 'bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 text-white shadow-md shadow-purple-500/25 font-black'
+                  : 'text-[#526586] dark:text-slate-300 hover:text-[#1A3668] dark:hover:text-white hover:bg-purple-50/60 dark:hover:bg-purple-950/40'
+              }`}
+              title="View List schedule"
+            >
+              <ListIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>List</span>
+            </button>
+          </div>
         </div>
 
-        {/* Bubble 2: Projects Navigation (Positioned right between List and Fan Clubs!) */}
-        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
-          <button
-            onClick={() => setActiveTab('projects')}
-            style={activeTab === 'projects' ? { backgroundColor: currentAccent.colorHex } : {}}
-            className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-              activeTab === 'projects'
-                ? 'text-white shadow-sm'
-                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-            }`}
-            title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
-          >
-            <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-            <span>Projects</span>
-          </button>
+        {/* Bubble 2: Projects Navigation with Purple, Blue & Green Gradient */}
+        <div className="p-[2px] rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-emerald-400 shadow-xl shadow-purple-500/15 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1">
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+                activeTab === 'projects'
+                  ? 'bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 text-white shadow-md shadow-purple-500/25 font-black'
+                  : 'text-[#526586] dark:text-slate-300 hover:text-[#1A3668] dark:hover:text-white hover:bg-purple-50/60 dark:hover:bg-purple-950/40'
+              }`}
+              title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
+            >
+              <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>Projects</span>
+            </button>
+          </div>
         </div>
 
-        {/* Bubble 3: Fan Hub Navigation */}
-        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
-          <button
-            onClick={() => {
-              setActiveTab('fanhub');
-              setFanHubSubTab('directory');
-            }}
-            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-              activeTab === 'fanhub' && fanHubSubTab === 'directory'
-                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 text-white shadow-sm'
-                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-            }`}
-            title="JimmySea Fan Clubs Directory"
-          >
-            <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-            <span>Fan Clubs</span>
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('fanhub');
-              setFanHubSubTab('foodsupport');
-            }}
-            className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-              activeTab === 'fanhub' && fanHubSubTab === 'foodsupport'
-                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-500 text-white shadow-sm'
-                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
-            }`}
-            title="Fan Food Support & Catering Projects"
-          >
-            <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-            <span>Food Support</span>
-          </button>
+        {/* Bubble 3: Fan Hub Navigation (Fan Clubs / Food Support) with Purple, Blue & Green Gradient */}
+        <div className="p-[2px] rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-emerald-400 shadow-xl shadow-purple-500/15 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1">
+            <button
+              onClick={() => {
+                setActiveTab('fanhub');
+                setFanHubSubTab('directory');
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+                activeTab === 'fanhub' && fanHubSubTab === 'directory'
+                  ? 'bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 text-white shadow-md shadow-purple-500/25 font-black'
+                  : 'text-[#526586] dark:text-slate-300 hover:text-[#1A3668] dark:hover:text-white hover:bg-purple-50/60 dark:hover:bg-purple-950/40'
+              }`}
+              title="JimmySea Fan Clubs Directory"
+            >
+              <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>Fan Clubs</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('fanhub');
+                setFanHubSubTab('foodsupport');
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+                activeTab === 'fanhub' && fanHubSubTab === 'foodsupport'
+                  ? 'bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 text-white shadow-md shadow-purple-500/25 font-black'
+                  : 'text-[#526586] dark:text-slate-300 hover:text-[#1A3668] dark:hover:text-white hover:bg-purple-50/60 dark:hover:bg-purple-950/40'
+              }`}
+              title="Fan Food Support & Catering Projects"
+            >
+              <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              <span>Food Support</span>
+            </button>
+          </div>
         </div>
       </div>
 

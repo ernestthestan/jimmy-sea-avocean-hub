@@ -40,6 +40,10 @@ export interface CareerProject {
   primaryLink?: string;
   extraLinks?: ProjectLink[];
   watchLinks?: ProjectLink[]; // Multiple Where to Watch / Official Streaming platforms & websites
+  twitterUrl?: string; // Official Show / Series Twitter / X (e.g. https://x.com/ViceVersaSeries or @ViceVersaSeries)
+  instagramUrl?: string; // Official Show / Series Instagram (e.g. https://instagram.com/viceversaseries or @viceversaseries)
+  officialWebsiteUrl?: string; // Official Show / Series Website
+  customWebsites?: Array<{ label: string; url: string }>; // Custom show websites & official links
   tags?: string[];
   highlight?: string;
   releaseDate?: string;
