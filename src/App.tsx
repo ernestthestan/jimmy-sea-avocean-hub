@@ -4702,8 +4702,8 @@ export default function App() {
               )}
             </button>
 
-            {/* Admin & Owner: Active Live Inbox with unread count badge */}
-            {canEditEvents ? (
+            {/* Admin & Owner: Active Live Inbox with unread count badge (Visible only when logged in) */}
+            {canEditEvents && (
               <button
                 onClick={() => setInboxModalOpen(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 shadow-xs border border-amber-200 dark:border-amber-800 cursor-pointer transition-all active:scale-95"
@@ -4713,21 +4713,6 @@ export default function App() {
                 <span>Inbox</span>
                 {unreadMessageCount > 0 && (
                   <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-extrabold animate-pulse">
-                    {unreadMessageCount}
-                  </span>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={() => openLoginModal('admin')}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
-                title="Admin & Owner Inbox (Sign in to view and read messages in real time)"
-              >
-                <Inbox className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                <span className="hidden sm:inline">Admin</span>
-                <span>Inbox</span>
-                {unreadMessageCount > 0 && (
-                  <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
                     {unreadMessageCount}
                   </span>
                 )}
