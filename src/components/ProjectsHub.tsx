@@ -978,6 +978,23 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   // Status Filter State ('all' | 'upcoming' | 'airing' | 'past')
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'upcoming' | 'airing' | 'past'>('all');
 
+  // Grid Columns Layout Preference ('3' | '2' | 'auto')
+  const [projectGridColumns, setProjectGridColumns] = useState<'3' | '2' | 'auto'>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_projects_grid_cols');
+      if (saved === '3' || saved === '2' || saved === 'auto') return saved;
+    } catch {}
+    return '3'; // Default to 3 cards per row on laptop & desktop
+  });
+
+  const handleUpdateProjectGridColumns = (cols: '3' | '2' | 'auto') => {
+    setProjectGridColumns(cols);
+    try {
+      localStorage.setItem('avocean_projects_grid_cols', cols);
+    } catch {}
+    showToast(`Grid layout: ${cols === '2' ? '2 Cards Row' : '3 Cards Row'}`);
+  };
+
   // Partitioned projects by status in exact user-requested order: Upcoming, Airing, Past Projects
   const upcomingProjects = useMemo(
     () => filteredProjects.filter((p) => p.status === 'upcoming'),
@@ -2304,6 +2321,40 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Grid Columns Toggle (3 Cards Row vs 2 Cards Row) */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-[#526586] dark:text-slate-400 flex items-center gap-1">
+                <Layers className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Layout:</span>
+              </span>
+              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateProjectGridColumns('3')}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    projectGridColumns === '3' || projectGridColumns === 'auto'
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="3 Cards Row (fits all 3 cards in one row on laptop & desktop)"
+                >
+                  3 Cards Row
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateProjectGridColumns('2')}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    projectGridColumns === '2'
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="2 Cards Row (wider cards)"
+                >
+                  2 Cards Row
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Projects Cards Grid */}
@@ -2889,8 +2940,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 );
               };
 
+              const gridColsClass =
+                projectGridColumns === '2'
+                  ? 'grid-cols-1 md:grid-cols-2'
+                  : 'grid-cols-1 sm:grid-cols-2 min-[1120px]:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3';
+
               const renderProjectGrid = (projectList: CareerProject[]) => (
-                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5 xl:gap-6">
+                <div className={`grid ${gridColsClass} gap-4 sm:gap-4.5 xl:gap-5`}>
                   {projectList.map((p) => renderProjectCard(p))}
                 </div>
               );
