@@ -903,12 +903,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                                       {targetClubLangObj.flag} {targetClubLangObj.name}
                                     </span>
                                   </div>
-                                  <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed">
+                                  <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
                                     {translatedBioText}
                                   </p>
                                 </div>
                               ) : (
-                                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
                                   {club.description}
                                 </p>
                               )}
@@ -1219,12 +1219,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                                     {targetProjLangObj.flag} {targetProjLangObj.name}
                                   </span>
                                 </div>
-                                <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed">
+                                <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
                                   {translatedDesc}
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
                                 {proj.description}
                               </p>
                             )}

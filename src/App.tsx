@@ -1347,6 +1347,30 @@ export default function App() {
     }
   }, [isDarkMode]);
 
+  // Purge legacy content caches from localStorage: everything is strictly cloud-driven from Firestore
+  useEffect(() => {
+    try {
+      const CONTENT_KEYS_TO_CLEAR = [
+        'avocean_career_projects_v1',
+        'avocean_projects_initialized',
+        'avocean_schedule_events_v2',
+        'avocean_schedule_events_v1',
+        STORAGE_EVENTS_KEY,
+        'avocean_app_settings_v3',
+        'avocean_app_settings_v2',
+        STORAGE_SETTINGS_KEY,
+        'avocean_fan_clubs_v3',
+        'avocean_fanhub_initialized',
+        'avocean_food_projects_v3',
+        'avocean_actor_profiles_v1',
+        'avocean_fan_messages_v1',
+        'avocean_inbox_initialized',
+        'avocean_audit_logs_v1'
+      ];
+      CONTENT_KEYS_TO_CLEAR.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+  }, []);
+
   // --- Role & Access Control State (Visitor, Admin, Owner) ---
   const [userRole, setUserRole] = useState<UserRole>(() => {
     try {
@@ -1450,44 +1474,14 @@ export default function App() {
   const [listViewFilter, setListViewFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [selectedDayActiveEventId, setSelectedDayActiveEventId] = useState<string | null>(null);
 
-  // --- Fan Clubs Directory & Food Support State ---
-  const [fanClubs, setFanClubs] = useState<FanClub[]>(() => {
-    try {
-      const saved = localStorage.getItem('avocean_fan_clubs_v3');
-      if (saved !== null) {
-        const sampleClubPrefixes = ['fc-avocean-', 'fc-js-', 'fc-jimmy-', 'fc-sea-'];
-        const filtered = (JSON.parse(saved) as FanClub[]).filter(
-          (c) => !sampleClubPrefixes.some((p) => c.id?.startsWith(p))
-        );
-        return filtered;
-      }
-    } catch {}
-    return [];
-  });
-
-  const [foodProjects, setFoodProjects] = useState<FoodSupportProject[]>(() => {
-    try {
-      const isInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
-      const saved = localStorage.getItem('avocean_food_projects_v3');
-      if (saved !== null) {
-        return JSON.parse(saved);
-      }
-      if (isInit) {
-        return [];
-      }
-    } catch {}
-    return INITIAL_FOOD_SUPPORT_PROJECTS;
-  });
+  // --- Fan Clubs Directory & Food Support State (Pure Cloud Firestore) ---
+  const [fanClubs, setFanClubs] = useState<FanClub[]>([]);
+  const [foodProjects, setFoodProjects] = useState<FoodSupportProject[]>([]);
 
   const handleSaveFanClub = (club: FanClub) => {
     setFanClubs((prev) => {
       const exists = prev.some((c) => c.id === club.id);
-      const next = exists ? prev.map((c) => (c.id === club.id ? club : c)) : [club, ...prev];
-      try {
-        localStorage.setItem('avocean_fan_clubs_v3', JSON.stringify(next));
-        localStorage.setItem('avocean_fanhub_initialized', 'true');
-      } catch {}
-      return next;
+      return exists ? prev.map((c) => (c.id === club.id ? club : c)) : [club, ...prev];
     });
     saveFanClubToFirestore(club);
     recordAuditLog({
@@ -1501,14 +1495,7 @@ export default function App() {
 
   const handleDeleteFanClub = (clubId: string) => {
     const targetClub = fanClubs.find((c) => c.id === clubId);
-    setFanClubs((prev) => {
-      const next = prev.filter((c) => c.id !== clubId);
-      try {
-        localStorage.setItem('avocean_fan_clubs_v3', JSON.stringify(next));
-        localStorage.setItem('avocean_fanhub_initialized', 'true');
-      } catch {}
-      return next;
-    });
+    setFanClubs((prev) => prev.filter((c) => c.id !== clubId));
     deleteFanClubFromFirestore(clubId);
     recordAuditLog({
       userEmail: currentUserEmail,
@@ -1522,12 +1509,7 @@ export default function App() {
   const handleSaveFoodProject = (project: FoodSupportProject) => {
     setFoodProjects((prev) => {
       const exists = prev.some((p) => p.id === project.id);
-      const next = exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
-      try {
-        localStorage.setItem('avocean_food_projects_v3', JSON.stringify(next));
-        localStorage.setItem('avocean_fanhub_initialized', 'true');
-      } catch {}
-      return next;
+      return exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
     });
     saveFoodProjectToFirestore(project);
     recordAuditLog({
@@ -1541,14 +1523,7 @@ export default function App() {
 
   const handleDeleteFoodProject = (projectId: string) => {
     const targetProj = foodProjects.find((p) => p.id === projectId);
-    setFoodProjects((prev) => {
-      const next = prev.filter((p) => p.id !== projectId);
-      try {
-        localStorage.setItem('avocean_food_projects_v3', JSON.stringify(next));
-        localStorage.setItem('avocean_fanhub_initialized', 'true');
-      } catch {}
-      return next;
-    });
+    setFoodProjects((prev) => prev.filter((p) => p.id !== projectId));
     deleteFoodProjectFromFirestore(projectId);
     recordAuditLog({
       userEmail: currentUserEmail,
@@ -1559,26 +1534,13 @@ export default function App() {
     showToast('Food support project removed.');
   };
 
-  // --- Jimmy & Sea Career Projects State (Shows, Movies, MVs, Partner & Owned Brands) ---
-  const [careerProjects, setCareerProjects] = useState<CareerProject[]>(() => {
-    try {
-      const saved = localStorage.getItem('avocean_career_projects_v1');
-      if (saved !== null) {
-        return JSON.parse(saved) as CareerProject[];
-      }
-    } catch {}
-    return [];
-  });
+  // --- Jimmy & Sea Career Projects State (Pure Cloud Firestore) ---
+  const [careerProjects, setCareerProjects] = useState<CareerProject[]>([]);
 
   const handleSaveCareerProject = (project: CareerProject) => {
     setCareerProjects((prev) => {
       const exists = prev.some((p) => p.id === project.id);
-      const next = exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
-      try {
-        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(next));
-        localStorage.setItem('avocean_projects_initialized', 'true');
-      } catch {}
-      return next;
+      return exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
     });
     saveCareerProjectToFirestore(project);
     recordAuditLog({
@@ -1592,14 +1554,7 @@ export default function App() {
 
   const handleDeleteCareerProject = (projectId: string) => {
     const targetProj = careerProjects.find((p) => p.id === projectId);
-    setCareerProjects((prev) => {
-      const next = prev.filter((p) => p.id !== projectId);
-      try {
-        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(next));
-        localStorage.setItem('avocean_projects_initialized', 'true');
-      } catch {}
-      return next;
-    });
+    setCareerProjects((prev) => prev.filter((p) => p.id !== projectId));
     deleteCareerProjectFromFirestore(projectId);
     recordAuditLog({
       userEmail: currentUserEmail,
@@ -1622,54 +1577,12 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Settings & Events State
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_SETTINGS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const resolvedOwnerPin =
-          !parsed.ownerPin || parsed.ownerPin === 'avocean2026'
-            ? 'ErnestTheStan05!'
-            : parsed.ownerPin;
-        const resolvedAdminPin =
-          !parsed.adminPin || parsed.adminPin === 'admin2026' || parsed.adminPin === 'avocean2026'
-            ? 'Avocean2026'
-            : parsed.adminPin;
-
-        return {
-          ...DEFAULT_SETTINGS,
-          ...parsed,
-          ownerPin: resolvedOwnerPin,
-          adminPin: resolvedAdminPin,
-          bannerTitle: parsed.bannerTitle || 'JIMMY SEA AVOCEAN HUB',
-          bannerTitleSize: parsed.bannerTitleSize || 'medium',
-          bannerSubtitle: parsed.bannerSubtitle || DEFAULT_SETTINGS.bannerSubtitle,
-          bannerSubtitleSize: parsed.bannerSubtitleSize || 'medium',
-          containerWidth: parsed.containerWidth || 'auto',
-          timeFormat: parsed.timeFormat || '12h',
-          websiteIcon: parsed.websiteIcon || 'trio'
-        };
-      }
-    } catch (e) {
-      console.warn('Could not load settings from storage', e);
-    }
-    return DEFAULT_SETTINGS;
-  });
+  // Settings & Events State (Pure Cloud Firestore - Live Real-Time)
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   const is12Hour = (settings.timeFormat || '12h') === '12h';
 
-  const [events, setEvents] = useState<ScheduleEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_EVENTS_KEY);
-      if (saved !== null) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.warn('Could not load events from storage', e);
-    }
-    return [];
-  });
+  const [events, setEvents] = useState<ScheduleEvent[]>([]);
 
   const [activeMemberIds, setActiveMemberIds] = useState<string[]>(['jimmy', 'sea', 'avocean']);
 
@@ -1872,9 +1785,6 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToEvents(SAMPLE_EVENTS, (cloudEvents) => {
       setEvents(cloudEvents);
-      try {
-        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(cloudEvents));
-      } catch {}
     });
     return () => unsubscribe();
   }, []);
@@ -1913,14 +1823,8 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- "Leave a message" State (Viewers submit; only Admin & Owner can read) ---
-  const [fanMessages, setFanMessages] = useState<FanMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem('avocean_fan_messages_v1');
-      if (saved !== null) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
+  // --- "Leave a message" State (Pure Cloud Firestore) ---
+  const [fanMessages, setFanMessages] = useState<FanMessage[]>([]);
 
   // Real-Time Fan Messages Sync from Firestore across all devices (PC, Laptop, Phone)
   const [isRefreshingInbox, setIsRefreshingInbox] = useState<boolean>(false);
@@ -1976,11 +1880,6 @@ export default function App() {
     return () => unsubProjects();
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(fanMessages));
-    } catch {}
-  }, [fanMessages]);
 
   const [msgCategory, setMsgCategory] = useState<FanMessageCategory>('calendar');
   const [msgSenderName, setMsgSenderName] = useState<string>('');
@@ -3172,16 +3071,12 @@ export default function App() {
       // Reset translation toggle to show the newly updated original text
       setActiveTranslationViews((prev) => ({ ...prev, [newEvent.id]: false }));
 
-      // 3. Update React state and localStorage
+      // 3. Update React state
       setEvents((prev) => {
         const exists = prev.some((item) => item.id === newEvent.id);
-        const updated = exists
+        return exists
           ? prev.map((item) => (item.id === newEvent.id ? newEvent : item))
           : [...prev, newEvent];
-        try {
-          localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
-        } catch {}
-        return updated;
       });
 
       if (detailEvent && detailEvent.id === newEvent.id) {
@@ -3223,9 +3118,6 @@ export default function App() {
     const targetEv = events.find((ev) => ev.id === eventId);
     const updated = events.filter((ev) => ev.id !== eventId);
     setEvents(updated);
-    try {
-      localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(updated));
-    } catch {}
 
     // Record Audit Log
     recordAuditLog({
@@ -3834,7 +3726,6 @@ export default function App() {
       }))
     };
     setSettings(updatedSettings);
-    localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updatedSettings));
     saveSettingsToFirestore(updatedSettings).catch((err) => console.warn('Could not sync settings to Firestore:', err));
     recordAuditLog({
       userEmail: currentUserEmail,
@@ -3843,7 +3734,7 @@ export default function App() {
       details: `Updated hub settings: title="${updatedSettings.bannerTitle}", subtitle="${updatedSettings.bannerSubtitle}", icon="${updatedSettings.websiteIcon}"`
     }).catch(() => {});
     setSettingsModalOpen(false);
-    showToast('Banner, Website Icon & Settings updated!');
+    showToast('Banner, Website Icon & Settings updated in cloud!');
   };
 
   const handleResetToDefaults = () => {
@@ -3851,10 +3742,6 @@ export default function App() {
       setSettings(DEFAULT_SETTINGS);
       setEvents(SAMPLE_EVENTS);
       setActiveMemberIds(['jimmy', 'sea', 'avocean']);
-      try {
-        localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
-        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(SAMPLE_EVENTS));
-      } catch {}
       saveSettingsToFirestore(DEFAULT_SETTINGS).catch(() => {});
       SAMPLE_EVENTS.forEach((ev) => {
         saveEventToFirestore(ev).catch(() => {});
@@ -3882,16 +3769,10 @@ export default function App() {
       if (parsed.settings) {
         const updated = { ...DEFAULT_SETTINGS, ...parsed.settings, bannerTitle: 'JIMMY SEA AVOCEAN HUB' };
         setSettings(updated);
-        try {
-          localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updated));
-        } catch {}
         saveSettingsToFirestore(updated).catch(() => {});
       }
       if (Array.isArray(parsed.events)) {
         setEvents(parsed.events);
-        try {
-          localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(parsed.events));
-        } catch {}
         parsed.events.forEach((ev: ScheduleEvent) => {
           saveEventToFirestore(ev).catch(() => {});
         });
@@ -4768,271 +4649,287 @@ export default function App() {
         </div>
       )}
 
-      {/* TOP TOOLBAR: FLUID AUTO-FIT TO SCREEN SIZE */}
-      <div className={`${containerWidthClass} flex flex-wrap items-center justify-between gap-3 mb-4`}>
-        {/* Left Side: "Leave a message" (viewers), Inbox (admins/owner), & Stats */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Leave a Message button: visible to everyone, sized like login buttons */}
-          <button
-            onClick={() => {
-              openLeaveMessageModal();
-            }}
-            className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
-            title={
-              activeTab === 'projects'
-                ? 'Suggest a series, movie, MV, or endorsement project for Jimmy & Sea'
-                : activeTab === 'fanhub'
-                ? 'Submit a Fan Club directory listing or Food Support project'
-                : 'Know about an event we missed? Leave a note for Admins & Owner'
-            }
-          >
-            {activeTab === 'projects' ? (
-              <>
-                <Film className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span>Suggest a Project</span>
-              </>
-            ) : activeTab === 'fanhub' ? (
-              <>
-                <HeartHandshake className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Submit Fan Club / Food Support</span>
-              </>
+      {/* TOP TOOLBAR: BALANCED TWO-TIER RESPONSIVE LAYOUT FOR LAPTOP & MOBILE */}
+      <div className={`${containerWidthClass} flex flex-col gap-2.5 mb-4`}>
+        {/* ROW 1: Engagement & Stats on Left, User Display Preferences & Logins on Right */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 w-full">
+          {/* Left Side: "Leave a message" (viewers), Inbox (admins/owner), Stats & Role Badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Leave a Message button: visible to everyone */}
+            <button
+              onClick={() => {
+                openLeaveMessageModal();
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
+              title={
+                activeTab === 'projects'
+                  ? 'Suggest a series, movie, MV, or endorsement project for Jimmy & Sea'
+                  : activeTab === 'fanhub'
+                  ? 'Submit a Fan Club directory listing or Food Support project'
+                  : 'Know about an event we missed? Leave a note for Admins & Owner'
+              }
+            >
+              {activeTab === 'projects' ? (
+                <>
+                  <Film className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>Suggest a Project</span>
+                </>
+              ) : activeTab === 'fanhub' ? (
+                <>
+                  <HeartHandshake className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Submit Fan Club / Food Support</span>
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>Leave a message</span>
+                </>
+              )}
+            </button>
+
+            {/* Admin & Owner: Active Live Inbox with unread count badge */}
+            {canEditEvents ? (
+              <button
+                onClick={() => setInboxModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 shadow-xs border border-amber-200 dark:border-amber-800 cursor-pointer transition-all active:scale-95"
+                title="Fan Messages Inbox (Admins & Owner)"
+              >
+                <Inbox className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Inbox</span>
+                {unreadMessageCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-extrabold animate-pulse">
+                    {unreadMessageCount}
+                  </span>
+                )}
+              </button>
             ) : (
-              <>
-                <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span>Leave a message</span>
-              </>
+              <button
+                onClick={() => openLoginModal('admin')}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
+                title="Admin & Owner Inbox (Sign in to view and read messages in real time)"
+              >
+                <Inbox className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                <span className="hidden sm:inline">Admin</span>
+                <span>Inbox</span>
+                {unreadMessageCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
+                    {unreadMessageCount}
+                  </span>
+                )}
+              </button>
             )}
-          </button>
 
-          {/* Admin & Owner: Active Live Inbox with unread count badge */}
-          {canEditEvents ? (
-            <button
-              onClick={() => setInboxModalOpen(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 shadow-xs border border-amber-200 dark:border-amber-800 cursor-pointer transition-all active:scale-95"
-              title="Fan Messages Inbox (Admins & Owner)"
-            >
-              <Inbox className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              <span>Inbox</span>
-              {unreadMessageCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-extrabold animate-pulse">
-                  {unreadMessageCount}
-                </span>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={() => openLoginModal('admin')}
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
-              title="Admin & Owner Inbox (Sign in to view and read messages in real time)"
-            >
-              <Inbox className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-              <span className="hidden sm:inline">Admin</span>
-              <span>Inbox</span>
-              {unreadMessageCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
-                  {unreadMessageCount}
-                </span>
-              )}
-            </button>
-          )}
+            {/* Today's Visits Stats (Admin & Owner Only) */}
+            {canEditEvents && (
+              <div
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
+                title={`${visitorStats.todayVisits.toLocaleString()} visits today · ${visitorStats.totalVisits.toLocaleString()} all-time`}
+              >
+                <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+                <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
+              </div>
+            )}
 
-          {/* Today's Visits Stats (Admin & Owner Only) */}
-          {canEditEvents && (
-            <div
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
-              title={`${visitorStats.todayVisits.toLocaleString()} visits today · ${visitorStats.totalVisits.toLocaleString()} all-time`}
-            >
-              <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
-              <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
-            </div>
-          )}
-
-          {/* Role Status Pills */}
-          {isOwner && (
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-xs">
-              <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
-              <span>Owner Mode</span>
-            </div>
-          )}
-          {isAdmin && (
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-xs">
-              <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Admin (Events Only)</span>
-            </div>
-          )}
-        </div>
-
-        {/* Right Controls: Accent Selector, 12H/24H, Dark Mode, Reminders, Logins / Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Accent Color Switcher: Purple, Blue, Green (Saved to user's device only) */}
-          <div
-            className="inline-flex items-center p-1 rounded-full bg-white/90 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-xs gap-1"
-            title="Personal Accent Theme (Changes only on your screen)"
-          >
-            {(['purple', 'blue', 'green'] as AccentChoice[]).map((c) => {
-              const theme = ACCENT_THEMES[c];
-              const isSelected = accentColor === c;
-              return (
-                <button
-                  key={c}
-                  onClick={() => handleSelectAccent(c)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                    isSelected
-                      ? 'scale-110 shadow-xs ring-2 ring-offset-1 ring-slate-400 dark:ring-offset-slate-900'
-                      : 'opacity-50 hover:opacity-100'
-                  }`}
-                  style={{ backgroundColor: theme.colorHex }}
-                  title={`${theme.name} Accent (${theme.emoji})`}
-                >
-                  <span className="text-[10px]">{theme.emoji}</span>
-                </button>
-              );
-            })}
+            {/* Role Status Pills */}
+            {isOwner && (
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-xs">
+                <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
+                <span>Owner Mode</span>
+              </div>
+            )}
+            {isAdmin && (
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-xs">
+                <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Admin (Events Only)</span>
+              </div>
+            )}
           </div>
 
-          {/* 12-Hour vs 24-Hour Quick Switcher */}
-          <button
-            onClick={toggleTimeFormat}
-            className="px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all flex items-center gap-1.5 text-xs font-bold"
-            title={is12Hour ? 'Current: 12-Hour AM/PM. Click for 24-Hour' : 'Current: 24-Hour. Click for 12-Hour AM/PM'}
-          >
-            <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-            <span>{is12Hour ? '12-Hour' : '24-Hour'}</span>
-          </button>
-
-          {/* Light / Dark Mode Toggle Button */}
-          <button
-            onClick={toggleDarkMode}
-            className="p-2 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
-            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            aria-label="Toggle Theme"
-          >
-            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-
-          {/* Quick Force Sync Button for other devices / mobile caches */}
-          <button
-            onClick={() => {
-              if ('caches' in window) {
-                caches.keys().then((names) => {
-                  names.forEach((name) => caches.delete(name));
-                });
-              }
-              const url = new URL(window.location.href);
-              url.searchParams.set('_sync', Date.now().toString());
-              window.location.replace(url.toString());
-            }}
-            className="p-2 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
-            title="Sync Latest Version across all devices (Clears local caches & reloads)"
-            aria-label="Sync Latest Version"
-          >
-            <RefreshCw className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-          </button>
-
-          {/* Saved Reminders Counter */}
-          {userReminders.length > 0 && (
-            <button
-              onClick={() => setMyRemindersModalOpen(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 hover:bg-purple-200 shadow-xs border border-purple-200 dark:border-purple-800 transition-all cursor-pointer"
+          {/* Right Controls: Accent Selector, 12H/24H, Dark Mode, Cloud Sync, Reminders, and Visitor Logins */}
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            {/* Accent Color Switcher: Purple, Blue, Green (Saved to user's device only) */}
+            <div
+              className="inline-flex items-center p-1 rounded-full bg-white/90 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-xs gap-1"
+              title="Personal Accent Theme (Changes only on your screen)"
             >
-              <BellRing className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>{userReminders.length} Saved</span>
-            </button>
-          )}
-
-          {isOwner ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={openSettingsModal}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-slate-700 shadow-xs border border-purple-100 dark:border-slate-700 transition-all cursor-pointer"
-                title="Customize Hub Header, Greeting & Members"
-              >
-                <Settings className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span className="hidden sm:inline">Customize</span>
-              </button>
-
-              <button
-                onClick={() => setBackupModalOpen(true)}
-                className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-sky-50 shadow-xs border border-white dark:border-slate-700 cursor-pointer"
-                title="Backup or Import Schedule"
-              >
-                <Download className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                <span className="hidden sm:inline">Backup</span>
-              </button>
-
-              {/* Activity History Button (Owner & Admins) */}
-              <button
-                onClick={() => setAuditModalOpen(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
-                title="View Log In & Activity Audit History"
-              >
-                <ClipboardList className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span className="hidden sm:inline">Activity History</span>
-              </button>
-
-              {/* Change Password Button */}
-              <button
-                onClick={() => openChangePasswordModal()}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
-                title="Change Account Password"
-              >
-                <Key className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span className="hidden sm:inline">Password</span>
-              </button>
-
-              {/* Admin Accounts Management Button (Owner Only) */}
-              <button
-                onClick={() => setAdminAccountsModalOpen(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
-                title="Manage Registered Admin Accounts"
-              >
-                <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline">Admins ({registeredAdmins.length})</span>
-              </button>
-
-              <button
-                onClick={() => openAddEventModal(selectedDateStr)}
-                style={{ backgroundColor: currentAccent.colorHex }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full text-white shadow-xs transition-all cursor-pointer active:scale-95 hover:opacity-90"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Add Event</span>
-              </button>
-
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1 text-xs font-bold p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 text-slate-500 hover:text-rose-600 cursor-pointer transition-colors"
-                title="Exit Owner Mode"
-              >
-                <Lock className="w-3.5 h-3.5" />
-              </button>
+              {(['purple', 'blue', 'green'] as AccentChoice[]).map((c) => {
+                const theme = ACCENT_THEMES[c];
+                const isSelected = accentColor === c;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => handleSelectAccent(c)}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                      isSelected
+                        ? 'scale-110 shadow-xs ring-2 ring-offset-1 ring-slate-400 dark:ring-offset-slate-900'
+                        : 'opacity-50 hover:opacity-100'
+                    }`}
+                    style={{ backgroundColor: theme.colorHex }}
+                    title={`${theme.name} Accent (${theme.emoji})`}
+                  >
+                    <span className="text-[10px]">{theme.emoji}</span>
+                  </button>
+                );
+              })}
             </div>
-          ) : isAdmin ? (
-            <div className="flex items-center gap-2">
-              {/* Activity History Button for Admin */}
-              <button
-                onClick={() => setAuditModalOpen(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
-                title="View Log In & Activity Audit History"
-              >
-                <ClipboardList className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline">Activity History</span>
-              </button>
 
-              {/* Change Password Button for Admin */}
-              <button
-                onClick={() => openChangePasswordModal()}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-white dark:border-slate-700 cursor-pointer transition-all"
-                title="Change Admin Password"
-              >
-                <Key className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline">Password</span>
-              </button>
+            {/* 12-Hour vs 24-Hour Quick Switcher */}
+            <button
+              onClick={toggleTimeFormat}
+              className="px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all flex items-center gap-1.5 text-xs font-bold"
+              title={is12Hour ? 'Current: 12-Hour AM/PM. Click for 24-Hour' : 'Current: 24-Hour. Click for 12-Hour AM/PM'}
+            >
+              <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>{is12Hour ? '12-Hour' : '24-Hour'}</span>
+            </button>
 
+            {/* Light / Dark Mode Toggle Button */}
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              aria-label="Toggle Theme"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* Quick Force Sync Button for other devices / mobile caches */}
+            <button
+              onClick={() => {
+                if ('caches' in window) {
+                  caches.keys().then((names) => {
+                    names.forEach((name) => caches.delete(name));
+                  });
+                }
+                const url = new URL(window.location.href);
+                url.searchParams.set('_sync', Date.now().toString());
+                window.location.replace(url.toString());
+              }}
+              className="p-2 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+              title="Sync Latest Version across all devices (Clears local caches & reloads)"
+              aria-label="Sync Latest Version"
+            >
+              <RefreshCw className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            </button>
+
+            {/* Saved Reminders Counter */}
+            {userReminders.length > 0 && (
+              <button
+                onClick={() => setMyRemindersModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 hover:bg-purple-200 shadow-xs border border-purple-200 dark:border-purple-800 transition-all cursor-pointer"
+              >
+                <BellRing className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>{userReminders.length} Saved</span>
+              </button>
+            )}
+
+            {/* Visitor Logins (shown when not logged in) */}
+            {!canEditEvents && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openLoginModal('admin')}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
+                  title="Admin Login (Add & Edit Events)"
+                >
+                  <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Admin Login</span>
+                </button>
+
+                <button
+                  onClick={() => openLoginModal('owner')}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full text-white shadow-xs cursor-pointer transition-all active:scale-95 hover:opacity-90"
+                  title="Owner Login (Full Control)"
+                >
+                  <Crown className="w-3.5 h-3.5 text-amber-300 fill-amber-300/30" />
+                  <span>Owner Login</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ROW 2: DEDICATED ADMIN & OWNER ACTION BAR (Appears only when Admin or Owner is logged in) */}
+        {canEditEvents && (
+          <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-purple-200/50 dark:border-slate-700/60">
+            {/* Left Tools: Management & Hub Controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {isOwner ? (
+                <>
+                  <button
+                    onClick={openSettingsModal}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-slate-700 shadow-xs border border-purple-100 dark:border-slate-700 transition-all cursor-pointer"
+                    title="Customize Hub Header, Greeting & Members"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Customize</span>
+                  </button>
+
+                  <button
+                    onClick={() => setBackupModalOpen(true)}
+                    className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-sky-50 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer"
+                    title="Backup or Import Schedule"
+                  >
+                    <Download className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                    <span>Backup</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAuditModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="View Log In & Activity Audit History"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Activity History</span>
+                  </button>
+
+                  <button
+                    onClick={() => openChangePasswordModal()}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="Change Account Password"
+                  >
+                    <Key className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Password</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminAccountsModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="Manage Registered Admin Accounts"
+                  >
+                    <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Admins ({registeredAdmins.length})</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setAuditModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="View Log In & Activity Audit History"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Activity History</span>
+                  </button>
+
+                  <button
+                    onClick={() => openChangePasswordModal()}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="Change Admin Password"
+                  >
+                    <Key className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Password</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Right Tools: Primary Action "+ Add Event" & Logout Button */}
+            <div className="flex items-center gap-2 flex-wrap ml-auto">
               <button
                 onClick={() => openAddEventModal(selectedDateStr)}
                 style={{ backgroundColor: currentAccent.colorHex }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full text-white shadow-xs transition-all cursor-pointer active:scale-95 hover:opacity-90"
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-1.5 rounded-full text-white shadow-xs transition-all cursor-pointer active:scale-95 hover:opacity-90"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Add Event</span>
@@ -5040,37 +4937,15 @@ export default function App() {
 
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 text-slate-500 hover:text-rose-600 cursor-pointer transition-colors"
-                title="Exit Admin Mode"
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-colors"
+                title={isOwner ? 'Exit Owner Mode' : 'Exit Admin Mode'}
               >
-                <LogOut className="w-3.5 h-3.5" />
+                {isOwner ? <Lock className="w-3.5 h-3.5" /> : <LogOut className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              {/* Distinct Admin Login and Owner Login buttons */}
-              <button
-                onClick={() => openLoginModal('admin')}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
-                title="Admin Login (Add & Edit Events)"
-              >
-                <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>Admin Login</span>
-              </button>
-
-              <button
-                onClick={() => openLoginModal('owner')}
-                style={{ backgroundColor: currentAccent.colorHex }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full text-white shadow-xs cursor-pointer transition-all active:scale-95 hover:opacity-90"
-                title="Owner Login (Full Control)"
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-300 fill-amber-300/30" />
-                <span>Owner Login</span>
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ============================================================== */}

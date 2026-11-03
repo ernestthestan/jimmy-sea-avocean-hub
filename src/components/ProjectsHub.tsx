@@ -2432,7 +2432,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             </span>
                           </div>
 
-                          <p className={`font-medium text-[#475569] dark:text-slate-300 ${typo.body}`}>
+                          <p className={`font-medium text-[#475569] dark:text-slate-300 whitespace-pre-line leading-relaxed ${typo.body}`}>
                             {displayDescription}
                           </p>
                         </div>

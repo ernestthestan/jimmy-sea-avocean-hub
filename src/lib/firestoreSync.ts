@@ -226,19 +226,6 @@ export function subscribeToEvents(
   initialSampleEvents: ScheduleEvent[],
   onUpdate: (events: ScheduleEvent[]) => void
 ) {
-  // If quota was already exceeded, deliver from localStorage immediately
-  if (isQuotaExceeded) {
-    try {
-      const saved = localStorage.getItem('avocean_schedule_events_v2');
-      if (saved) {
-        onUpdate(JSON.parse(saved));
-        return () => {};
-      }
-    } catch {}
-    onUpdate(initialSampleEvents);
-    return () => {};
-  }
-
   const eventsCol = collection(db, 'events');
 
   const unsubscribe = onSnapshot(
@@ -250,26 +237,13 @@ export function subscribeToEvents(
       });
       // Sort chronologically by date
       loaded.sort((a, b) => a.date.localeCompare(b.date));
-      // Notify listeners with current database state
+      // Notify listeners with live database state directly
       onUpdate(loaded);
-      try {
-        localStorage.setItem('avocean_schedule_events_v2', JSON.stringify(loaded));
-      } catch {}
     },
     (error: any) => {
+      console.warn('Events real-time listener error:', error);
       if (error?.code === 'resource-exhausted' || error?.message?.includes('Quota limit exceeded')) {
         notifyQuotaExceeded();
-        // Fall back gracefully to localStorage
-        try {
-          const saved = localStorage.getItem('avocean_schedule_events_v2');
-          if (saved) {
-            onUpdate(JSON.parse(saved));
-            return;
-          }
-        } catch {}
-        onUpdate(initialSampleEvents);
-      } else {
-        console.warn('Events real-time listener error:', error);
       }
     }
   );
@@ -561,66 +535,23 @@ export function subscribeToFanClubs(
   initialSampleClubs: FanClub[],
   onUpdate: (clubs: FanClub[]) => void
 ) {
-  // If quota was exceeded, use localStorage
-  const sampleClubPrefixes = ['fc-avocean-', 'fc-js-', 'fc-jimmy-', 'fc-sea-'];
-  const isSampleClub = (c: { id?: string }) => Boolean(c?.id && sampleClubPrefixes.some((p) => c.id!.startsWith(p)));
-
-  if (isQuotaExceeded) {
-    try {
-      const isInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
-      const saved = localStorage.getItem('avocean_fan_clubs_v3');
-      if (saved !== null) {
-        const filtered = (JSON.parse(saved) as FanClub[]).filter((c) => !isSampleClub(c));
-        onUpdate(filtered);
-        return () => {};
-      }
-      if (isInit) {
-        onUpdate([]);
-        return () => {};
-      }
-    } catch {}
-    onUpdate([]);
-    return () => {};
-  }
-
   const clubsCol = collection(db, 'fan_clubs');
   const unsubscribe = onSnapshot(
     clubsCol,
-    async (snapshot) => {
+    (snapshot) => {
       const loaded: FanClub[] = [];
       snapshot.forEach((d) => {
         const club = d.data() as FanClub;
-        if (isSampleClub(club)) {
-          // Permanently purge legacy sample fan clubs as requested
-          deleteDoc(doc(db, 'fan_clubs', d.id)).catch(() => {});
-        } else {
+        if (club && club.name) {
           loaded.push(club);
         }
       });
-
-      // Mark fanhub as initialized so samples are never re-seeded
-      try {
-        localStorage.setItem('avocean_fanhub_initialized', 'true');
-        await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true }).catch(() => {});
-      } catch {}
-
       onUpdate(loaded);
-      try {
-        localStorage.setItem('avocean_fan_clubs_v3', JSON.stringify(loaded));
-      } catch {}
     },
     (err: any) => {
+      console.warn('Fan clubs listener error:', err);
       if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
         notifyQuotaExceeded();
-        try {
-          const saved = localStorage.getItem('avocean_fan_clubs_v3');
-          if (saved !== null) {
-            onUpdate(JSON.parse(saved));
-            return;
-          }
-        } catch {}
-      } else {
-        console.warn('Fan clubs listener error:', err);
       }
     }
   );
@@ -630,7 +561,6 @@ export function subscribeToFanClubs(
 
 export async function saveFanClubToFirestore(club: FanClub): Promise<void> {
   try {
-    localStorage.setItem('avocean_fanhub_initialized', 'true');
     if (!isQuotaExceeded) {
       await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
       await setDoc(doc(db, 'fan_clubs', club.id), sanitizeForFirestore(club));
@@ -644,7 +574,6 @@ export async function saveFanClubToFirestore(club: FanClub): Promise<void> {
 
 export async function deleteFanClubFromFirestore(clubId: string): Promise<void> {
   try {
-    localStorage.setItem('avocean_fanhub_initialized', 'true');
     if (!isQuotaExceeded) {
       await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
       await deleteDoc(doc(db, 'fan_clubs', clubId));
@@ -663,80 +592,23 @@ export function subscribeToFoodProjects(
   initialSampleProjects: FoodSupportProject[],
   onUpdate: (projects: FoodSupportProject[]) => void
 ) {
-  if (isQuotaExceeded) {
-    try {
-      const isInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
-      const saved = localStorage.getItem('avocean_food_projects_v3');
-      if (saved !== null) {
-        onUpdate(JSON.parse(saved));
-        return () => {};
-      }
-      if (isInit) {
-        onUpdate([]);
-        return () => {};
-      }
-    } catch {}
-    onUpdate(initialSampleProjects);
-    return () => {};
-  }
-
   const projectsCol = collection(db, 'food_projects');
   const unsubscribe = onSnapshot(
     projectsCol,
-    async (snapshot) => {
+    (snapshot) => {
       const loaded: FoodSupportProject[] = [];
       snapshot.forEach((d) => {
-        loaded.push(d.data() as FoodSupportProject);
-      });
-
-      if (snapshot.empty) {
-        try {
-          const metaSnap = await getDoc(doc(db, 'settings', 'fanhub_meta')).catch(() => null);
-          const isMetaInit = metaSnap?.exists();
-          const isLocalInit = localStorage.getItem('avocean_fanhub_initialized') === 'true';
-
-          if (isMetaInit || isLocalInit) {
-            // Intentionally empty (user deleted all projects)
-            onUpdate([]);
-            try {
-              localStorage.setItem('avocean_food_projects_v3', '[]');
-            } catch {}
-            return;
-          }
-
-          // First-time seed only
-          onUpdate(initialSampleProjects);
-          try {
-            localStorage.setItem('avocean_food_projects_v3', JSON.stringify(initialSampleProjects));
-            localStorage.setItem('avocean_fanhub_initialized', 'true');
-            await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true });
-            for (const p of initialSampleProjects) {
-              await setDoc(doc(db, 'food_projects', p.id), sanitizeForFirestore(p));
-            }
-          } catch (e) {}
-        } catch {
-          onUpdate([]);
+        const p = d.data() as FoodSupportProject;
+        if (p && p.title) {
+          loaded.push(p);
         }
-      } else {
-        onUpdate(loaded);
-        try {
-          localStorage.setItem('avocean_food_projects_v3', JSON.stringify(loaded));
-          localStorage.setItem('avocean_fanhub_initialized', 'true');
-        } catch {}
-      }
+      });
+      onUpdate(loaded);
     },
     (err: any) => {
+      console.warn('Food projects listener error:', err);
       if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
         notifyQuotaExceeded();
-        try {
-          const saved = localStorage.getItem('avocean_food_projects_v3');
-          if (saved !== null) {
-            onUpdate(JSON.parse(saved));
-            return;
-          }
-        } catch {}
-      } else {
-        console.warn('Food projects listener error:', err);
       }
     }
   );
@@ -746,7 +618,6 @@ export function subscribeToFoodProjects(
 
 export async function saveFoodProjectToFirestore(project: FoodSupportProject): Promise<void> {
   try {
-    localStorage.setItem('avocean_fanhub_initialized', 'true');
     if (!isQuotaExceeded) {
       await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
       await setDoc(doc(db, 'food_projects', project.id), sanitizeForFirestore(project));
@@ -760,7 +631,6 @@ export async function saveFoodProjectToFirestore(project: FoodSupportProject): P
 
 export async function deleteFoodProjectFromFirestore(projectId: string): Promise<void> {
   try {
-    localStorage.setItem('avocean_fanhub_initialized', 'true');
     if (!isQuotaExceeded) {
       await setDoc(doc(db, 'settings', 'fanhub_meta'), { initialized: true }, { merge: true });
       await deleteDoc(doc(db, 'food_projects', projectId));
@@ -1276,24 +1146,6 @@ export function subscribeToCareerProjects(
   initialSampleProjects: CareerProject[],
   onUpdate: (projects: CareerProject[]) => void
 ) {
-  // If quota is already exceeded, immediately serve local storage cache or defaults
-  if (isQuotaExceeded) {
-    try {
-      const isInit = localStorage.getItem('avocean_projects_initialized') === 'true';
-      const saved = localStorage.getItem('avocean_career_projects_v1');
-      if (saved !== null) {
-        onUpdate(JSON.parse(saved));
-        return () => {};
-      }
-      if (isInit) {
-        onUpdate([]);
-        return () => {};
-      }
-    } catch {}
-    onUpdate(initialSampleProjects);
-    return () => {};
-  }
-
   const projectsCol = collection(db, 'career_projects');
 
   const unsubscribe = onSnapshot(
@@ -1307,27 +1159,13 @@ export function subscribeToCareerProjects(
         }
       });
 
-      // Broadcast all projects to everyone on all devices
+      // Broadcast all live projects directly from Firestore
       onUpdate(loaded);
-      try {
-        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(loaded));
-        localStorage.setItem('avocean_projects_initialized', 'true');
-      } catch {}
     },
     (err: any) => {
+      console.warn('Career projects listener error:', err);
       if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
         notifyQuotaExceeded();
-        try {
-          const saved = localStorage.getItem('avocean_career_projects_v1');
-          if (saved !== null) {
-            const parsed = JSON.parse(saved) as CareerProject[];
-            onUpdate(parsed);
-            return;
-          }
-        } catch {}
-        onUpdate([]);
-      } else {
-        console.warn('Career projects listener error:', err);
       }
     }
   );
@@ -1340,7 +1178,6 @@ export function subscribeToCareerProjects(
  */
 export async function saveCareerProjectToFirestore(project: CareerProject): Promise<void> {
   try {
-    localStorage.setItem('avocean_projects_initialized', 'true');
     if (!isQuotaExceeded) {
       await setDoc(doc(db, 'settings', 'projects_meta'), { initialized: true }, { merge: true });
       await setDoc(doc(db, 'career_projects', project.id), sanitizeForFirestore(project));
@@ -1359,7 +1196,6 @@ export async function saveCareerProjectToFirestore(project: CareerProject): Prom
  */
 export async function deleteCareerProjectFromFirestore(projectId: string): Promise<void> {
   try {
-    localStorage.setItem('avocean_projects_initialized', 'true');
     if (!isQuotaExceeded) {
       await deleteDoc(doc(db, 'career_projects', projectId));
     }
@@ -1382,19 +1218,6 @@ export function subscribeToActorProfiles(
   initialProfiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>,
   onUpdate: (profiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>) => void
 ) {
-  // If quota is already exceeded, immediately serve local storage cache or defaults
-  if (isQuotaExceeded) {
-    try {
-      const saved = localStorage.getItem('avocean_actor_profiles_v1');
-      if (saved) {
-        onUpdate(JSON.parse(saved));
-        return () => {};
-      }
-    } catch {}
-    onUpdate(initialProfiles);
-    return () => {};
-  }
-
   const profileDocRef = doc(db, 'settings', 'actor_profiles');
   const unsubscribe = onSnapshot(
     profileDocRef,
@@ -1413,14 +1236,10 @@ export function subscribeToActorProfiles(
         delete (merged.avocean as any).myDramaListUrl;
         delete (merged.sea as any).myDramaListUrl;
         onUpdate(merged);
-        try {
-          localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(merged));
-        } catch {}
       } else {
-        // Seed default profiles
+        // Seed default profiles directly to Firestore
         onUpdate(initialProfiles);
         try {
-          localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(initialProfiles));
           await setDoc(profileDocRef, sanitizeForFirestore(initialProfiles));
         } catch (e) {
           console.warn('Could not seed actor profiles:', e);
@@ -1428,18 +1247,9 @@ export function subscribeToActorProfiles(
       }
     },
     (err: any) => {
+      console.warn('Actor profiles listener error:', err);
       if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
         notifyQuotaExceeded();
-        try {
-          const saved = localStorage.getItem('avocean_actor_profiles_v1');
-          if (saved) {
-            onUpdate(JSON.parse(saved));
-            return;
-          }
-        } catch {}
-        onUpdate(initialProfiles);
-      } else {
-        console.warn('Actor profiles listener error:', err);
       }
     }
   );
@@ -1451,7 +1261,6 @@ export async function saveActorProfilesToFirestore(
   profiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>
 ): Promise<void> {
   try {
-    localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(profiles));
     if (!isQuotaExceeded) {
       await setDoc(doc(db, 'settings', 'actor_profiles'), sanitizeForFirestore(profiles), { merge: true });
     }
