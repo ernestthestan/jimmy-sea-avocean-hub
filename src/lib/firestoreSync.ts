@@ -1295,35 +1295,22 @@ export function subscribeToCareerProjects(
   }
 
   const projectsCol = collection(db, 'career_projects');
-  const samplePrefixes = ['proj-show-', 'proj-movie-', 'proj-mv-', 'proj-partner-'];
 
   const unsubscribe = onSnapshot(
     projectsCol,
-    async (snapshot) => {
+    (snapshot) => {
       const loaded: CareerProject[] = [];
       snapshot.forEach((d) => {
-        loaded.push(d.data() as CareerProject);
+        const data = d.data() as CareerProject;
+        if (data && data.title) {
+          loaded.push(data);
+        }
       });
 
-      // Filter out legacy sample projects so only user/admin-created projects remain
-      const userProjects = loaded.filter(
-        (p) => !samplePrefixes.some((prefix) => p.id?.startsWith(prefix))
-      );
-
-      // Asynchronously purge sample documents from Firestore collection
-      const sampleDocs = snapshot.docs.filter((d) =>
-        samplePrefixes.some((prefix) => d.id.startsWith(prefix))
-      );
-      if (sampleDocs.length > 0 && !isQuotaExceeded) {
-        sampleDocs.forEach((d) => {
-          deleteDoc(d.ref).catch(() => {});
-        });
-        setDoc(doc(db, 'settings', 'projects_meta'), { initialized: true, samplesCleared: true }, { merge: true }).catch(() => {});
-      }
-
-      onUpdate(userProjects);
+      // Broadcast all projects to everyone on all devices
+      onUpdate(loaded);
       try {
-        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(userProjects));
+        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(loaded));
         localStorage.setItem('avocean_projects_initialized', 'true');
       } catch {}
     },
@@ -1334,10 +1321,7 @@ export function subscribeToCareerProjects(
           const saved = localStorage.getItem('avocean_career_projects_v1');
           if (saved !== null) {
             const parsed = JSON.parse(saved) as CareerProject[];
-            const cleaned = parsed.filter(
-              (p) => !samplePrefixes.some((prefix) => p.id?.startsWith(prefix))
-            );
-            onUpdate(cleaned);
+            onUpdate(parsed);
             return;
           }
         } catch {}

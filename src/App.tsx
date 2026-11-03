@@ -1564,9 +1564,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('avocean_career_projects_v1');
       if (saved !== null) {
-        const samplePrefixes = ['proj-show-', 'proj-movie-', 'proj-mv-', 'proj-partner-'];
-        const parsed = JSON.parse(saved) as CareerProject[];
-        return parsed.filter((p) => !samplePrefixes.some((prefix) => p.id?.startsWith(prefix)));
+        return JSON.parse(saved) as CareerProject[];
       }
     } catch {}
     return [];
