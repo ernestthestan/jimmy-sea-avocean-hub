@@ -73,7 +73,8 @@ import {
   ClipboardList,
   Truck,
   Film,
-  RefreshCw
+  RefreshCw,
+  Heart
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -128,18 +129,20 @@ import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
 export type UserRole = 'visitor' | 'admin' | 'owner';
 export type AccentChoice = 'purple' | 'blue' | 'green';
 
-export type FanMessageCategory = 'calendar' | 'project' | 'fanclub' | 'foodsupport';
+export type FanMessageCategory = 'calendar' | 'project' | 'fanclub' | 'foodsupport' | 'thanks';
 
 export interface FanMessage {
   id: string;
   senderName: string;
-  eventTitle: string; // Used as main title for all types (Event, Project, Fan Club, or Food Campaign)
+  eventTitle: string; // Used as main title for all types (Event, Project, Fan Club, Food Campaign, or Thank You Note)
   eventDate?: string;
   sourceUrl?: string;
   message: string;
   createdAt: string;
   isRead: boolean;
   category?: FanMessageCategory;
+  // Wanna say thanks fields
+  thanksTo?: string; // e.g. 'Jimmy & Sea', 'Jimmy', 'Sea', 'Admins & Website Team', 'Everyone'
   // Career Project fields
   projectCategory?: string; // Series, Movie, Music Video, Brand Endorsement, Owned Brand, Other
   projectArtist?: string; // Jimmy & Sea, Jimmy, Sea, Avocean
@@ -1855,7 +1858,9 @@ export default function App() {
           const newest = cloudMsgs[0];
           if (newest && !newest.isRead) {
             const catLabel =
-              newest.category === 'project'
+              newest.category === 'thanks'
+                ? '💖 Thank You note'
+                : newest.category === 'project'
                 ? '🎬 Project suggestion'
                 : newest.category === 'fanclub'
                 ? '🌍 Fan Club submission'
@@ -1918,8 +1923,11 @@ export default function App() {
   const [msgFoodSupportTarget, setMsgFoodSupportTarget] = useState<string>('');
   const [msgFoodSupportOrganizer, setMsgFoodSupportOrganizer] = useState<string>('');
 
+  // Category-specific fields for Wanna Say Thanks
+  const [msgThanksTo, setMsgThanksTo] = useState<string>('Jimmy & Sea');
+
   // Inbox category filter tab
-  const [inboxFilterCategory, setInboxFilterCategory] = useState<'all' | 'calendar' | 'project' | 'fanclub' | 'foodsupport'>('all');
+  const [inboxFilterCategory, setInboxFilterCategory] = useState<'all' | 'calendar' | 'project' | 'fanclub' | 'foodsupport' | 'thanks'>('all');
 
   const unreadMessageCount = useMemo(() => {
     return fanMessages.filter((m) => !m.isRead).length;
@@ -1962,10 +1970,12 @@ export default function App() {
   const handleSendFanMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!msgSenderName.trim()) {
-      showToast('Please enter your name or social handle.');
-      return;
+      if (msgCategory !== 'thanks') {
+        showToast('Please enter your name or social handle.');
+        return;
+      }
     }
-    if (!msgEventTitle.trim()) {
+    if (msgCategory !== 'thanks' && !msgEventTitle.trim()) {
       if (msgCategory === 'project') {
         showToast('Please enter the project or brand title.');
       } else if (msgCategory === 'fanclub') {
@@ -1977,25 +1987,35 @@ export default function App() {
       }
       return;
     }
-    if (!msgSourceUrl.trim()) {
+    if (msgCategory !== 'thanks' && !msgSourceUrl.trim()) {
       showToast('Please provide a source link (e.g. social post, official website, or registration URL).');
       return;
     }
     if (!msgContent.trim()) {
-      showToast('Please provide details or a description.');
+      showToast(msgCategory === 'thanks' ? 'Please write your message or words of appreciation!' : 'Please provide details or a description.');
       return;
     }
 
+    const effectiveSender = msgSenderName.trim() || (msgCategory === 'thanks' ? 'Anonymous NomNom 🥑🌊' : 'Anonymous');
+    const effectiveTitle = msgCategory === 'thanks'
+      ? (msgEventTitle.trim() || `💖 Thank You & Love for ${msgThanksTo}`)
+      : msgEventTitle.trim();
+
     const newMsg: FanMessage = {
       id: `msg-${Date.now()}`,
-      senderName: msgSenderName.trim(),
-      eventTitle: msgEventTitle.trim(),
+      senderName: effectiveSender,
+      eventTitle: effectiveTitle,
       eventDate: msgEventDate || undefined,
-      sourceUrl: msgSourceUrl.trim(),
+      sourceUrl: msgSourceUrl.trim() || undefined,
       message: msgContent.trim(),
       createdAt: new Date().toISOString(),
       isRead: false,
       category: msgCategory,
+      ...(msgCategory === 'thanks'
+        ? {
+            thanksTo: msgThanksTo
+          }
+        : {}),
       ...(msgCategory === 'project'
         ? {
             projectCategory: msgProjectCategory,
@@ -2041,7 +2061,8 @@ export default function App() {
         setMsgFanClubCity('');
         setMsgFoodSupportTarget('');
         setMsgFoodSupportOrganizer('');
-        showToast('💌 Message sent in real time to Admins & Owner! Thank you.');
+        setMsgThanksTo('Jimmy & Sea');
+        showToast(msgCategory === 'thanks' ? '💖 Thank you note sent in real time! Your love was received.' : '💌 Message sent in real time to Admins & Owner! Thank you.');
       }, 1200);
     } catch (err) {
       console.warn('Could not sync message to Firestore:', err);
@@ -2061,6 +2082,7 @@ export default function App() {
         setMsgFanClubCity('');
         setMsgFoodSupportTarget('');
         setMsgFoodSupportOrganizer('');
+        setMsgThanksTo('Jimmy & Sea');
         showToast('💌 Message saved! Will sync to all devices once online.');
       }, 1200);
     } finally {
@@ -4700,6 +4722,16 @@ export default function App() {
                   <span>Leave a message</span>
                 </>
               )}
+            </button>
+
+            {/* Wanna say thanks? button: quick direct way to send love & appreciation */}
+            <button
+              onClick={() => openLeaveMessageModal('thanks')}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-rose-50/90 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 shadow-2xs border border-rose-200/80 dark:border-rose-800 cursor-pointer transition-all active:scale-95"
+              title="Wanna say thanks? Leave a heartfelt note of appreciation for Jimmy, Sea, or the admins"
+            >
+              <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+              <span>Wanna say thanks?</span>
             </button>
 
             {/* Admin & Owner: Active Live Inbox with unread count badge (Visible only when logged in) */}
@@ -9280,7 +9312,9 @@ export default function App() {
                 <div
                   style={{
                     backgroundColor:
-                      msgCategory === 'project'
+                      msgCategory === 'thanks'
+                        ? '#FFE4E6'
+                        : msgCategory === 'project'
                         ? '#F3E8FF'
                         : msgCategory === 'fanclub'
                         ? '#E0F2FE'
@@ -9290,7 +9324,9 @@ export default function App() {
                   }}
                   className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
                 >
-                  {msgCategory === 'project' ? (
+                  {msgCategory === 'thanks' ? (
+                    <Heart className="w-5 h-5 text-rose-600 dark:text-rose-300 fill-rose-500" />
+                  ) : msgCategory === 'project' ? (
                     <Film className="w-5 h-5 text-purple-700 dark:text-purple-300" />
                   ) : msgCategory === 'fanclub' ? (
                     <Users className="w-5 h-5 text-sky-700 dark:text-sky-300" />
@@ -9302,7 +9338,9 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
-                    {msgCategory === 'project'
+                    {msgCategory === 'thanks'
+                      ? 'Wanna Say Thanks? 💖'
+                      : msgCategory === 'project'
                       ? 'Suggest a Career Project'
                       : msgCategory === 'fanclub'
                       ? 'Submit a Fan Club'
@@ -9311,7 +9349,9 @@ export default function App() {
                       : 'Leave a Message'}
                   </h3>
                   <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
-                    {msgCategory === 'project'
+                    {msgCategory === 'thanks'
+                      ? 'Send your love, heartfelt appreciation, or cheering message to Jimmy, Sea, or the admins!'
+                      : msgCategory === 'project'
                       ? 'Propose a drama, movie, MV, or endorsement for Jimmy & Sea'
                       : msgCategory === 'fanclub'
                       ? 'Submit your fan club for the global Avocean directory'
@@ -9330,7 +9370,7 @@ export default function App() {
             </div>
 
             {/* Category Selector Tabs */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-4 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mb-4 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
               <button
                 type="button"
                 onClick={() => setMsgCategory('calendar')}
@@ -9382,6 +9422,19 @@ export default function App() {
                 <span>🍱</span>
                 <span>Food Support</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setMsgCategory('thanks')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer col-span-2 sm:col-span-1 ${
+                  msgCategory === 'thanks'
+                    ? 'bg-rose-500 text-white shadow-xs font-extrabold'
+                    : 'text-rose-700 dark:text-rose-300 bg-rose-50/70 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                }`}
+              >
+                <span>💖</span>
+                <span>Say Thanks</span>
+              </button>
             </div>
 
             {messageSubmitted ? (
@@ -9393,7 +9446,9 @@ export default function App() {
                   Message Sent in Real Time!
                 </h4>
                 <p className="text-xs font-medium text-[#607494] dark:text-slate-400 max-w-xs">
-                  {msgCategory === 'project'
+                  {msgCategory === 'thanks'
+                    ? 'Thank you! Your heartfelt thank you note has been received in real time and brought a big smile to the team.'
+                    : msgCategory === 'project'
                     ? 'Thank you! Admins and owner have received your career project suggestion and will review it.'
                     : msgCategory === 'fanclub'
                     ? 'Thank you! Admins have received your fan club submission to review for the directory.'
@@ -9407,7 +9462,9 @@ export default function App() {
                 {/* Contextual Banner Note */}
                 <div
                   className={`p-3 rounded-2xl text-xs leading-relaxed border ${
-                    msgCategory === 'project'
+                    msgCategory === 'thanks'
+                      ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-950 dark:text-rose-200'
+                      : msgCategory === 'project'
                       ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-100 dark:border-purple-900 text-purple-900 dark:text-purple-200'
                       : msgCategory === 'fanclub'
                       ? 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-100 dark:border-sky-900 text-sky-900 dark:text-sky-200'
@@ -9416,7 +9473,9 @@ export default function App() {
                       : 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-100 dark:border-purple-900 text-purple-900 dark:text-purple-200'
                   }`}
                 >
-                  {msgCategory === 'project'
+                  {msgCategory === 'thanks'
+                    ? '💖 Wanna say thanks? Share what Jimmy, Sea, or this hub means to you! Leave cheering words, thank the creators, or send love to the fandom—no links required!'
+                    : msgCategory === 'project'
                     ? '🎬 Missing a drama, movie, music video, brand endorsement or owned brand? Suggest it below and include character names (e.g. Jimmy as Pongpeun, Sea as Pepper)!'
                     : msgCategory === 'fanclub'
                     ? '🌍 Want your country, city, or regional fan club listed in the global Avocean directory? Share your handle and links below!'
@@ -9772,6 +9831,79 @@ export default function App() {
                   </>
                 )}
 
+                {/* 5. WANNA SAY THANKS FIELDS */}
+                {msgCategory === 'thanks' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1.5">
+                        Who do you want to say thanks to? 💖
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {[
+                          { id: 'Jimmy & Sea', label: '🥑🌊 Jimmy & Sea' },
+                          { id: 'Jimmy Jitaraphol', label: '🥑 Jimmy' },
+                          { id: 'Sea Tawinan', label: '🌊 Sea' },
+                          { id: 'Admins & Website Team', label: '🛠️ Admins & Hub Team' },
+                          { id: 'Whole Avocean Family', label: '💚 Whole Avocean Family' }
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setMsgThanksTo(item.id)}
+                            className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                              msgThanksTo === item.id
+                                ? 'bg-rose-500 text-white border-rose-600 shadow-xs font-black'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-rose-300'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Your Heartfelt Thank You Message *
+                      </label>
+                      <textarea
+                        rows={4}
+                        required
+                        value={msgContent}
+                        onChange={(e) => setMsgContent(e.target.value)}
+                        placeholder="Write your sweet words of appreciation, encouragement, gratitude, or love... 🥑🌊💚"
+                        className="w-full rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/20 dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Topic / Title (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={msgEventTitle}
+                        onChange={(e) => setMsgEventTitle(e.target.value)}
+                        placeholder="e.g. Thank you for this schedule! or Always cheering for Jimmy & Sea"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Optional Fan Art / Tweet / Social Post Link
+                      </label>
+                      <input
+                        type="url"
+                        value={msgSourceUrl}
+                        onChange={(e) => setMsgSourceUrl(e.target.value)}
+                        placeholder="https://x.com/... (optional)"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
+                      />
+                    </div>
+                  </>
+                )}
+
                 {/* Form Buttons */}
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <button
@@ -9796,7 +9928,9 @@ export default function App() {
                       <>
                         <Send className="w-3.5 h-3.5" />
                         <span>
-                          {msgCategory === 'project'
+                          {msgCategory === 'thanks'
+                            ? 'Send Thank You Note 💖'
+                            : msgCategory === 'project'
                             ? 'Submit Project Suggestion'
                             : msgCategory === 'fanclub'
                             ? 'Submit Fan Club'
@@ -9923,6 +10057,17 @@ export default function App() {
               >
                 🍱 Food Support ({fanMessages.filter((m) => m.category === 'foodsupport').length})
               </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilterCategory('thanks')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  inboxFilterCategory === 'thanks'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
+                }`}
+              >
+                💖 Say Thanks ({fanMessages.filter((m) => m.category === 'thanks').length})
+              </button>
             </div>
 
             {fanMessages.length === 0 ? (
@@ -9932,7 +10077,7 @@ export default function App() {
                   Inbox is empty
                 </span>
                 <span className="text-xs text-slate-400">
-                  When viewers submit events, project suggestions, or fan club tips, they will appear here.
+                  When viewers submit events, project suggestions, fan club tips, or thank you notes, they will appear here.
                 </span>
               </div>
             ) : (
@@ -9944,6 +10089,7 @@ export default function App() {
                     return msg.category === inboxFilterCategory;
                   })
                   .map((msg) => {
+                    const isThanks = msg.category === 'thanks';
                     const isProject = msg.category === 'project';
                     const isFanClub = msg.category === 'fanclub';
                     const isFoodSupport = msg.category === 'foodsupport';
@@ -9955,6 +10101,8 @@ export default function App() {
                         className={`p-4 rounded-2xl border transition-all ${
                           msg.isRead
                             ? 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                            : isThanks
+                            ? 'bg-gradient-to-br from-rose-50/90 via-pink-50/80 to-purple-50/70 dark:from-rose-950/40 dark:via-pink-950/30 dark:to-purple-950/40 border-rose-200 dark:border-rose-800 shadow-2xs'
                             : isProject
                             ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 shadow-2xs'
                             : isFanClub
@@ -9974,7 +10122,9 @@ export default function App() {
                             {/* Category Pill Badge */}
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                isProject
+                                isThanks
+                                  ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 flex items-center gap-1'
+                                  : isProject
                                   ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                   : isFanClub
                                   ? 'bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
@@ -9983,7 +10133,9 @@ export default function App() {
                                   : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
                               }`}
                             >
-                              {isProject
+                              {isThanks
+                                ? `💖 Say Thanks · To: ${msg.thanksTo || 'Jimmy & Sea'}`
+                                : isProject
                                 ? `🎬 Project · ${msg.projectCategory || 'Work'}`
                                 : isFanClub
                                 ? `🌍 Fan Club · ${msg.fanClubCountry || 'Global'}`
@@ -10010,8 +10162,14 @@ export default function App() {
                         </div>
 
                         {/* Extra Context Badges */}
-                        {(isProject || isFanClub || isFoodSupport) && (
+                        {(isProject || isFanClub || isFoodSupport || isThanks) && (
                           <div className="flex items-center gap-1.5 flex-wrap mb-2 text-[11px]">
+                            {isThanks && (
+                              <span className="font-semibold px-2 py-0.5 rounded-md bg-rose-100/80 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 flex items-center gap-1">
+                                💌 Appreciation for: {msg.thanksTo || 'Jimmy & Sea'}
+                              </span>
+                            )}
+
                             {isProject && (
                               <>
                                 {msg.projectArtist && (
@@ -10060,9 +10218,17 @@ export default function App() {
                         )}
 
                         {/* Message / Description Body */}
-                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-3 whitespace-pre-line">
-                          "{msg.message}"
-                        </p>
+                        {isThanks ? (
+                          <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-rose-100 dark:border-rose-900/60 shadow-2xs mb-3">
+                            <p className="text-xs text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-line font-medium italic">
+                              "{msg.message}"
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-3 whitespace-pre-line">
+                            "{msg.message}"
+                          </p>
+                        )}
 
                         {/* Footer row: Sender, Link, Action buttons */}
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex-wrap gap-2">
