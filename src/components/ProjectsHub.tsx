@@ -1227,7 +1227,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const getArtistLabel = (artist: ProjectArtist) => {
     switch (artist) {
       case 'jimmysea':
-        return { label: 'Jimmy & Sea', emoji: '🥑🌊', bg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
+        return {
+          label: 'JimmySea',
+          emoji: '🥑🌊',
+          bg: 'bg-gradient-to-r from-purple-100 via-indigo-50 to-sky-100 dark:from-purple-950/90 dark:via-indigo-950/80 dark:to-sky-950/90 text-purple-950 dark:text-sky-100 border-purple-300/90 dark:border-indigo-600 font-extrabold shadow-2xs'
+        };
       case 'jimmy':
         return { label: 'Jimmy Jitaraphol', emoji: '🥑', bg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' };
       case 'sea':
@@ -1303,46 +1307,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   return (
     <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 animate-in fade-in duration-200 pb-24`}>
       {/* ============================================================== */}
-      {/* 1. HERO HEADER: PROJECTS & CAREER PORTFOLIO                    */}
-      {/* ============================================================== */}
-      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-5">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-              <Film className="w-3.5 h-3.5" />
-              <span>Official Filmography & Ventures</span>
-            </span>
-            {/* Exactly with Green Heart 💚 as requested */}
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              🥑 Jimmy · 🌊 Sea · 💚 Avocean
-            </span>
-          </div>
-
-          <h2 className="text-2xl sm:text-3xl font-black text-[#1A3668] dark:text-white tracking-tight">
-            Jimmy & Sea Career Projects
-          </h2>
-          <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 max-w-3xl">
-            Explore Jimmy and Sea&apos;s complete catalog of award-winning series, movies, official music videos, global partner brand endorsements, and personal ventures.
-          </p>
-        </div>
-
-        {/* Right Action: Admin Add Button */}
-        {canEdit && (
-          <div className="shrink-0 self-start md:self-auto">
-            <button
-              onClick={openAddModal}
-              style={{ backgroundColor: currentAccent.colorHex }}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer active:scale-95 transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Add Project</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ============================================================== */}
-      {/* 2. ACTOR & COMMUNITY PROFILES (JIMMY · AVOCEAN · SEA)          */}
+      {/* 1. ACTOR & COMMUNITY PROFILES (JIMMY · AVOCEAN · SEA)          */}
       {/* Left: Jimmy | Middle: Avocean | Right: Sea                     */}
       {/* ============================================================== */}
       <div className="w-full">
@@ -1909,6 +1874,45 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             </div>
           );
         })()}
+      </div>
+
+      {/* ============================================================== */}
+      {/* 2. HERO HEADER: PROJECTS & CAREER PORTFOLIO                    */}
+      {/* ============================================================== */}
+      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              <Film className="w-3.5 h-3.5" />
+              <span>Official Filmography & Ventures</span>
+            </span>
+            {/* Exactly with Green Heart 💚 as requested */}
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              🥑 Jimmy · 🌊 Sea · 💚 Avocean
+            </span>
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-black text-[#1A3668] dark:text-white tracking-tight">
+            Jimmy & Sea Career Projects
+          </h2>
+          <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 max-w-3xl">
+            Explore Jimmy and Sea&apos;s complete catalog of award-winning series, movies, official music videos, global partner brand endorsements, and personal ventures.
+          </p>
+        </div>
+
+        {/* Right Action: Admin Add Button */}
+        {canEdit && (
+          <div className="shrink-0 self-start md:self-auto">
+            <button
+              onClick={openAddModal}
+              style={{ backgroundColor: currentAccent.colorHex }}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Add Project</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ============================================================== */}
@@ -2752,7 +2756,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     onChange={(e) => setFormArtist(e.target.value as ProjectArtist)}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                   >
-                    <option value="jimmysea">🥑🌊 Jimmy & Sea (Pairing)</option>
+                    <option value="jimmysea">🥑🌊 JimmySea (Pairing)</option>
                     <option value="jimmy">🥑 Jimmy Jitaraphol (Solo)</option>
                     <option value="sea">🌊 Sea Tawinan (Solo)</option>
                     <option value="avocean">🥑💚 Avocean Brand</option>
