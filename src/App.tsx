@@ -72,7 +72,8 @@ import {
   Ticket,
   ClipboardList,
   Truck,
-  Film
+  Film,
+  RefreshCw
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -1311,14 +1312,14 @@ const TrioBadges: React.FC<{ members: Member[]; size?: 'sm' | 'lg' }> = ({
 };
 
 export default function App() {
-  // --- Dark Mode State --- (Defaults to dark mode as requested)
+  // --- Dark Mode State --- (Defaults to light mode to match user preference and prevent dark screens on new devices)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_DARK_MODE_KEY);
       if (saved !== null) return saved === 'true';
-      return true; // Default to sleek dark mode
+      return false; // Default to luminous pastel light mode
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -4911,6 +4912,25 @@ export default function App() {
             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
+          {/* Quick Force Sync Button for other devices / mobile caches */}
+          <button
+            onClick={() => {
+              if ('caches' in window) {
+                caches.keys().then((names) => {
+                  names.forEach((name) => caches.delete(name));
+                });
+              }
+              const url = new URL(window.location.href);
+              url.searchParams.set('_sync', Date.now().toString());
+              window.location.replace(url.toString());
+            }}
+            className="p-2 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+            title="Sync Latest Version across all devices (Clears local caches & reloads)"
+            aria-label="Sync Latest Version"
+          >
+            <RefreshCw className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          </button>
+
           {/* Saved Reminders Counter */}
           {userReminders.length > 0 && (
             <button
@@ -5808,8 +5828,8 @@ export default function App() {
           <div
             className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
               isDarkMode
-                ? 'bg-slate-900/95 border border-slate-800/80 shadow-lg'
-                : 'bg-white/95 border border-white/80 shadow-lg shadow-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
+                : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
             }`}
           >
             <button
@@ -5819,7 +5839,7 @@ export default function App() {
                   ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
                   : isDarkMode
                   ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
               }`}
               title="View Calendar schedule"
             >
@@ -5833,7 +5853,7 @@ export default function App() {
                   ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
                   : isDarkMode
                   ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
               }`}
               title="View List schedule"
             >
@@ -5848,8 +5868,8 @@ export default function App() {
           <div
             className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
               isDarkMode
-                ? 'bg-slate-900/95 border border-slate-800/80 shadow-lg'
-                : 'bg-white/95 border border-white/80 shadow-lg shadow-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
+                : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
             }`}
           >
             <button
@@ -5859,7 +5879,7 @@ export default function App() {
                   ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
                   : isDarkMode
                   ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
               }`}
               title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
             >
@@ -5874,8 +5894,8 @@ export default function App() {
           <div
             className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
               isDarkMode
-                ? 'bg-slate-900/95 border border-slate-800/80 shadow-lg'
-                : 'bg-white/95 border border-white/80 shadow-lg shadow-purple-500/10'
+                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
+                : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
             }`}
           >
             <button
@@ -5888,7 +5908,7 @@ export default function App() {
                   ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
                   : isDarkMode
                   ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
               }`}
               title="JimmySea Fan Clubs Directory"
             >
@@ -5905,7 +5925,7 @@ export default function App() {
                   ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
                   : isDarkMode
                   ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
               }`}
               title="Fan Food Support & Catering Projects"
             >

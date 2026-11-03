@@ -56,6 +56,34 @@ ${text}`,
   }
 });
 
+// Anti-cache middleware to guarantee instant cross-device syncing
+app.use((req, res, next) => {
+  // Never allow caching of HTML, manifest, or application scripts
+  if (
+    req.path === '/' ||
+    req.path.endsWith('.html') ||
+    req.path.endsWith('.json') ||
+    req.path.endsWith('.tsx') ||
+    req.path.endsWith('.ts') ||
+    req.path.endsWith('.jsx') ||
+    req.path.endsWith('.js') ||
+    req.path.includes('/src/') ||
+    req.path.includes('/@vite/')
+  ) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  }
+  next();
+});
+
+// App version endpoint for cross-device sync diagnostics
+const BUILD_TIMESTAMP = Date.now().toString();
+app.get('/api/version', (_req, res) => {
+  res.json({ version: BUILD_TIMESTAMP, updated: new Date().toISOString() });
+});
+
 // Serve public static assets (including og-image.png, favicon, manifests)
 app.use(express.static('public'));
 
@@ -68,8 +96,19 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static('dist'));
+    app.use(express.static('dist', {
+      setHeaders: (res, path) => {
+        if (path.endsWith('.html') || path.endsWith('.json')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      }
+    }));
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile('dist/index.html', { root: '.' });
     });
   }
