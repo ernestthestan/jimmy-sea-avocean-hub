@@ -74,7 +74,8 @@ export interface ActorProfile {
   heightWeight?: string;
   bloodType?: string;
   venturesOrSkills?: string;
-  myDramaListUrl?: string;
+  myDramaListUrl?: string; // Legacy optional
+  customWebsites?: Array<{ label: string; url: string }>; // Customizable external websites & official links
   instagramUrl?: string;
   twitterUrl?: string;
   tiktokUrl?: string;

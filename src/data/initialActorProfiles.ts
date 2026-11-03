@@ -20,7 +20,9 @@ export const INITIAL_ACTOR_PROFILES: Record<'jimmy' | 'avocean' | 'sea', ActorPr
     agency: 'GMMTV',
     heightWeight: '180 cm · 68 kg · Blood Type AB',
     venturesOrSkills: 'Doctor Jimmy Clinic (Founder & Aesthetic Physician)',
-    myDramaListUrl: 'https://mydramalist.com/people/58087-jimmy-jitaphon-potiwihok',
+    customWebsites: [
+      { label: 'Doctor Jimmy Clinic', url: 'https://www.facebook.com' }
+    ],
     instagramUrl: 'https://instagram.com/jimmyyjp',
     twitterUrl: 'https://x.com/Jimmyy_JP',
     spouse: 'Sea Tawinan Anukoolprasert (Official Duo & On-screen Partner)',
@@ -50,7 +52,9 @@ export const INITIAL_ACTOR_PROFILES: Record<'jimmy' | 'avocean' | 'sea', ActorPr
     agency: 'GMMTV Official Duo',
     heightWeight: 'Fandom Mascots: Baby Avocado & Sea Wave 🥑🌊',
     venturesOrSkills: 'Concerts, International Fan Meetings & Official Merch',
-    myDramaListUrl: 'https://mydramalist.com/people/58087-jimmy-jitaphon-potiwihok',
+    customWebsites: [
+      { label: 'GMMTV Official Hub', url: 'https://www.gmm-tv.com' }
+    ],
     instagramUrl: 'https://instagram.com/gmmtv',
     twitterUrl: 'https://x.com/GMMTV',
     spouse: 'Jimmy Jitaraphol & Sea Tawinan',
@@ -82,7 +86,9 @@ export const INITIAL_ACTOR_PROFILES: Record<'jimmy' | 'avocean' | 'sea', ActorPr
     agency: 'GMMTV',
     heightWeight: '178 cm · 65 kg · Blood Type A',
     venturesOrSkills: 'Sunbather Studio · Former Competitive Badminton Athlete · Vocals',
-    myDramaListUrl: 'https://mydramalist.com/people/58119-sea-tawinan-anukoolprasert',
+    customWebsites: [
+      { label: 'Sunbather Studio', url: 'https://instagram.com/sunbatherstudio' }
+    ],
     instagramUrl: 'https://instagram.com/sea_tawinan',
     twitterUrl: 'https://x.com/Sea_tawinan',
     spouse: 'Jimmy Jitaraphol Potiwihok (Official Duo & On-screen Partner)',

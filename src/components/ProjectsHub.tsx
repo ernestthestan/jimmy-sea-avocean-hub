@@ -233,7 +233,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const [actorFormAgency, setActorFormAgency] = useState<string>('');
   const [actorFormHeightWeight, setActorFormHeightWeight] = useState<string>('');
   const [actorFormVentures, setActorFormVentures] = useState<string>('');
-  const [actorFormMdlUrl, setActorFormMdlUrl] = useState<string>('');
+  const [actorFormCustomWebsites, setActorFormCustomWebsites] = useState<Array<{ id: string; label: string; url: string }>>([]);
   const [actorFormInstagramUrl, setActorFormInstagramUrl] = useState<string>('');
   const [actorFormTwitterUrl, setActorFormTwitterUrl] = useState<string>('');
   const [actorFormTiktokUrl, setActorFormTiktokUrl] = useState<string>('');
@@ -392,7 +392,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     }
     setActorFormAvatarOffsetY(parsedOffset);
     setActorFormAvatarFit(prof.avatarFit || 'cover');
-    setActorFormMdlUrl(prof.myDramaListUrl || '');
+    const loadedWebsites = (prof.customWebsites && prof.customWebsites.length > 0)
+      ? prof.customWebsites.map((w, idx) => ({ id: `web-${idx}-${Date.now()}`, label: w.label || 'Website', url: w.url || '' }))
+      : [];
+    setActorFormCustomWebsites(loadedWebsites);
     setActorFormInstagramUrl(prof.instagramUrl || '');
     setActorFormTwitterUrl(prof.twitterUrl || '');
     setActorFormTiktokUrl(prof.tiktokUrl || '');
@@ -401,6 +404,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setActorFormTitleSize(prof.titleSize || 'medium');
     setActorFormFactsSize(prof.factsSize || 'medium');
     setActorFormBioSize(prof.bioSize || 'medium');
+  };
+
+  const handleAddCustomWebsite = () => {
+    setActorFormCustomWebsites((prev) => [
+      ...prev,
+      { id: `web-${Date.now()}-${Math.random()}`, label: 'Official Website', url: '' }
+    ]);
+  };
+
+  const handleUpdateCustomWebsite = (idx: number, field: 'label' | 'url', val: string) => {
+    setActorFormCustomWebsites((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return copy;
+    });
+  };
+
+  const handleRemoveCustomWebsite = (idx: number) => {
+    setActorFormCustomWebsites((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleSaveActorProfile = async (e: React.FormEvent) => {
@@ -441,7 +463,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         favoriteFoods: actorFormFavoriteFoods.trim() || undefined,
         avatarPosition: `center ${actorFormAvatarOffsetY}%`,
         avatarFit: actorFormAvatarFit,
-        myDramaListUrl: actorFormMdlUrl.trim() || undefined,
+        myDramaListUrl: undefined,
+        customWebsites: actorFormCustomWebsites
+          .map((w) => ({ label: w.label.trim() || 'Official Website', url: w.url.trim() }))
+          .filter((w) => w.url.length > 0),
         instagramUrl: actorFormInstagramUrl.trim() || undefined,
         twitterUrl: actorFormTwitterUrl.trim() || undefined,
         tiktokUrl: actorFormTiktokUrl.trim() || undefined,
@@ -1389,19 +1414,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 {/* Footer Social & Media Links */}
                 <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {profile.myDramaListUrl && (
-                      <a
-                        href={profile.myDramaListUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 transition-all cursor-pointer"
-                        title="View on MyDramaList"
-                      >
-                        <Globe className="w-3 h-3" />
-                        <span>MyDramaList</span>
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    )}
+                    {/* User-defined Websites & Official Links */}
+                    {profile.customWebsites && profile.customWebsites.map((site, sIdx) => {
+                      if (!site.url) return null;
+                      return (
+                        <a
+                          key={sIdx}
+                          href={site.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-all cursor-pointer shadow-2xs"
+                          title={site.label || site.url}
+                        >
+                          <Globe className="w-3 h-3 text-purple-500" />
+                          <span>{site.label || 'Website'}</span>
+                          <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                        </a>
+                      );
+                    })}
+
                     {profile.instagramUrl && (
                       <a
                         href={profile.instagramUrl}
@@ -1423,6 +1454,18 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         title="X / Twitter"
                       >
                         <span>𝕏</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                    {profile.tiktokUrl && (
+                      <a
+                        href={profile.tiktokUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                        title="TikTok"
+                      >
+                        <span>🎵 TikTok</span>
                         <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     )}
@@ -3103,40 +3146,100 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               </div>
 
-              {/* Social / MDL URLs */}
-              <div className="space-y-2">
-                <label className="block text-slate-700 dark:text-slate-300 font-bold">
-                  Official Links & Profiles
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <input
-                    type="url"
-                    value={actorFormMdlUrl}
-                    onChange={(e) => setActorFormMdlUrl(e.target.value)}
-                    placeholder="MyDramaList profile link..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs"
-                  />
-                  <input
-                    type="url"
-                    value={actorFormInstagramUrl}
-                    onChange={(e) => setActorFormInstagramUrl(e.target.value)}
-                    placeholder="Instagram link..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs"
-                  />
-                  <input
-                    type="url"
-                    value={actorFormTwitterUrl}
-                    onChange={(e) => setActorFormTwitterUrl(e.target.value)}
-                    placeholder="Twitter / X profile link..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs"
-                  />
-                  <input
-                    type="url"
-                    value={actorFormTiktokUrl}
-                    onChange={(e) => setActorFormTiktokUrl(e.target.value)}
-                    placeholder="TikTok link (optional)..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs"
-                  />
+              {/* Dynamic Websites & Official Links Manager */}
+              <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Websites &amp; Official Links</span>
+                    </label>
+                    <p className="text-[10.5px] text-slate-400">
+                      Add any custom websites, stores, clinics, fan hubs, or channels you want displayed
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomWebsite}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900 border border-purple-200 dark:border-purple-800 cursor-pointer transition-all"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Website</span>
+                  </button>
+                </div>
+
+                {actorFormCustomWebsites.length > 0 && (
+                  <div className="space-y-2">
+                    {actorFormCustomWebsites.map((site, sIdx) => (
+                      <div
+                        key={site.id || sIdx}
+                        className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80"
+                      >
+                        <div className="w-1/3 min-w-[110px]">
+                          <input
+                            type="text"
+                            value={site.label}
+                            onChange={(e) => handleUpdateCustomWebsite(sIdx, 'label', e.target.value)}
+                            placeholder="e.g. Clinic Website"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <input
+                            type="url"
+                            value={site.url}
+                            onChange={(e) => handleUpdateCustomWebsite(sIdx, 'url', e.target.value)}
+                            placeholder="https://..."
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomWebsite(sIdx)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer shrink-0"
+                          title="Remove Website"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Social Profiles */}
+                <div className="pt-2">
+                  <span className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+                    Social Media Handles:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <input
+                        type="url"
+                        value={actorFormInstagramUrl}
+                        onChange={(e) => setActorFormInstagramUrl(e.target.value)}
+                        placeholder="📸 Instagram URL"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="url"
+                        value={actorFormTwitterUrl}
+                        onChange={(e) => setActorFormTwitterUrl(e.target.value)}
+                        placeholder="𝕏 / Twitter URL"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="url"
+                        value={actorFormTiktokUrl}
+                        onChange={(e) => setActorFormTiktokUrl(e.target.value)}
+                        placeholder="🎵 TikTok URL (optional)"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

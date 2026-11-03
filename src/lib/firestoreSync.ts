@@ -1449,6 +1449,9 @@ export function subscribeToActorProfiles(
         if (merged.avocean && !merged.avocean.parents) {
           merged.avocean.parents = merged.avocean.spouse || 'Jimmy Jitaraphol & Sea Tawinan';
         }
+        delete (merged.jimmy as any).myDramaListUrl;
+        delete (merged.avocean as any).myDramaListUrl;
+        delete (merged.sea as any).myDramaListUrl;
         onUpdate(merged);
         try {
           localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(merged));
