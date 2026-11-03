@@ -52,6 +52,47 @@ import { subscribeToActorProfiles, saveActorProfilesToFirestore } from '../lib/f
 import { TRANSLATION_LANGUAGES, translateText } from '../lib/translateService';
 import { compressImageFile } from '../lib/imageCompression';
 
+export const PROJECT_WATCH_PLATFORMS = [
+  { value: 'Viki', label: 'Viki (Rakuten Viki)', icon: '🟣' },
+  { value: 'iQiyi', label: 'iQiyi', icon: '🟢' },
+  { value: 'Viu', label: 'Viu', icon: '🟡' },
+  { value: 'GagaOOLala', label: 'GagaOOLala', icon: '🌈' },
+  { value: 'YouTube', label: 'YouTube', icon: '▶️' },
+  { value: 'Netflix', label: 'Netflix', icon: '🍿' },
+  { value: 'GMMTV', label: 'GMMTV', icon: '🎬' },
+  { value: 'Disney+', label: 'Disney+ Hotstar', icon: '✨' },
+  { value: 'WeTV', label: 'WeTV', icon: '🟠' },
+  { value: 'TrueID', label: 'TrueID', icon: '🔴' },
+  { value: 'One31', label: 'oneD / One31', icon: '📺' },
+  { value: 'Spotify', label: 'Spotify', icon: '🟢' },
+  { value: 'Apple Music', label: 'Apple Music', icon: '🍎' },
+  { value: 'Instagram', label: 'Instagram', icon: '📸' },
+  { value: 'X', label: 'X / Twitter', icon: '🐦' },
+  { value: 'Shop', label: 'Shop / Merch', icon: '🛍️' },
+  { value: 'Website', label: 'Official Website', icon: '🌐' }
+];
+
+export function detectProjectWatchPlatform(url: string): { platform: string; label: string } | null {
+  const u = (url || '').trim().toLowerCase();
+  if (!u) return null;
+  if (u.includes('viki.com')) return { platform: 'Viki', label: 'Viki' };
+  if (u.includes('iqiyi.com') || u.includes('iq.com')) return { platform: 'iQiyi', label: 'iQiyi' };
+  if (u.includes('viu.com')) return { platform: 'Viu', label: 'Viu' };
+  if (u.includes('gagaoolala.com')) return { platform: 'GagaOOLala', label: 'GagaOOLala' };
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return { platform: 'YouTube', label: 'YouTube' };
+  if (u.includes('netflix.com')) return { platform: 'Netflix', label: 'Netflix' };
+  if (u.includes('wetv.vip') || u.includes('wetv.com')) return { platform: 'WeTV', label: 'WeTV' };
+  if (u.includes('hotstar.com') || u.includes('disneyplus.com')) return { platform: 'Disney+', label: 'Disney+ Hotstar' };
+  if (u.includes('trueid.net')) return { platform: 'TrueID', label: 'TrueID' };
+  if (u.includes('oned.net') || u.includes('one31.net')) return { platform: 'One31', label: 'oneD' };
+  if (u.includes('gmm-tv.com') || u.includes('gmmtv')) return { platform: 'GMMTV', label: 'GMMTV' };
+  if (u.includes('spotify.com')) return { platform: 'Spotify', label: 'Spotify' };
+  if (u.includes('apple.com') || u.includes('music.apple')) return { platform: 'Apple Music', label: 'Apple Music' };
+  if (u.includes('instagram.com')) return { platform: 'Instagram', label: 'Instagram' };
+  if (u.includes('twitter.com') || u.includes('x.com')) return { platform: 'X', label: 'X / Twitter' };
+  return null;
+}
+
 interface ProjectsHubProps {
   projects: CareerProject[];
   canEdit: boolean;
@@ -1024,18 +1065,60 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setIsModalOpen(true);
   };
 
-  // Watch link manipulation in modal
+  // Watch link manipulation in modal with smart platform detection and auto-labeling
   const handleAddWatchLink = () => {
     setFormWatchLinks((prev) => [
       ...prev,
-      { label: 'Watch / Official Link', url: '', platform: 'YouTube' }
+      { label: 'Viki', url: '', platform: 'Viki' }
     ]);
   };
 
   const handleUpdateWatchLink = (idx: number, field: keyof ProjectLink, val: string) => {
     setFormWatchLinks((prev) => {
       const updated = [...prev];
-      updated[idx] = { ...updated[idx], [field]: val };
+      const current = { ...updated[idx] };
+
+      if (field === 'url') {
+        current.url = val;
+        // Auto-detect platform and label when a URL is pasted
+        const detected = detectProjectWatchPlatform(val);
+        if (detected) {
+          current.platform = detected.platform;
+          const prevLabel = (current.label || '').trim().toLowerCase();
+          const isGenericOrPlatformName =
+            !prevLabel ||
+            prevLabel === 'watch / official link' ||
+            prevLabel === 'official link' ||
+            prevLabel === 'youtube' ||
+            PROJECT_WATCH_PLATFORMS.some(
+              (p) => p.value.toLowerCase() === prevLabel || p.label.toLowerCase() === prevLabel
+            );
+          if (isGenericOrPlatformName) {
+            current.label = detected.label;
+          }
+        }
+      } else if (field === 'platform') {
+        const prevPlatform = current.platform;
+        current.platform = val;
+        // Automatically sync the label if the previous label was generic or matched the previous platform
+        const prevLabel = (current.label || '').trim().toLowerCase();
+        const wasGenericOrPreviousPlatform =
+          !prevLabel ||
+          prevLabel === 'watch / official link' ||
+          prevLabel === 'official link' ||
+          prevLabel === (prevPlatform || '').toLowerCase() ||
+          PROJECT_WATCH_PLATFORMS.some(
+            (p) => p.value.toLowerCase() === prevLabel || p.label.toLowerCase() === prevLabel
+          );
+        if (wasGenericOrPreviousPlatform) {
+          const matched = PROJECT_WATCH_PLATFORMS.find((p) => p.value === val);
+          current.label = matched?.value || val;
+        }
+      } else {
+        current[field] = val;
+      }
+
+      updated[idx] = current;
       return updated;
     });
   };
@@ -1057,7 +1140,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       .filter((t) => t.length > 1);
 
     const validWatchLinks = formWatchLinks
-      .map((l) => ({ ...l, label: l.label.trim(), url: l.url.trim() }))
+      .map((l) => {
+        const platform = l.platform || 'Website';
+        const label = l.label.trim() || platform;
+        return { ...l, label, platform, url: l.url.trim() };
+      })
       .filter((l) => l.url.length > 0);
 
     const trimmedJimmy = formJimmyRole.trim();
@@ -1194,11 +1281,19 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
   const getPlatformIcon = (platformStr?: string) => {
     const p = (platformStr || '').toLowerCase();
+    if (p.includes('viki')) return '🟣';
+    if (p.includes('iqiyi') || p.includes('iq.com')) return '🟢';
+    if (p.includes('viu')) return '🟡';
+    if (p.includes('gagaoolala')) return '🌈';
     if (p.includes('youtube')) return '▶️';
     if (p.includes('spotify')) return '🟢';
     if (p.includes('apple')) return '🍎';
     if (p.includes('netflix')) return '🍿';
+    if (p.includes('gmmtv') || p.includes('gmm-tv')) return '🎬';
     if (p.includes('disney') || p.includes('hotstar')) return '✨';
+    if (p.includes('wetv')) return '🟠';
+    if (p.includes('trueid')) return '🔴';
+    if (p.includes('one31') || p.includes('oned')) return '📺';
     if (p.includes('instagram') || p.includes('ig')) return '📸';
     if (p.includes('shop') || p.includes('merch') || p.includes('line shopping')) return '🛍️';
     if (p.includes('x') || p.includes('twitter')) return '🐦';
@@ -3518,29 +3613,22 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
                     >
                       <select
-                        value={link.platform || 'YouTube'}
+                        value={link.platform || 'Viki'}
                         onChange={(e) => handleUpdateWatchLink(idx, 'platform', e.target.value)}
                         className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white shrink-0"
                       >
-                        <option value="YouTube">YouTube</option>
-                        <option value="Netflix">Netflix</option>
-                        <option value="GMMTV">GMMTV</option>
-                        <option value="Disney+">Disney+ Hotstar</option>
-                        <option value="Spotify">Spotify</option>
-                        <option value="Apple Music">Apple Music</option>
-                        <option value="Viu">Viu</option>
-                        <option value="WeTV">WeTV</option>
-                        <option value="Instagram">Instagram</option>
-                        <option value="Shop">Shop / Merch</option>
-                        <option value="Website">Official Website</option>
-                        <option value="X">X / Twitter</option>
+                        {PROJECT_WATCH_PLATFORMS.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.icon} {p.label}
+                          </option>
+                        ))}
                       </select>
 
                       <input
                         type="text"
                         value={link.label}
                         onChange={(e) => handleUpdateWatchLink(idx, 'label', e.target.value)}
-                        placeholder="Link Label (e.g. YouTube UNCUT)"
+                        placeholder={`Label (defaults to ${link.platform || 'Platform'})`}
                         className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white"
                       />
 
@@ -3548,7 +3636,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         type="url"
                         value={link.url}
                         onChange={(e) => handleUpdateWatchLink(idx, 'url', e.target.value)}
-                        placeholder="URL (https://...)"
+                        placeholder="Paste URL (auto-detects platform)..."
                         className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white font-mono"
                       />
 

@@ -416,6 +416,21 @@ export function detectPlatformFromUrl(url: string): DetectedPlatformInfo {
     return { name: 'iQIYI', platform: 'iQIYI', categoryTag: 'iQIYI' };
   }
 
+  // 6b. Viki (Rakuten Viki)
+  if (trimmed.includes('viki.com')) {
+    return { name: 'Viki', platform: 'Viki', categoryTag: 'Viki' };
+  }
+
+  // 6c. Viu
+  if (trimmed.includes('viu.com')) {
+    return { name: 'Viu', platform: 'Viu', categoryTag: 'Viu' };
+  }
+
+  // 6d. GagaOOLala
+  if (trimmed.includes('gagaoolala.com')) {
+    return { name: 'GagaOOLala', platform: 'GagaOOLala', categoryTag: 'GagaOOLala' };
+  }
+
   // 7. AIS PLAY
   if (trimmed.includes('aisplay.ais.co.th') || trimmed.includes('ais.th')) {
     return { name: 'AIS PLAY', platform: 'AIS PLAY', categoryTag: 'AIS PLAY' };
@@ -5032,22 +5047,26 @@ export default function App() {
               {activeBannerPhotos.length > 1 && (
                 <>
                   <button
-                    onClick={() =>
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setCurrentBannerIndex((prev) =>
                         prev === 0 ? activeBannerPhotos.length - 1 : prev - 1
-                      )
-                    }
+                      );
+                    }}
                     className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs transition-all cursor-pointer"
                     title="Previous Photo"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() =>
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setCurrentBannerIndex((prev) =>
                         (prev + 1) % activeBannerPhotos.length
-                      )
-                    }
+                      );
+                    }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs transition-all cursor-pointer"
                     title="Next Photo"
                   >
@@ -5055,11 +5074,18 @@ export default function App() {
                   </button>
 
                   {/* Dot Indicators */}
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-xs">
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-xs"
+                  >
                     {activeBannerPhotos.map((_, idx) => (
                       <button
                         key={idx}
-                        onClick={() => setCurrentBannerIndex(idx)}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentBannerIndex(idx);
+                        }}
                         className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
                           idx === currentBannerIndex % activeBannerPhotos.length
                             ? 'bg-white w-4'
@@ -5076,7 +5102,11 @@ export default function App() {
               {canEditEvents && (
                 <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
                   <button
-                    onClick={() => setBannerPhotosModalOpen(true)}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBannerPhotosModalOpen(true);
+                    }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/90 hover:bg-white text-[#1A3668] dark:text-white text-xs font-bold shadow-md backdrop-blur-xs cursor-pointer border border-white/60 dark:border-slate-700 transition-all active:scale-95"
                     title="Adjust Photo Sizing, Fit & Add/Remove Banner Photos (Admin & Owner)"
                   >
