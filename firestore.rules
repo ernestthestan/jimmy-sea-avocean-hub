@@ -25,6 +25,11 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Career Projects (Shows, Movies, Music Videos, Partner Brands, Owned Brands)
+    match /career_projects/{projectId} {
+      allow read, write: if true;
+    }
+
     // Fan Messages: Anyone can create a message; readable and manageable across all devices
     match /fan_messages/{messageId} {
       allow read, delete: if true;

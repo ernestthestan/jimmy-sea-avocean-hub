@@ -13,6 +13,7 @@ import {
 import { db } from './firebase';
 import type { ScheduleEvent, AppSettings, FanMessage } from '../App';
 import type { FanClub, FoodSupportProject } from '../types/fanhub';
+import type { CareerProject, ActorProfile } from '../types/projects';
 
 // Global Quota Exceeded state & listener registry
 let isQuotaExceeded = false;
@@ -1285,5 +1286,229 @@ export function subscribeToAuditHistory(onUpdate: (logs: AuditLogEntry[]) => voi
 
   return unsubscribe;
 }
+
+/**
+ * ==============================================================
+ * CAREER PROJECTS (SHOWS, MOVIES, MUSIC VIDEOS, PARTNER & OWNED BRANDS)
+ * ==============================================================
+ */
+
+/**
+ * Real-time listener for Jimmy, Sea & Avocean Career Projects
+ */
+export function subscribeToCareerProjects(
+  initialSampleProjects: CareerProject[],
+  onUpdate: (projects: CareerProject[]) => void
+) {
+  // If quota is already exceeded, immediately serve local storage cache or defaults
+  if (isQuotaExceeded) {
+    try {
+      const isInit = localStorage.getItem('avocean_projects_initialized') === 'true';
+      const saved = localStorage.getItem('avocean_career_projects_v1');
+      if (saved !== null) {
+        onUpdate(JSON.parse(saved));
+        return () => {};
+      }
+      if (isInit) {
+        onUpdate([]);
+        return () => {};
+      }
+    } catch {}
+    onUpdate(initialSampleProjects);
+    return () => {};
+  }
+
+  const projectsCol = collection(db, 'career_projects');
+  const unsubscribe = onSnapshot(
+    projectsCol,
+    async (snapshot) => {
+      const loaded: CareerProject[] = [];
+      snapshot.forEach((d) => {
+        loaded.push(d.data() as CareerProject);
+      });
+
+      if (snapshot.empty) {
+        try {
+          const metaSnap = await getDoc(doc(db, 'settings', 'projects_meta')).catch(() => null);
+          const isMetaInit = metaSnap?.exists();
+          const isLocalInit = localStorage.getItem('avocean_projects_initialized') === 'true';
+
+          if (isMetaInit || isLocalInit) {
+            // User intentionally cleared all projects
+            onUpdate([]);
+            try {
+              localStorage.setItem('avocean_career_projects_v1', '[]');
+            } catch {}
+            return;
+          }
+
+          // First-time seed of initial projects
+          onUpdate(initialSampleProjects);
+          try {
+            localStorage.setItem('avocean_career_projects_v1', JSON.stringify(initialSampleProjects));
+            localStorage.setItem('avocean_projects_initialized', 'true');
+            await setDoc(doc(db, 'settings', 'projects_meta'), { initialized: true });
+            for (const p of initialSampleProjects) {
+              await setDoc(doc(db, 'career_projects', p.id), sanitizeForFirestore(p));
+            }
+          } catch (e) {
+            console.warn('Initial seed of career projects warning:', e);
+          }
+        } catch {
+          onUpdate(initialSampleProjects);
+        }
+      } else {
+        // Sort projects: shows/movies by year desc, or keep structured
+        onUpdate(loaded);
+        try {
+          localStorage.setItem('avocean_career_projects_v1', JSON.stringify(loaded));
+          localStorage.setItem('avocean_projects_initialized', 'true');
+        } catch {}
+      }
+    },
+    (err: any) => {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        notifyQuotaExceeded();
+        try {
+          const saved = localStorage.getItem('avocean_career_projects_v1');
+          if (saved !== null) {
+            onUpdate(JSON.parse(saved));
+            return;
+          }
+        } catch {}
+        onUpdate(initialSampleProjects);
+      } else {
+        console.warn('Career projects listener error:', err);
+      }
+    }
+  );
+
+  return unsubscribe;
+}
+
+/**
+ * Save / Update a Career Project in Firestore
+ */
+export async function saveCareerProjectToFirestore(project: CareerProject): Promise<void> {
+  try {
+    localStorage.setItem('avocean_projects_initialized', 'true');
+    if (!isQuotaExceeded) {
+      await setDoc(doc(db, 'settings', 'projects_meta'), { initialized: true }, { merge: true });
+      await setDoc(doc(db, 'career_projects', project.id), sanitizeForFirestore(project));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    } else {
+      console.warn('Could not save career project to Firestore:', err);
+    }
+  }
+}
+
+/**
+ * Delete a Career Project from Firestore
+ */
+export async function deleteCareerProjectFromFirestore(projectId: string): Promise<void> {
+  try {
+    localStorage.setItem('avocean_projects_initialized', 'true');
+    if (!isQuotaExceeded) {
+      await deleteDoc(doc(db, 'career_projects', projectId));
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    } else {
+      console.warn('Could not delete career project from Firestore:', err);
+    }
+  }
+}
+
+/**
+ * ==============================================================
+ * ACTOR & DUO PROFILES (JIMMY, AVOCEAN, SEA)
+ * ==============================================================
+ */
+
+export function subscribeToActorProfiles(
+  initialProfiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>,
+  onUpdate: (profiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>) => void
+) {
+  // If quota is already exceeded, immediately serve local storage cache or defaults
+  if (isQuotaExceeded) {
+    try {
+      const saved = localStorage.getItem('avocean_actor_profiles_v1');
+      if (saved) {
+        onUpdate(JSON.parse(saved));
+        return () => {};
+      }
+    } catch {}
+    onUpdate(initialProfiles);
+    return () => {};
+  }
+
+  const profileDocRef = doc(db, 'settings', 'actor_profiles');
+  const unsubscribe = onSnapshot(
+    profileDocRef,
+    async (snap) => {
+      if (snap.exists()) {
+        const cloudData = snap.data() as Record<string, ActorProfile>;
+        const merged: Record<'jimmy' | 'avocean' | 'sea', ActorProfile> = {
+          jimmy: { ...initialProfiles.jimmy, ...(cloudData.jimmy || {}) },
+          avocean: { ...initialProfiles.avocean, ...(cloudData.avocean || {}) },
+          sea: { ...initialProfiles.sea, ...(cloudData.sea || {}) }
+        };
+        onUpdate(merged);
+        try {
+          localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(merged));
+        } catch {}
+      } else {
+        // Seed default profiles
+        onUpdate(initialProfiles);
+        try {
+          localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(initialProfiles));
+          await setDoc(profileDocRef, sanitizeForFirestore(initialProfiles));
+        } catch (e) {
+          console.warn('Could not seed actor profiles:', e);
+        }
+      }
+    },
+    (err: any) => {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        notifyQuotaExceeded();
+        try {
+          const saved = localStorage.getItem('avocean_actor_profiles_v1');
+          if (saved) {
+            onUpdate(JSON.parse(saved));
+            return;
+          }
+        } catch {}
+        onUpdate(initialProfiles);
+      } else {
+        console.warn('Actor profiles listener error:', err);
+      }
+    }
+  );
+
+  return unsubscribe;
+}
+
+export async function saveActorProfilesToFirestore(
+  profiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>
+): Promise<void> {
+  try {
+    localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(profiles));
+    if (!isQuotaExceeded) {
+      await setDoc(doc(db, 'settings', 'actor_profiles'), sanitizeForFirestore(profiles), { merge: true });
+    }
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+      notifyQuotaExceeded();
+    } else {
+      console.warn('Could not save actor profiles to Firestore:', err);
+    }
+  }
+}
+
+
 
 

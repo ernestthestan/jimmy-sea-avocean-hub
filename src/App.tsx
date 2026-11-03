@@ -71,7 +71,8 @@ import {
   Loader2,
   Ticket,
   ClipboardList,
-  Truck
+  Truck,
+  Film
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -92,6 +93,9 @@ import {
   subscribeToFoodProjects,
   saveFoodProjectToFirestore,
   deleteFoodProjectFromFirestore,
+  subscribeToCareerProjects,
+  saveCareerProjectToFirestore,
+  deleteCareerProjectFromFirestore,
   onQuotaExceededChange,
   ensureDefaultAdminAccounts,
   authenticateUserAccount,
@@ -115,6 +119,9 @@ import { compressImageFile, compressDataUrl } from './lib/imageCompression';
 import { FanHub } from './components/FanHub';
 import type { FanClub, FoodSupportProject } from './types/fanhub';
 import { INITIAL_FAN_CLUBS, INITIAL_FOOD_SUPPORT_PROJECTS } from './data/initialFanHubData';
+import { ProjectsHub } from './components/ProjectsHub';
+import type { CareerProject } from './types/projects';
+import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -1419,7 +1426,7 @@ export default function App() {
     return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
   });
   const [showWeekOnly, setShowWeekOnly] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'calendar' | 'list' | 'fanhub'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'list' | 'projects' | 'fanhub'>('calendar');
   const [fanHubSubTab, setFanHubSubTab] = useState<'directory' | 'foodsupport'>('directory');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [listViewFilter, setListViewFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
@@ -1533,6 +1540,62 @@ export default function App() {
     }).catch(() => {});
     showToast('Food support project removed.');
   };
+
+  // --- Jimmy & Sea Career Projects State (Shows, Movies, MVs, Partner & Owned Brands) ---
+  const [careerProjects, setCareerProjects] = useState<CareerProject[]>(() => {
+    try {
+      const isInit = localStorage.getItem('avocean_projects_initialized') === 'true';
+      const saved = localStorage.getItem('avocean_career_projects_v1');
+      if (saved !== null) {
+        return JSON.parse(saved);
+      }
+      if (isInit) {
+        return [];
+      }
+    } catch {}
+    return INITIAL_CAREER_PROJECTS;
+  });
+
+  const handleSaveCareerProject = (project: CareerProject) => {
+    setCareerProjects((prev) => {
+      const exists = prev.some((p) => p.id === project.id);
+      const next = exists ? prev.map((p) => (p.id === project.id ? project : p)) : [project, ...prev];
+      try {
+        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(next));
+        localStorage.setItem('avocean_projects_initialized', 'true');
+      } catch {}
+      return next;
+    });
+    saveCareerProjectToFirestore(project);
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: userRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'edit_career_project',
+      details: `Saved career project "${project.title}" (${project.category})`
+    }).catch(() => {});
+    showToast(`Project "${project.title}" saved!`);
+  };
+
+  const handleDeleteCareerProject = (projectId: string) => {
+    const targetProj = careerProjects.find((p) => p.id === projectId);
+    setCareerProjects((prev) => {
+      const next = prev.filter((p) => p.id !== projectId);
+      try {
+        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(next));
+        localStorage.setItem('avocean_projects_initialized', 'true');
+      } catch {}
+      return next;
+    });
+    deleteCareerProjectFromFirestore(projectId);
+    recordAuditLog({
+      userEmail: currentUserEmail,
+      role: userRole === 'owner' ? 'owner' : 'admin',
+      actionType: 'delete_career_project',
+      details: `Deleted career project "${targetProj ? targetProj.title : projectId}"`
+    }).catch(() => {});
+    showToast('Project removed.');
+  };
+
 
   // Automatically update today's date string when midnight passes in user's timezone
   useEffect(() => {
@@ -1896,6 +1959,14 @@ export default function App() {
       unsubClubs();
       unsubProjects();
     };
+  }, []);
+
+  // Real-Time Career Projects Sync from Firestore across all devices
+  useEffect(() => {
+    const unsubProjects = subscribeToCareerProjects(INITIAL_CAREER_PROJECTS, (cloudProjects) => {
+      setCareerProjects(cloudProjects);
+    });
+    return () => unsubProjects();
   }, []);
 
   useEffect(() => {
@@ -5487,6 +5558,22 @@ export default function App() {
             </div>
           )}
         </div>
+      ) : activeTab === 'projects' ? (
+        /* ============================================================== */
+        /* PROJECTS HUB: SHOWS, MOVIES, MUSIC VIDEOS & BRANDS             */
+        /* ============================================================== */
+        <ProjectsHub
+          projects={careerProjects}
+          canEdit={canEditEvents}
+          isOwner={isOwner}
+          currentAccent={currentAccent}
+          activeMemberIds={activeMemberIds}
+          preferredTranslationLang={preferredTranslationLang}
+          onSelectTranslationLang={handleSelectTranslationLang}
+          onSaveProject={handleSaveCareerProject}
+          onDeleteProject={handleDeleteCareerProject}
+          showToast={showToast}
+        />
       ) : (
         /* ============================================================== */
         /* FAN HUB: FAN CLUBS DIRECTORY & FOOD SUPPORT PROJECTS           */
@@ -5512,7 +5599,8 @@ export default function App() {
       {/* ============================================================== */}
       {/* FLOATING NAVIGATION DOCKS                                      */}
       {/* Bubble 1: Schedule (Calendar / List)                           */}
-      {/* Bubble 2: Fan Hub (Fan Clubs / Food Support)                   */}
+      {/* Bubble 2: Projects (Shows, Movies, MVs, Brands) - Between!     */}
+      {/* Bubble 3: Fan Hub (Fan Clubs / Food Support)                   */}
       {/* ============================================================== */}
       <div className="fixed bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-16px)] justify-center flex-wrap sm:flex-nowrap pointer-events-none">
         {/* Bubble 1: Schedule Navigation */}
@@ -5545,7 +5633,24 @@ export default function App() {
           </button>
         </div>
 
-        {/* Bubble 2: Fan Hub Navigation */}
+        {/* Bubble 2: Projects Navigation (Positioned right between List and Fan Clubs!) */}
+        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
+          <button
+            onClick={() => setActiveTab('projects')}
+            style={activeTab === 'projects' ? { backgroundColor: currentAccent.colorHex } : {}}
+            className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+              activeTab === 'projects'
+                ? 'text-white shadow-sm'
+                : 'text-[#526586] dark:text-slate-400 hover:text-[#1A3668] dark:hover:text-white'
+            }`}
+            title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
+          >
+            <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+            <span>Projects</span>
+          </button>
+        </div>
+
+        {/* Bubble 3: Fan Hub Navigation */}
         <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 sm:p-1.5 rounded-full shadow-lg flex items-center gap-1 border border-slate-200/80 dark:border-slate-800 pointer-events-auto shrink-0">
           <button
             onClick={() => {
