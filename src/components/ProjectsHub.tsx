@@ -2516,19 +2516,6 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               </span>
                             </div>
 
-                            {/* Top Badges: Category & Artist */}
-                            <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/20">
-                                {getCategoryIcon(proj.category)}
-                                <span>{getCategoryBadge(proj.category)}</span>
-                              </span>
-
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
-                                <span>{artistInfo.emoji}</span>
-                                <span>{artistInfo.label}</span>
-                              </span>
-                            </div>
-
                             {/* Top Right Actions: Photo Counter + Expand */}
                             <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
                               {mediaList.length > 1 && (
@@ -2582,19 +2569,31 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 </button>
                               </>
                             )}
-
-                            {/* Bottom Image Overlay: Status Badge */}
-                            <div className="absolute bottom-3 right-3 z-30 pointer-events-none">
-                              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-xs ${statusInfo.color}`}>
-                                {statusInfo.label}
-                              </span>
-                            </div>
                           </div>
                         );
                       })()}
 
                       {/* Card Content Body */}
                       <div className="p-5 space-y-3">
+                        {/* Badges Row: Category, Artist & Status (Moved above translation picker) */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+                              {getCategoryIcon(proj.category)}
+                              <span>{getCategoryBadge(proj.category)}</span>
+                            </span>
+
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border shadow-2xs ${artistInfo.bg}`}>
+                              <span>{artistInfo.emoji}</span>
+                              <span>{artistInfo.label}</span>
+                            </span>
+                          </div>
+
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs ${statusInfo.color}`}>
+                            {statusInfo.label}
+                          </span>
+                        </div>
+
                         {/* Interactive Language Selector, Card Typography Zoom & Translator Bar */}
                         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
                           <div className="flex items-center gap-1.5 min-w-0">
