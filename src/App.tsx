@@ -217,6 +217,7 @@ export interface UserReminder {
 export type TitleSizeChoice = 'compact' | 'medium' | 'large' | 'xlarge';
 export type SubtitleSizeChoice = 'small' | 'medium' | 'large' | 'xlarge';
 export type HeaderAlignmentChoice = 'left' | 'center' | 'right';
+export type ContainerWidthChoice = 'auto' | 'compact' | 'wide' | 'ultra' | 'full';
 
 export interface AppSettings {
   greeting: string;
@@ -226,6 +227,7 @@ export interface AppSettings {
   bannerSubtitle: string;
   bannerSubtitleSize?: SubtitleSizeChoice;
   headerAlignment?: HeaderAlignmentChoice;
+  containerWidth?: ContainerWidthChoice; // Responsive auto-adjust or customizable screen width
   bannerTag?: string;
   bannerImageUrl: string;
   bannerPhotos?: string[]; // Multiple photos carousel
@@ -587,6 +589,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   bannerSubtitle: 'Official Fan Schedule, Appearances & Trending Projects 🥑🌊💚',
   bannerSubtitleSize: 'medium',
   headerAlignment: 'left',
+  containerWidth: 'auto',
   bannerImageUrl: '',
   bannerPhotos: [],
   bannerFit: 'cover',
@@ -1644,6 +1647,7 @@ export default function App() {
           bannerTitleSize: parsed.bannerTitleSize || 'medium',
           bannerSubtitle: parsed.bannerSubtitle || DEFAULT_SETTINGS.bannerSubtitle,
           bannerSubtitleSize: parsed.bannerSubtitleSize || 'medium',
+          containerWidth: parsed.containerWidth || 'auto',
           timeFormat: parsed.timeFormat || '12h',
           websiteIcon: parsed.websiteIcon || 'trio'
         };
@@ -2307,6 +2311,13 @@ export default function App() {
     showToast(`Banner height set to ${height}`);
   };
 
+  const handleUpdateContainerWidth = (widthChoice: ContainerWidthChoice) => {
+    const updated: AppSettings = { ...settings, containerWidth: widthChoice };
+    setSettings(updated);
+    saveSettingsToFirestore(updated).catch((err) => console.warn('Could not sync container width to Firestore:', err));
+    showToast(`Display sizing updated to ${widthChoice === 'auto' ? 'Auto-Fit Screen' : widthChoice}`);
+  };
+
   // --- Event Reminder Modal State ---
   const [reminderModalOpen, setReminderModalOpen] = useState<boolean>(false);
   const [reminderEvent, setReminderEvent] = useState<ScheduleEvent | null>(null);
@@ -2469,6 +2480,7 @@ export default function App() {
   const [draftBannerSubtitle, setDraftBannerSubtitle] = useState<string>(settings.bannerSubtitle);
   const [draftBannerSubtitleSize, setDraftBannerSubtitleSize] = useState<SubtitleSizeChoice>(settings.bannerSubtitleSize || 'medium');
   const [draftHeaderAlignment, setDraftHeaderAlignment] = useState<HeaderAlignmentChoice>(settings.headerAlignment || 'left');
+  const [draftContainerWidth, setDraftContainerWidth] = useState<ContainerWidthChoice>(settings.containerWidth || 'auto');
   const [draftBannerTag, setDraftBannerTag] = useState<string>(settings.bannerTag || '');
   const [draftBannerImageUrl, setDraftBannerImageUrl] = useState<string>(settings.bannerImageUrl);
   const [draftBannerPhotos, setDraftBannerPhotos] = useState<string[]>(() => {
@@ -2512,6 +2524,26 @@ export default function App() {
     if (sz === 'xlarge') return 'text-base sm:text-lg';
     return 'text-[11px] sm:text-xs'; // small default
   }, [settings.greetingSize]);
+
+  // Container Width Class - Dynamic Auto-Fit to match device screen size or user preference
+  const containerWidthClass = useMemo(() => {
+    const mode = settings.containerWidth || 'auto';
+    if (mode === 'compact') {
+      return 'w-full max-w-[1340px] px-3 sm:px-4 mx-auto';
+    }
+    if (mode === 'wide') {
+      return 'w-full max-w-[1780px] 2xl:max-w-[1920px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto';
+    }
+    if (mode === 'ultra') {
+      return 'w-full max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-12 mx-auto';
+    }
+    if (mode === 'full') {
+      return 'w-full max-w-[98vw] px-2 sm:px-4 md:px-6 lg:px-8 mx-auto';
+    }
+    // 'auto' default: automatically adapts to screen width with comfortable gutters!
+    // On 1080p, 1440p, 2K/4K displays, comfortably expands up to 1880px / 2100px so content is not squished.
+    return 'w-full max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto';
+  }, [settings.containerWidth]);
 
   // Dynamically update the browser tab icon (favicon) when websiteIcon changes
   useEffect(() => {
@@ -3687,6 +3719,7 @@ export default function App() {
     setDraftBannerSubtitle(settings.bannerSubtitle ?? DEFAULT_SETTINGS.bannerSubtitle);
     setDraftBannerSubtitleSize(settings.bannerSubtitleSize || 'medium');
     setDraftHeaderAlignment(settings.headerAlignment || 'left');
+    setDraftContainerWidth(settings.containerWidth || 'auto');
     setDraftBannerTag(settings.bannerTag ?? '');
     setDraftBannerPreset(settings.bannerPreset || 'avocean-dream');
     setDraftOwnerPin(settings.ownerPin || 'ErnestTheStan05!');
@@ -3756,6 +3789,7 @@ export default function App() {
         'Official Fan Schedule, Appearances & Trending Projects 🥑🌊💚',
       bannerSubtitleSize: draftBannerSubtitleSize,
       headerAlignment: draftHeaderAlignment,
+      containerWidth: draftContainerWidth,
       bannerTag: draftBannerTag.trim() || '',
       bannerImageUrl: primaryBannerImage,
       bannerPhotos: cleanBannerPhotos,
@@ -4676,7 +4710,7 @@ export default function App() {
 
       {/* Cloud Quota Notice Banner (if Firestore free daily quota is exceeded) */}
       {isQuotaExceeded && showQuotaBanner && (
-        <div className="w-full max-w-[1340px] mb-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-2xs backdrop-blur-md">
+        <div className={`${containerWidthClass} mb-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-2xs backdrop-blur-md`}>
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[11px] shrink-0">
               ☁️ Cloud Quota Notice
@@ -4705,8 +4739,8 @@ export default function App() {
         </div>
       )}
 
-      {/* TOP TOOLBAR: FILLS FULL WIDTH UP TO 1340px */}
-      <div className="w-full max-w-[1340px] flex flex-wrap items-center justify-between gap-3 mb-4 px-1">
+      {/* TOP TOOLBAR: FLUID AUTO-FIT TO SCREEN SIZE */}
+      <div className={`${containerWidthClass} flex flex-wrap items-center justify-between gap-3 mb-4`}>
         {/* Left Side: "Leave a message" (viewers), Inbox (admins/owner), & Stats */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Leave a Message button: visible to everyone, sized like login buttons */}
@@ -4992,19 +5026,19 @@ export default function App() {
       </div>
 
       {/* ============================================================== */}
-      {/* 1. SEPARATED BANNER PHOTO CONTAINER (MULTIPLE PHOTOS & FIT)    */}
+      {/* 1. SEPARATED BANNER PHOTO CONTAINER (AUTO FIT & SIZING)        */}
       {/* ============================================================== */}
-      <div className="w-full max-w-[1340px] mb-4">
+      <div className={`${containerWidthClass} mb-4`}>
         {(() => {
           const currentHeight = settings.bannerHeight || 'medium';
           const heightClass =
             currentHeight === 'compact'
-              ? 'h-44 sm:h-56 lg:h-64'
+              ? 'h-44 sm:h-56 md:h-64 lg:h-72 xl:h-80'
               : currentHeight === 'tall'
-              ? 'h-64 sm:h-84 lg:h-[420px]'
+              ? 'h-64 sm:h-84 md:h-[420px] lg:h-[480px] xl:h-[540px] 2xl:h-[620px]'
               : currentHeight === 'auto'
-              ? 'h-56 sm:h-72 lg:h-[380px]'
-              : 'h-52 sm:h-68 lg:h-80'; // medium default
+              ? 'h-56 sm:h-72 md:h-84 lg:h-96 xl:h-[440px] 2xl:h-[500px]'
+              : 'h-52 sm:h-68 md:h-80 lg:h-96 xl:h-[420px] 2xl:h-[480px]'; // medium default
 
           const activePhoto =
             activeBannerPhotos.length > 0
@@ -5032,8 +5066,9 @@ export default function App() {
                     <img
                       src={activePhoto}
                       alt="Ambient banner backdrop"
-                      className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110 pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-50 scale-125 saturate-150 pointer-events-none"
                     />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none z-5" />
                     <img
                       src={activePhoto}
                       alt="Jimmy & Sea Hub Banner Artwork"
@@ -5137,7 +5172,7 @@ export default function App() {
       {/* ============================================================== */}
       {/* 2. SEPARATED HUB HEADER CARD WITH INTEGRATED MEMBER FILTERS     */}
       {/* ============================================================== */}
-      <div className="w-full max-w-[1340px] mb-6">
+      <div className={`${containerWidthClass} mb-6`}>
         <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] p-5 sm:p-6 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-4">
           {/* Top Row: Title, Badges, Greeting & Owner Quick Actions */}
           <div className={`flex flex-col md:flex-row gap-4 ${
@@ -5291,9 +5326,9 @@ export default function App() {
       {/* 3. WIDE RESPONSIVE DASHBOARD LAYOUT                            */}
       {/* ============================================================== */}
       {activeTab === 'calendar' ? (
-        <div className="w-full max-w-[1560px] flex flex-col lg:flex-row lg:items-start items-start justify-center gap-6 xl:gap-9">
+        <div className={`${containerWidthClass} flex flex-col lg:flex-row lg:items-start items-start justify-center gap-6 xl:gap-8`}>
           {/* LEFT COLUMN: Calendar Card (Self-start & Natural Height, Never Stretched!) */}
-          <div className="w-full lg:w-[540px] xl:w-[600px] 2xl:w-[640px] shrink-0 flex flex-col gap-5 self-start order-1">
+          <div className="w-full lg:w-[480px] xl:w-[540px] 2xl:w-[600px] shrink-0 flex flex-col gap-5 self-start order-1">
             {/* Calendar Header with Navigation */}
             <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[32px] p-6 sm:p-8 md:p-9 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
               <div className="flex items-center justify-between mb-6">
@@ -5557,8 +5592,8 @@ export default function App() {
           </div>
         </div>
       ) : activeTab === 'list' ? (
-        /* DEDICATED FULL-WIDTH CENTERED LIST VIEW: No stretching, clean search & complete event cards */
-        <div className="w-full max-w-[1100px] mx-auto flex flex-col gap-5">
+        /* DEDICATED FULL-WIDTH CENTERED LIST VIEW: Auto-adjusts to screen size */
+        <div className={`${containerWidthClass} flex flex-col gap-5`}>
           {/* Search bar */}
           <div className="bg-white/95 dark:bg-slate-900/90 rounded-full shadow-xs px-5 py-3.5 flex items-center gap-3 border border-slate-200/80 dark:border-slate-800">
             <Search className="w-4 h-4 text-[#475569] dark:text-slate-400" />
@@ -5700,6 +5735,7 @@ export default function App() {
           canEdit={canEditEvents}
           isOwner={isOwner}
           currentAccent={currentAccent}
+          containerWidthClass={containerWidthClass}
           activeMemberIds={activeMemberIds}
           preferredTranslationLang={preferredTranslationLang}
           onSelectTranslationLang={handleSelectTranslationLang}
@@ -5718,6 +5754,7 @@ export default function App() {
           isOwner={isOwner}
           events={events}
           currentAccent={currentAccent}
+          containerWidthClass={containerWidthClass}
           activeSubTab={fanHubSubTab}
           onSubTabChange={setFanHubSubTab}
           onSaveFanClub={handleSaveFanClub}
@@ -9034,6 +9071,49 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Screen Display Width & Screen Auto-Fit (Owner Only) */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-[#1A3668] dark:text-white">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Screen Sizing & Display Width</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    Owner Editable
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#607494] dark:text-slate-400">
+                  Automatically adjusts content, banner, and project cards to fit your computer monitor or phone smoothly.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { id: 'auto', label: 'Auto Fit Screen', sub: 'Responsive' },
+                      { id: 'wide', label: 'Wide (1800px)', sub: 'Desktop' },
+                      { id: 'ultra', label: 'Ultra (2160px)', sub: 'Large 4K' },
+                      { id: 'compact', label: 'Compact (1340px)', sub: 'Classic Box' }
+                    ] as const
+                  ).map((w) => {
+                    const isSelected = draftContainerWidth === w.id;
+                    return (
+                      <button
+                        type="button"
+                        key={w.id}
+                        onClick={() => setDraftContainerWidth(w.id)}
+                        className={`py-2 px-1.5 rounded-xl text-center text-xs font-bold transition-all border cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#1A3668] dark:bg-purple-600 text-white border-[#1A3668] dark:border-purple-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-900 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="leading-tight">{w.label}</div>
+                        <div className="text-[9px] opacity-75 font-normal mt-0.5">{w.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Top Greeting Subtitle & Font Size (Owner Only) */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -10215,6 +10295,46 @@ export default function App() {
                       }`}
                     >
                       {h}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Screen Display Width & Screen Auto-Fit Control */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-[#1A3668] dark:text-white">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Screen Sizing & Display Width</span>
+                  </label>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                    {(settings.containerWidth || 'auto') === 'auto' ? '⚡ Auto-Fit Active' : settings.containerWidth}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Automatically adjusts banner and page layout to fill your computer screen without large blank margins.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      { id: 'auto', label: 'Auto Fit Screen', sub: 'Responsive' },
+                      { id: 'wide', label: 'Wide (1800px)', sub: 'Desktop' },
+                      { id: 'ultra', label: 'Ultra (2160px)', sub: 'Large 4K' },
+                      { id: 'compact', label: 'Compact (1340px)', sub: 'Classic Box' }
+                    ] as const
+                  ).map((w) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => handleUpdateContainerWidth(w.id)}
+                      className={`py-2 px-1.5 rounded-xl text-center text-xs font-bold transition-all border cursor-pointer ${
+                        (settings.containerWidth || 'auto') === w.id
+                          ? 'bg-[#1A3668] dark:bg-purple-600 text-white border-[#1A3668] dark:border-purple-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="leading-tight">{w.label}</div>
+                      <div className="text-[9px] opacity-75 font-normal mt-0.5">{w.sub}</div>
                     </button>
                   ))}
                 </div>

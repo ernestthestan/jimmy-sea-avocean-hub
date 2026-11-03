@@ -72,6 +72,7 @@ interface FanHubProps {
     name?: string;
     [key: string]: any;
   };
+  containerWidthClass?: string;
   activeSubTab?: 'directory' | 'foodsupport';
   onSubTabChange?: (tab: 'directory' | 'foodsupport') => void;
   onSaveFanClub: (club: FanClub) => void;
@@ -89,6 +90,7 @@ export const FanHub: React.FC<FanHubProps> = ({
   isOwner,
   events,
   currentAccent,
+  containerWidthClass,
   activeSubTab = 'directory',
   onSubTabChange,
   onSaveFanClub,
@@ -523,7 +525,7 @@ export const FanHub: React.FC<FanHubProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1240px] mx-auto flex flex-col gap-6 animate-in fade-in duration-200 pb-12">
+    <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 animate-in fade-in duration-200 pb-12`}>
       {/* ============================================================== */}
       {/* TOP HEADER & DUAL-TAB NAVIGATION                               */}
       {/* ============================================================== */}
@@ -736,7 +738,7 @@ export const FanHub: React.FC<FanHubProps> = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
               {filteredFanClubs.map((club) => {
                 // Fallback banner gradient based on category
 
@@ -1112,7 +1114,7 @@ export const FanHub: React.FC<FanHubProps> = ({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5">
               {filteredProjects.map((proj) => {
                 const percent = Math.min(100, Math.round((proj.currentAmount / Math.max(1, proj.targetAmount)) * 100));
 

@@ -60,6 +60,7 @@ interface ProjectsHubProps {
     name?: string;
     [key: string]: any;
   };
+  containerWidthClass?: string;
   activeMemberIds?: string[];
   preferredTranslationLang?: string;
   onSelectTranslationLang?: (lang: string) => void;
@@ -73,6 +74,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   canEdit,
   isOwner,
   currentAccent,
+  containerWidthClass,
   activeMemberIds = ['jimmy', 'sea', 'avocean'],
   preferredTranslationLang = 'en',
   onSelectTranslationLang,
@@ -909,7 +911,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1340px] mx-auto flex flex-col gap-6 animate-in fade-in duration-200 pb-24">
+    <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 animate-in fade-in duration-200 pb-24`}>
       {/* ============================================================== */}
       {/* 1. HERO HEADER: PROJECTS & CAREER PORTFOLIO                    */}
       {/* ============================================================== */}
@@ -1489,7 +1491,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           return (
             <div className="space-y-5">
               {/* Top Row: Jimmy (Left) & Sea (Right) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 xl:gap-6 items-stretch">
                 <div>{renderProfileBanner('jimmy')}</div>
                 <div>{renderProfileBanner('sea')}</div>
               </div>
@@ -1662,7 +1664,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5 xl:gap-6">
               {filteredProjects.map((proj) => {
                 const artistInfo = getArtistLabel(proj.artist);
                 const statusInfo = getStatusBadge(proj.status);
