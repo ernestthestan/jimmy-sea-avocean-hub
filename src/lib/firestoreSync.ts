@@ -446,35 +446,11 @@ export function subscribeToFanMessages(
       msgs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
       if (snapshot.empty || msgs.length === 0) {
+        onUpdate([]);
         try {
-          const metaSnap = await getDoc(doc(db, 'settings', 'inbox_meta')).catch(() => null);
-          const isMetaInit = metaSnap?.exists();
-          const isLocalInit = localStorage.getItem('avocean_inbox_initialized') === 'true';
-
-          if (isMetaInit || isLocalInit) {
-            // Intentionally empty (admin/owner deleted all messages)
-            onUpdate([]);
-            try {
-              localStorage.setItem('avocean_fan_messages_v1', '[]');
-            } catch {}
-            return;
-          }
-
-          // First-time seed only
-          if (initialSampleMessages && initialSampleMessages.length > 0) {
-            onUpdate(initialSampleMessages);
-            try {
-              localStorage.setItem('avocean_fan_messages_v1', JSON.stringify(initialSampleMessages));
-              localStorage.setItem('avocean_inbox_initialized', 'true');
-              await setDoc(doc(db, 'settings', 'inbox_meta'), { initialized: true });
-              for (const m of initialSampleMessages) {
-                await setDoc(doc(db, 'fan_messages', m.id), sanitizeForFirestore(m));
-              }
-            } catch (e) {}
-          }
-        } catch {
-          onUpdate([]);
-        }
+          localStorage.setItem('avocean_fan_messages_v1', '[]');
+          localStorage.setItem('avocean_inbox_initialized', 'true');
+        } catch {}
       } else {
         onUpdate(msgs);
         try {

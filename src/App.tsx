@@ -127,15 +127,29 @@ import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
 export type UserRole = 'visitor' | 'admin' | 'owner';
 export type AccentChoice = 'purple' | 'blue' | 'green';
 
+export type FanMessageCategory = 'calendar' | 'project' | 'fanclub' | 'foodsupport';
+
 export interface FanMessage {
   id: string;
   senderName: string;
-  eventTitle: string;
+  eventTitle: string; // Used as main title for all types (Event, Project, Fan Club, or Food Campaign)
   eventDate?: string;
   sourceUrl?: string;
   message: string;
   createdAt: string;
   isRead: boolean;
+  category?: FanMessageCategory;
+  // Career Project fields
+  projectCategory?: string; // Series, Movie, Music Video, Brand Endorsement, Owned Brand, Other
+  projectArtist?: string; // Jimmy & Sea, Jimmy, Sea, Avocean
+  projectYear?: string;
+  characterNames?: string; // e.g. "Jimmy as Pongpeun, Sea as Pepper"
+  // Fan Club Directory fields
+  fanClubCountry?: string;
+  fanClubCity?: string;
+  // Food Support fields
+  foodSupportTarget?: string;
+  foodSupportOrganizer?: string;
 }
 
 export interface Member {
@@ -1897,53 +1911,45 @@ export default function App() {
   }, []);
 
   // --- "Leave a message" State (Viewers submit; only Admin & Owner can read) ---
-  const INITIAL_FAN_MESSAGES: FanMessage[] = useMemo(
-    () => [
-      {
-        id: 'msg-sample-1',
-        senderName: 'PolcaAvocean',
-        eventTitle: 'JimmySea Special Live Stream on GMMTV Official',
-        eventDate: '2026-11-08',
-        sourceUrl: 'https://x.com/gmmtvofficial',
-        message: 'Hi admins & owner! Official GMMTV account just posted that Jimmy and Sea will be guests for an online shopping live stream next Sunday at 19:00 BKK. Could you add it to the schedule? 🥑🌊',
-        createdAt: '2026-10-27T10:30:00Z',
-        isRead: false
-      }
-    ],
-    []
-  );
-
   const [fanMessages, setFanMessages] = useState<FanMessage[]>(() => {
     try {
-      const isInit = localStorage.getItem('avocean_inbox_initialized') === 'true';
       const saved = localStorage.getItem('avocean_fan_messages_v1');
       if (saved !== null) return JSON.parse(saved);
-      if (isInit) return [];
     } catch {}
-    return [
-      {
-        id: 'msg-sample-1',
-        senderName: 'PolcaAvocean',
-        eventTitle: 'JimmySea Special Live Stream on GMMTV Official',
-        eventDate: '2026-11-08',
-        sourceUrl: 'https://x.com/gmmtvofficial',
-        message: 'Hi admins & owner! Official GMMTV account just posted that Jimmy and Sea will be guests for an online shopping live stream next Sunday at 19:00 BKK. Could you add it to the schedule? 🥑🌊',
-        createdAt: '2026-10-27T10:30:00Z',
-        isRead: false
-      }
-    ];
+    return [];
   });
 
   // Real-Time Fan Messages Sync from Firestore across all devices (PC, Laptop, Phone)
   const [isRefreshingInbox, setIsRefreshingInbox] = useState<boolean>(false);
   const [isSendingMessage, setIsSendingMessage] = useState<boolean>(false);
+  const isInitialMsgLoadRef = useRef(true);
+  const prevMsgCountRef = useRef(0);
 
   useEffect(() => {
-    const unsubscribe = subscribeToFanMessages(INITIAL_FAN_MESSAGES, (cloudMsgs) => {
+    const unsubscribe = subscribeToFanMessages([], (cloudMsgs) => {
+      // Live arrival notification alert for Owner and Admins
+      if (!isInitialMsgLoadRef.current && (isOwner || isAdmin)) {
+        if (cloudMsgs.length > prevMsgCountRef.current) {
+          const newest = cloudMsgs[0];
+          if (newest && !newest.isRead) {
+            const catLabel =
+              newest.category === 'project'
+                ? '🎬 Project suggestion'
+                : newest.category === 'fanclub'
+                ? '🌍 Fan Club submission'
+                : newest.category === 'foodsupport'
+                ? '🍱 Food Support proposal'
+                : '📅 Event suggestion';
+            showToast(`💌 New ${catLabel} from ${newest.senderName}: "${newest.eventTitle}"`);
+          }
+        }
+      }
+      isInitialMsgLoadRef.current = false;
+      prevMsgCountRef.current = cloudMsgs.length;
       setFanMessages(cloudMsgs);
     });
     return () => unsubscribe();
-  }, [INITIAL_FAN_MESSAGES]);
+  }, [isOwner, isAdmin]);
 
   // Real-Time Fan Clubs & Food Projects Sync from Firestore across all devices
   useEffect(() => {
@@ -1973,6 +1979,7 @@ export default function App() {
     } catch {}
   }, [fanMessages]);
 
+  const [msgCategory, setMsgCategory] = useState<FanMessageCategory>('calendar');
   const [msgSenderName, setMsgSenderName] = useState<string>('');
   const [msgEventTitle, setMsgEventTitle] = useState<string>('');
   const [msgEventDate, setMsgEventDate] = useState<string>('');
@@ -1980,9 +1987,40 @@ export default function App() {
   const [msgContent, setMsgContent] = useState<string>('');
   const [messageSubmitted, setMessageSubmitted] = useState<boolean>(false);
 
+  // Category-specific fields for Career Projects
+  const [msgProjectCategory, setMsgProjectCategory] = useState<string>('Series');
+  const [msgProjectArtist, setMsgProjectArtist] = useState<string>('Jimmy & Sea');
+  const [msgProjectYear, setMsgProjectYear] = useState<string>('');
+  const [msgCharacterNames, setMsgCharacterNames] = useState<string>('');
+
+  // Category-specific fields for Fan Clubs
+  const [msgFanClubCountry, setMsgFanClubCountry] = useState<string>('');
+  const [msgFanClubCity, setMsgFanClubCity] = useState<string>('');
+
+  // Category-specific fields for Food Support
+  const [msgFoodSupportTarget, setMsgFoodSupportTarget] = useState<string>('');
+  const [msgFoodSupportOrganizer, setMsgFoodSupportOrganizer] = useState<string>('');
+
+  // Inbox category filter tab
+  const [inboxFilterCategory, setInboxFilterCategory] = useState<'all' | 'calendar' | 'project' | 'fanclub' | 'foodsupport'>('all');
+
   const unreadMessageCount = useMemo(() => {
     return fanMessages.filter((m) => !m.isRead).length;
   }, [fanMessages]);
+
+  const openLeaveMessageModal = (overrideCategory?: FanMessageCategory) => {
+    setMessageSubmitted(false);
+    if (overrideCategory) {
+      setMsgCategory(overrideCategory);
+    } else if (activeTab === 'projects') {
+      setMsgCategory('project');
+    } else if (activeTab === 'fanhub') {
+      setMsgCategory(fanHubSubTab === 'foodsupport' ? 'foodsupport' : 'fanclub');
+    } else {
+      setMsgCategory('calendar');
+    }
+    setLeaveMessageModalOpen(true);
+  };
 
   const handleRefreshInbox = async () => {
     setIsRefreshingInbox(true);
@@ -2011,15 +2049,23 @@ export default function App() {
       return;
     }
     if (!msgEventTitle.trim()) {
-      showToast('Please enter the event title or topic.');
+      if (msgCategory === 'project') {
+        showToast('Please enter the project or brand title.');
+      } else if (msgCategory === 'fanclub') {
+        showToast('Please enter the fan club name.');
+      } else if (msgCategory === 'foodsupport') {
+        showToast('Please enter the food support project title.');
+      } else {
+        showToast('Please enter the event title or topic.');
+      }
       return;
     }
     if (!msgSourceUrl.trim()) {
-      showToast('Please provide a source link (e.g. X/Twitter post or official link).');
+      showToast('Please provide a source link (e.g. social post, official website, or registration URL).');
       return;
     }
     if (!msgContent.trim()) {
-      showToast('Please provide details or a description for the event.');
+      showToast('Please provide details or a description.');
       return;
     }
 
@@ -2031,7 +2077,28 @@ export default function App() {
       sourceUrl: msgSourceUrl.trim(),
       message: msgContent.trim(),
       createdAt: new Date().toISOString(),
-      isRead: false
+      isRead: false,
+      category: msgCategory,
+      ...(msgCategory === 'project'
+        ? {
+            projectCategory: msgProjectCategory,
+            projectArtist: msgProjectArtist,
+            projectYear: msgProjectYear.trim() || undefined,
+            characterNames: msgCharacterNames.trim() || undefined
+          }
+        : {}),
+      ...(msgCategory === 'fanclub'
+        ? {
+            fanClubCountry: msgFanClubCountry.trim() || undefined,
+            fanClubCity: msgFanClubCity.trim() || undefined
+          }
+        : {}),
+      ...(msgCategory === 'foodsupport'
+        ? {
+            foodSupportTarget: msgFoodSupportTarget.trim() || undefined,
+            foodSupportOrganizer: msgFoodSupportOrganizer.trim() || undefined
+          }
+        : {})
     };
 
     setIsSendingMessage(true);
@@ -2051,6 +2118,12 @@ export default function App() {
         setMsgEventDate('');
         setMsgSourceUrl('');
         setMsgContent('');
+        setMsgCharacterNames('');
+        setMsgProjectYear('');
+        setMsgFanClubCountry('');
+        setMsgFanClubCity('');
+        setMsgFoodSupportTarget('');
+        setMsgFoodSupportOrganizer('');
         showToast('💌 Message sent in real time to Admins & Owner! Thank you.');
       }, 1200);
     } catch (err) {
@@ -2065,6 +2138,12 @@ export default function App() {
         setMsgEventDate('');
         setMsgSourceUrl('');
         setMsgContent('');
+        setMsgCharacterNames('');
+        setMsgProjectYear('');
+        setMsgFanClubCountry('');
+        setMsgFanClubCity('');
+        setMsgFoodSupportTarget('');
+        setMsgFoodSupportOrganizer('');
         showToast('💌 Message saved! Will sync to all devices once online.');
       }, 1200);
     } finally {
@@ -2082,6 +2161,28 @@ export default function App() {
     // Mark as read
     handleMarkMessageRead(msg.id);
     showToast('Event details pre-filled from message!');
+  };
+
+  const handleCopyMessageDetails = (msg: FanMessage) => {
+    const lines = [
+      `From: ${msg.senderName} (${msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : ''})`,
+      `Type: ${msg.category === 'project' ? 'Career Project' : msg.category === 'fanclub' ? 'Fan Club Directory' : msg.category === 'foodsupport' ? 'Food Support Campaign' : 'Calendar Event'}`,
+      `Title / Name: ${msg.eventTitle}`,
+      msg.eventDate ? `Date: ${msg.eventDate}` : null,
+      msg.projectCategory ? `Category: ${msg.projectCategory}` : null,
+      msg.projectArtist ? `Artist: ${msg.projectArtist}` : null,
+      msg.characterNames ? `Characters: ${msg.characterNames}` : null,
+      msg.projectYear ? `Year: ${msg.projectYear}` : null,
+      msg.fanClubCountry ? `Country / Region: ${msg.fanClubCountry}` : null,
+      msg.fanClubCity ? `City: ${msg.fanClubCity}` : null,
+      msg.foodSupportOrganizer ? `Organizer: ${msg.foodSupportOrganizer}` : null,
+      msg.foodSupportTarget ? `Goal / Target: ${msg.foodSupportTarget}` : null,
+      msg.sourceUrl ? `Link: ${msg.sourceUrl}` : null,
+      `Details / Notes: ${msg.message}`
+    ].filter(Boolean).join('\n');
+
+    navigator.clipboard.writeText(lines);
+    showToast('Suggestion details copied to clipboard!');
   };
 
   const handleMarkMessageRead = async (id: string) => {
@@ -4611,27 +4712,61 @@ export default function App() {
           {/* Leave a Message button: visible to everyone, sized like login buttons */}
           <button
             onClick={() => {
-              setMessageSubmitted(false);
-              setLeaveMessageModalOpen(true);
+              openLeaveMessageModal();
             }}
             className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
-            title="Know about an event we missed? Leave a note for Admins & Owner"
+            title={
+              activeTab === 'projects'
+                ? 'Suggest a series, movie, MV, or endorsement project for Jimmy & Sea'
+                : activeTab === 'fanhub'
+                ? 'Submit a Fan Club directory listing or Food Support project'
+                : 'Know about an event we missed? Leave a note for Admins & Owner'
+            }
           >
-            <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-            <span>Leave a message</span>
+            {activeTab === 'projects' ? (
+              <>
+                <Film className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Suggest a Project</span>
+              </>
+            ) : activeTab === 'fanhub' ? (
+              <>
+                <HeartHandshake className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Submit Fan Club / Food Support</span>
+              </>
+            ) : (
+              <>
+                <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Leave a message</span>
+              </>
+            )}
           </button>
 
-          {/* Admin & Owner Only: Inbox with unread count */}
-          {canEditEvents && (
+          {/* Admin & Owner: Active Live Inbox with unread count badge */}
+          {canEditEvents ? (
             <button
               onClick={() => setInboxModalOpen(true)}
               className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 shadow-xs border border-amber-200 dark:border-amber-800 cursor-pointer transition-all active:scale-95"
-              title="Fan Messages Inbox (Admins & Owner Only)"
+              title="Fan Messages Inbox (Admins & Owner)"
             >
               <Inbox className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span>Inbox</span>
               {unreadMessageCount > 0 && (
                 <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-extrabold animate-pulse">
+                  {unreadMessageCount}
+                </span>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => openLoginModal('admin')}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
+              title="Admin & Owner Inbox (Sign in to view and read messages in real time)"
+            >
+              <Inbox className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+              <span className="hidden sm:inline">Admin</span>
+              <span>Inbox</span>
+              {unreadMessageCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
                   {unreadMessageCount}
                 </span>
               )}
@@ -9088,19 +9223,52 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
           >
-            <div className="flex items-center justify-between mb-3">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4" />
+                <div
+                  style={{
+                    backgroundColor:
+                      msgCategory === 'project'
+                        ? '#F3E8FF'
+                        : msgCategory === 'fanclub'
+                        ? '#E0F2FE'
+                        : msgCategory === 'foodsupport'
+                        ? '#DCFCE7'
+                        : '#EDE9FE'
+                  }}
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                >
+                  {msgCategory === 'project' ? (
+                    <Film className="w-5 h-5 text-purple-700 dark:text-purple-300" />
+                  ) : msgCategory === 'fanclub' ? (
+                    <Users className="w-5 h-5 text-sky-700 dark:text-sky-300" />
+                  ) : msgCategory === 'foodsupport' ? (
+                    <HeartHandshake className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />
+                  ) : (
+                    <MessageSquare className="w-5 h-5 text-purple-700 dark:text-purple-300" />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
-                    Leave a Message
+                    {msgCategory === 'project'
+                      ? 'Suggest a Career Project'
+                      : msgCategory === 'fanclub'
+                      ? 'Submit a Fan Club'
+                      : msgCategory === 'foodsupport'
+                      ? 'Submit Food Support'
+                      : 'Leave a Message'}
                   </h3>
                   <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
-                    Notify admins or owner about upcoming events
+                    {msgCategory === 'project'
+                      ? 'Propose a drama, movie, MV, or endorsement for Jimmy & Sea'
+                      : msgCategory === 'fanclub'
+                      ? 'Submit your fan club for the global Avocean directory'
+                      : msgCategory === 'foodsupport'
+                      ? 'Propose a food truck, catering, or charity campaign'
+                      : 'Notify admins or owner about upcoming events & appearances'}
                   </p>
                 </div>
               </div>
@@ -9112,24 +9280,103 @@ export default function App() {
               </button>
             </div>
 
+            {/* Category Selector Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-4 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => setMsgCategory('calendar')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  msgCategory === 'calendar'
+                    ? 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <span>📅</span>
+                <span>Calendar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMsgCategory('project')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  msgCategory === 'project'
+                    ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <span>🎬</span>
+                <span>Projects</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMsgCategory('fanclub')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  msgCategory === 'fanclub'
+                    ? 'bg-white dark:bg-slate-700 text-sky-700 dark:text-sky-300 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <span>🌍</span>
+                <span>Fan Clubs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMsgCategory('foodsupport')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  msgCategory === 'foodsupport'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <span>🍱</span>
+                <span>Food Support</span>
+              </button>
+            </div>
+
             {messageSubmitted ? (
               <div className="py-8 flex flex-col items-center text-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
                 <h4 className="text-base font-bold text-[#1A3668] dark:text-white">
-                  Message Sent!
+                  Message Sent in Real Time!
                 </h4>
                 <p className="text-xs font-medium text-[#607494] dark:text-slate-400 max-w-xs">
-                  Thank you! The schedule admins and owner have received your note and will review the event details.
+                  {msgCategory === 'project'
+                    ? 'Thank you! Admins and owner have received your career project suggestion and will review it.'
+                    : msgCategory === 'fanclub'
+                    ? 'Thank you! Admins have received your fan club submission to review for the directory.'
+                    : msgCategory === 'foodsupport'
+                    ? 'Thank you! Your food support proposal has been submitted to the team.'
+                    : 'Thank you! The schedule admins and owner have received your note and will review the event details.'}
                 </p>
               </div>
             ) : (
               <form onSubmit={handleSendFanMessage} className="space-y-3.5">
-                <div className="p-3 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900 text-xs text-purple-900 dark:text-purple-200">
-                  Did we forget to list an upcoming schedule, interview, or appearance? Let us know below so we can keep the calendar complete!
+                {/* Contextual Banner Note */}
+                <div
+                  className={`p-3 rounded-2xl text-xs leading-relaxed border ${
+                    msgCategory === 'project'
+                      ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-100 dark:border-purple-900 text-purple-900 dark:text-purple-200'
+                      : msgCategory === 'fanclub'
+                      ? 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-100 dark:border-sky-900 text-sky-900 dark:text-sky-200'
+                      : msgCategory === 'foodsupport'
+                      ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200'
+                      : 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-100 dark:border-purple-900 text-purple-900 dark:text-purple-200'
+                  }`}
+                >
+                  {msgCategory === 'project'
+                    ? '🎬 Missing a drama, movie, music video, brand endorsement or owned brand? Suggest it below and include character names (e.g. Jimmy as Pongpeun, Sea as Pepper)!'
+                    : msgCategory === 'fanclub'
+                    ? '🌍 Want your country, city, or regional fan club listed in the global Avocean directory? Share your handle and links below!'
+                    : msgCategory === 'foodsupport'
+                    ? '🍱 Running or organizing food support, a catering truck, or fan gifts for Jimmy & Sea? Propose details and donation link below!'
+                    : '📅 Did we forget to list an upcoming schedule, interview, or appearance? Let us know below so we can keep the calendar complete!'}
                 </div>
 
+                {/* Sender Name / Handle */}
                 <div>
                   <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
                     Your Name or Social Handle *
@@ -9144,61 +9391,339 @@ export default function App() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Event Title / Topic *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={msgEventTitle}
-                    onChange={(e) => setMsgEventTitle(e.target.value)}
-                    placeholder="e.g. JimmySea live shopping on GMMTV"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
+                {/* 1. CALENDAR FIELDS */}
+                {msgCategory === 'calendar' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Event Title / Topic *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={msgEventTitle}
+                        onChange={(e) => setMsgEventTitle(e.target.value)}
+                        placeholder="e.g. JimmySea live shopping on GMMTV"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                      Event Date (Optional)
-                    </label>
-                    <input
-                      type="date"
-                      value={msgEventDate}
-                      onChange={(e) => setMsgEventDate(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                      Source / Link *
-                    </label>
-                    <input
-                      type="url"
-                      required
-                      value={msgSourceUrl}
-                      onChange={(e) => setMsgSourceUrl(e.target.value)}
-                      placeholder="https://x.com/... or official link"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                    />
-                  </div>
-                </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Event Date (Optional)
+                        </label>
+                        <input
+                          type="date"
+                          value={msgEventDate}
+                          onChange={(e) => setMsgEventDate(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Source / Official Link *
+                        </label>
+                        <input
+                          type="url"
+                          required
+                          value={msgSourceUrl}
+                          onChange={(e) => setMsgSourceUrl(e.target.value)}
+                          placeholder="https://x.com/... or official link"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Details / Message *
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={msgContent}
-                    onChange={(e) => setMsgContent(e.target.value)}
-                    placeholder="Describe time, venue, channel or any extra info..."
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Details / Schedule Information *
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        value={msgContent}
+                        onChange={(e) => setMsgContent(e.target.value)}
+                        placeholder="Describe time, venue, channel or any extra info..."
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                  </>
+                )}
 
+                {/* 2. CAREER PROJECT FIELDS */}
+                {msgCategory === 'project' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Project / Show / Brand Title *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={msgEventTitle}
+                        onChange={(e) => setMsgEventTitle(e.target.value)}
+                        placeholder="e.g. Vice Versa, Last Twilight, Doctor Jimmy Clinic, or Pond's"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Category *
+                        </label>
+                        <select
+                          value={msgProjectCategory}
+                          onChange={(e) => setMsgProjectCategory(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        >
+                          <option value="Series">Series / Drama</option>
+                          <option value="Movie">Movie / Film</option>
+                          <option value="Music Video">Music Video</option>
+                          <option value="Brand Endorsement">Brand Endorsement</option>
+                          <option value="Owned Brand">Owned Brand</option>
+                          <option value="Other">Other Project</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Artist *
+                        </label>
+                        <select
+                          value={msgProjectArtist}
+                          onChange={(e) => setMsgProjectArtist(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        >
+                          <option value="Jimmy & Sea">Jimmy & Sea</option>
+                          <option value="Jimmy">Jimmy</option>
+                          <option value="Sea">Sea</option>
+                          <option value="Avocean">Avocean</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Release Year / Status
+                        </label>
+                        <input
+                          type="text"
+                          value={msgProjectYear}
+                          onChange={(e) => setMsgProjectYear(e.target.value)}
+                          placeholder="e.g. 2026 or Filming"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Character Names (Jimmy as ..., Sea as ...)
+                      </label>
+                      <input
+                        type="text"
+                        value={msgCharacterNames}
+                        onChange={(e) => setMsgCharacterNames(e.target.value)}
+                        placeholder="e.g. Jimmy as Pongpeun, Sea as Pepper"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Watch URL / Trailer / Official Announcement Link *
+                      </label>
+                      <input
+                        type="url"
+                        required
+                        value={msgSourceUrl}
+                        onChange={(e) => setMsgSourceUrl(e.target.value)}
+                        placeholder="https://youtube.com/watch?... or https://x.com/..."
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Project Synopsis / Brand Description *
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        value={msgContent}
+                        onChange={(e) => setMsgContent(e.target.value)}
+                        placeholder="Provide synopsis, character role details, official broadcast station, or brand info..."
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* 3. FAN CLUB DIRECTORY FIELDS */}
+                {msgCategory === 'fanclub' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Fan Club Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={msgEventTitle}
+                        onChange={(e) => setMsgEventTitle(e.target.value)}
+                        placeholder="e.g. JimmySea Philippines, Avocean Vietnam, TinySea LATAM"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Country / Region *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={msgFanClubCountry}
+                          onChange={(e) => setMsgFanClubCountry(e.target.value)}
+                          placeholder="e.g. Philippines, Vietnam, Brazil, Worldwide"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          City / Area (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={msgFanClubCity}
+                          onChange={(e) => setMsgFanClubCity(e.target.value)}
+                          placeholder="e.g. Manila, Ho Chi Minh City"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Official Social Media URL *
+                      </label>
+                      <input
+                        type="url"
+                        required
+                        value={msgSourceUrl}
+                        onChange={(e) => setMsgSourceUrl(e.target.value)}
+                        placeholder="https://x.com/jimmysea_ph or https://instagram.com/..."
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        About the Fan Club / Fandom Bio *
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        value={msgContent}
+                        onChange={(e) => setMsgContent(e.target.value)}
+                        placeholder="Describe your fan club, year established, activities, contact admins..."
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* 4. FOOD SUPPORT FIELDS */}
+                {msgCategory === 'foodsupport' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Food Support / Project Title *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={msgEventTitle}
+                        onChange={(e) => setMsgEventTitle(e.target.value)}
+                        placeholder="e.g. Food Support for GMMTV Starlympics 2026 or Birthday Food Truck"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Organizing Fan Club / Team *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={msgFoodSupportOrganizer}
+                          onChange={(e) => setMsgFoodSupportOrganizer(e.target.value)}
+                          placeholder="e.g. Avocean Inter Fans & PH FC"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Fundraising Goal / Target (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={msgFoodSupportTarget}
+                          onChange={(e) => setMsgFoodSupportTarget(e.target.value)}
+                          placeholder="e.g. 25,000 THB or 500 USD"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Delivery / Event Date (Optional)
+                        </label>
+                        <input
+                          type="date"
+                          value={msgEventDate}
+                          onChange={(e) => setMsgEventDate(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                          Campaign / Form / Info Link *
+                        </label>
+                        <input
+                          type="url"
+                          required
+                          value={msgSourceUrl}
+                          onChange={(e) => setMsgSourceUrl(e.target.value)}
+                          placeholder="https://x.com/... or Google Form link"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Catering & Food Project Details *
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        value={msgContent}
+                        onChange={(e) => setMsgContent(e.target.value)}
+                        placeholder="Detail planned items (lunch boxes, coffee truck, snack bags), venue delivery, beneficiary..."
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Form Buttons */}
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <button
                     type="button"
@@ -9221,7 +9746,15 @@ export default function App() {
                     ) : (
                       <>
                         <Send className="w-3.5 h-3.5" />
-                        <span>Send Message</span>
+                        <span>
+                          {msgCategory === 'project'
+                            ? 'Submit Project Suggestion'
+                            : msgCategory === 'fanclub'
+                            ? 'Submit Fan Club'
+                            : msgCategory === 'foodsupport'
+                            ? 'Submit Food Support'
+                            : 'Send Message'}
+                        </span>
                       </>
                     )}
                   </button>
@@ -9284,6 +9817,65 @@ export default function App() {
               </div>
             </div>
 
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 mb-3.5 pb-2 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setInboxFilterCategory('all')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  inboxFilterCategory === 'all'
+                    ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                All ({fanMessages.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilterCategory('calendar')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  inboxFilterCategory === 'calendar'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100'
+                }`}
+              >
+                📅 Events ({fanMessages.filter((m) => !m.category || m.category === 'calendar').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilterCategory('project')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  inboxFilterCategory === 'project'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100'
+                }`}
+              >
+                🎬 Projects ({fanMessages.filter((m) => m.category === 'project').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilterCategory('fanclub')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  inboxFilterCategory === 'fanclub'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100'
+                }`}
+              >
+                🌍 Fan Clubs ({fanMessages.filter((m) => m.category === 'fanclub').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilterCategory('foodsupport')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  inboxFilterCategory === 'foodsupport'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                }`}
+              >
+                🍱 Food Support ({fanMessages.filter((m) => m.category === 'foodsupport').length})
+              </button>
+            </div>
+
             {fanMessages.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-center">
                 <Inbox className="w-10 h-10 text-slate-300 mb-2" />
@@ -9291,88 +9883,250 @@ export default function App() {
                   Inbox is empty
                 </span>
                 <span className="text-xs text-slate-400">
-                  When viewers submit event tips, they will appear here.
+                  When viewers submit events, project suggestions, or fan club tips, they will appear here.
                 </span>
               </div>
             ) : (
               <div className="space-y-3.5">
-                {fanMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`p-4 rounded-2xl border transition-all ${
-                      msg.isRead
-                        ? 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
-                        : 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 shadow-2xs'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-extrabold text-[#1A3668] dark:text-white">
-                          {msg.eventTitle}
-                        </span>
-                        {!msg.isRead && (
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-500 text-white">
-                            New
+                {fanMessages
+                  .filter((msg) => {
+                    if (inboxFilterCategory === 'all') return true;
+                    if (inboxFilterCategory === 'calendar') return !msg.category || msg.category === 'calendar';
+                    return msg.category === inboxFilterCategory;
+                  })
+                  .map((msg) => {
+                    const isProject = msg.category === 'project';
+                    const isFanClub = msg.category === 'fanclub';
+                    const isFoodSupport = msg.category === 'foodsupport';
+                    const isCalendar = !msg.category || msg.category === 'calendar';
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`p-4 rounded-2xl border transition-all ${
+                          msg.isRead
+                            ? 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                            : isProject
+                            ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 shadow-2xs'
+                            : isFanClub
+                            ? 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800 shadow-2xs'
+                            : isFoodSupport
+                            ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 shadow-2xs'
+                            : 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 shadow-2xs'
+                        }`}
+                      >
+                        {/* Header Row: Title, Category Badge, Status, Date */}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-extrabold text-[#1A3668] dark:text-white">
+                              {msg.eventTitle}
+                            </span>
+
+                            {/* Category Pill Badge */}
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                isProject
+                                  ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                  : isFanClub
+                                  ? 'bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+                                  : isFoodSupport
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                  : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                              }`}
+                            >
+                              {isProject
+                                ? `🎬 Project · ${msg.projectCategory || 'Work'}`
+                                : isFanClub
+                                ? `🌍 Fan Club · ${msg.fanClubCountry || 'Global'}`
+                                : isFoodSupport
+                                ? '🍱 Food Support'
+                                : '📅 Event'}
+                            </span>
+
+                            {!msg.isRead && (
+                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-500 text-white">
+                                New
+                              </span>
+                            )}
+
+                            {msg.eventDate && (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 border border-slate-200 dark:border-slate-600">
+                                🗓️ {msg.eventDate}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {new Date(msg.createdAt).toLocaleDateString()}
                           </span>
-                        )}
-                        {msg.eventDate && (
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 border border-slate-200 dark:border-slate-600">
-                            🗓️ {msg.eventDate}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-slate-400 shrink-0">
-                        {new Date(msg.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
+                        </div>
 
-                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-3 whitespace-pre-line">
-                      "{msg.message}"
-                    </p>
+                        {/* Extra Context Badges */}
+                        {(isProject || isFanClub || isFoodSupport) && (
+                          <div className="flex items-center gap-1.5 flex-wrap mb-2 text-[11px]">
+                            {isProject && (
+                              <>
+                                {msg.projectArtist && (
+                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-purple-100/70 dark:bg-purple-950/70 text-purple-800 dark:text-purple-200">
+                                    ⭐ {msg.projectArtist}
+                                  </span>
+                                )}
+                                {msg.characterNames && (
+                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200">
+                                    🎭 {msg.characterNames}
+                                  </span>
+                                )}
+                                {msg.projectYear && (
+                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300">
+                                    📅 {msg.projectYear}
+                                  </span>
+                                )}
+                              </>
+                            )}
 
-                    <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex-wrap gap-2">
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        From: <span className="font-bold text-[#1A3668] dark:text-white">{msg.senderName}</span>
-                        {msg.sourceUrl && (
-                          <a
-                            href={msg.sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="ml-2 text-purple-600 dark:text-purple-400 underline inline-flex items-center gap-1"
-                          >
-                            <span>Link</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                            {isFanClub && (
+                              <>
+                                {msg.fanClubCountry && (
+                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-sky-100/70 dark:bg-sky-950/70 text-sky-800 dark:text-sky-200">
+                                    📍 {msg.fanClubCountry} {msg.fanClubCity ? `(${msg.fanClubCity})` : ''}
+                                  </span>
+                                )}
+                              </>
+                            )}
+
+                            {isFoodSupport && (
+                              <>
+                                {msg.foodSupportOrganizer && (
+                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-emerald-100/70 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200">
+                                    🤝 Organized by: {msg.foodSupportOrganizer}
+                                  </span>
+                                )}
+                                {msg.foodSupportTarget && (
+                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-amber-100/70 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200">
+                                    🎯 Target: {msg.foodSupportTarget}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         )}
-                      </div>
 
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handlePrefillEventFromMessage(msg)}
-                          style={{ backgroundColor: currentAccent.colorHex }}
-                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-2xs hover:opacity-90 cursor-pointer"
-                          title="Pre-fill Add Event Form"
-                        >
-                          <Sparkles className="w-3 h-3" />
-                          <span>+ Add to Calendar</span>
-                        </button>
-                        <button
-                          onClick={() => handleMarkMessageRead(msg.id)}
-                          className="px-2.5 py-1 rounded-full text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer"
-                        >
-                          {msg.isRead ? 'Mark Unread' : 'Mark Read'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMessage(msg.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
-                          title="Delete message"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Message / Description Body */}
+                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-3 whitespace-pre-line">
+                          "{msg.message}"
+                        </p>
+
+                        {/* Footer row: Sender, Link, Action buttons */}
+                        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex-wrap gap-2">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            From: <span className="font-bold text-[#1A3668] dark:text-white">{msg.senderName}</span>
+                            {msg.sourceUrl && (
+                              <a
+                                href={msg.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-2 text-purple-600 dark:text-purple-400 underline inline-flex items-center gap-1 font-semibold"
+                              >
+                                <span>Official Link</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* Action based on category */}
+                            {isCalendar && (
+                              <button
+                                onClick={() => handlePrefillEventFromMessage(msg)}
+                                style={{ backgroundColor: currentAccent.colorHex }}
+                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-2xs hover:opacity-90 cursor-pointer"
+                                title="Pre-fill Add Event Form"
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                <span>+ Add to Calendar</span>
+                              </button>
+                            )}
+
+                            {isProject && (
+                              <button
+                                onClick={() => {
+                                  setInboxModalOpen(false);
+                                  setActiveTab('projects');
+                                  handleMarkMessageRead(msg.id);
+                                  showToast(`Switched to Projects Hub! You can now add "${msg.eventTitle}".`);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-2xs cursor-pointer"
+                                title="Switch to Projects Tab"
+                              >
+                                <Film className="w-3 h-3" />
+                                <span>Go to Projects</span>
+                              </button>
+                            )}
+
+                            {isFanClub && (
+                              <button
+                                onClick={() => {
+                                  setInboxModalOpen(false);
+                                  setActiveTab('fanhub');
+                                  setFanHubSubTab('directory');
+                                  handleMarkMessageRead(msg.id);
+                                  showToast(`Switched to Fan Clubs Directory! You can add "${msg.eventTitle}".`);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-2xs cursor-pointer"
+                                title="Switch to Fan Clubs Directory"
+                              >
+                                <Users className="w-3 h-3" />
+                                <span>Go to Fan Clubs</span>
+                              </button>
+                            )}
+
+                            {isFoodSupport && (
+                              <button
+                                onClick={() => {
+                                  setInboxModalOpen(false);
+                                  setActiveTab('fanhub');
+                                  setFanHubSubTab('foodsupport');
+                                  handleMarkMessageRead(msg.id);
+                                  showToast(`Switched to Food Support! You can add "${msg.eventTitle}".`);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs cursor-pointer"
+                                title="Switch to Food Support Projects"
+                              >
+                                <HeartHandshake className="w-3 h-3" />
+                                <span>Go to Food Support</span>
+                              </button>
+                            )}
+
+                            {/* Copy Full Info Helper */}
+                            <button
+                              onClick={() => handleCopyMessageDetails(msg)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer"
+                              title="Copy all details to clipboard"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>Copy</span>
+                            </button>
+
+                            {/* Read / Unread toggle */}
+                            <button
+                              onClick={() => handleMarkMessageRead(msg.id)}
+                              className="px-2.5 py-1 rounded-full text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer"
+                            >
+                              {msg.isRead ? 'Mark Unread' : 'Mark Read'}
+                            </button>
+
+                            {/* Delete button */}
+                            <button
+                              onClick={() => handleDeleteMessage(msg.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                              title="Delete message"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
               </div>
             )}
           </div>
