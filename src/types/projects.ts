@@ -80,6 +80,7 @@ export interface ActorProfile {
   tiktokUrl?: string;
   bio: string;
   spouse?: string; // Spouse / Partner / Pairing
+  parents?: string; // Parents (specifically for Avocean: Jimmy & Sea)
   zodiac?: string; // Zodiac Sign (e.g. Leo ♌, Aries ♈)
   favoriteColors?: string; // Favorite Color/s (e.g. Purple, Green, Black)
   favoriteFoods?: string; // Favorite Food/s (e.g. Salmon, Steak, Mango Sticky Rice)

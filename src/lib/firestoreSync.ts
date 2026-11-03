@@ -1319,6 +1319,8 @@ export function subscribeToCareerProjects(
   }
 
   const projectsCol = collection(db, 'career_projects');
+  const samplePrefixes = ['proj-show-', 'proj-movie-', 'proj-mv-', 'proj-partner-'];
+
   const unsubscribe = onSnapshot(
     projectsCol,
     async (snapshot) => {
@@ -1327,44 +1329,27 @@ export function subscribeToCareerProjects(
         loaded.push(d.data() as CareerProject);
       });
 
-      if (snapshot.empty) {
-        try {
-          const metaSnap = await getDoc(doc(db, 'settings', 'projects_meta')).catch(() => null);
-          const isMetaInit = metaSnap?.exists();
-          const isLocalInit = localStorage.getItem('avocean_projects_initialized') === 'true';
+      // Filter out legacy sample projects so only user/admin-created projects remain
+      const userProjects = loaded.filter(
+        (p) => !samplePrefixes.some((prefix) => p.id?.startsWith(prefix))
+      );
 
-          if (isMetaInit || isLocalInit) {
-            // User intentionally cleared all projects
-            onUpdate([]);
-            try {
-              localStorage.setItem('avocean_career_projects_v1', '[]');
-            } catch {}
-            return;
-          }
-
-          // First-time seed of initial projects
-          onUpdate(initialSampleProjects);
-          try {
-            localStorage.setItem('avocean_career_projects_v1', JSON.stringify(initialSampleProjects));
-            localStorage.setItem('avocean_projects_initialized', 'true');
-            await setDoc(doc(db, 'settings', 'projects_meta'), { initialized: true });
-            for (const p of initialSampleProjects) {
-              await setDoc(doc(db, 'career_projects', p.id), sanitizeForFirestore(p));
-            }
-          } catch (e) {
-            console.warn('Initial seed of career projects warning:', e);
-          }
-        } catch {
-          onUpdate(initialSampleProjects);
-        }
-      } else {
-        // Sort projects: shows/movies by year desc, or keep structured
-        onUpdate(loaded);
-        try {
-          localStorage.setItem('avocean_career_projects_v1', JSON.stringify(loaded));
-          localStorage.setItem('avocean_projects_initialized', 'true');
-        } catch {}
+      // Asynchronously purge sample documents from Firestore collection
+      const sampleDocs = snapshot.docs.filter((d) =>
+        samplePrefixes.some((prefix) => d.id.startsWith(prefix))
+      );
+      if (sampleDocs.length > 0 && !isQuotaExceeded) {
+        sampleDocs.forEach((d) => {
+          deleteDoc(d.ref).catch(() => {});
+        });
+        setDoc(doc(db, 'settings', 'projects_meta'), { initialized: true, samplesCleared: true }, { merge: true }).catch(() => {});
       }
+
+      onUpdate(userProjects);
+      try {
+        localStorage.setItem('avocean_career_projects_v1', JSON.stringify(userProjects));
+        localStorage.setItem('avocean_projects_initialized', 'true');
+      } catch {}
     },
     (err: any) => {
       if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
@@ -1372,11 +1357,15 @@ export function subscribeToCareerProjects(
         try {
           const saved = localStorage.getItem('avocean_career_projects_v1');
           if (saved !== null) {
-            onUpdate(JSON.parse(saved));
+            const parsed = JSON.parse(saved) as CareerProject[];
+            const cleaned = parsed.filter(
+              (p) => !samplePrefixes.some((prefix) => p.id?.startsWith(prefix))
+            );
+            onUpdate(cleaned);
             return;
           }
         } catch {}
-        onUpdate(initialSampleProjects);
+        onUpdate([]);
       } else {
         console.warn('Career projects listener error:', err);
       }
@@ -1457,6 +1446,9 @@ export function subscribeToActorProfiles(
           avocean: { ...initialProfiles.avocean, ...(cloudData.avocean || {}) },
           sea: { ...initialProfiles.sea, ...(cloudData.sea || {}) }
         };
+        if (merged.avocean && !merged.avocean.parents) {
+          merged.avocean.parents = merged.avocean.spouse || 'Jimmy Jitaraphol & Sea Tawinan';
+        }
         onUpdate(merged);
         try {
           localStorage.setItem('avocean_actor_profiles_v1', JSON.stringify(merged));

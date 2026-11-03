@@ -372,7 +372,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setActorFormAgency(prof.agency || '');
     setActorFormHeightWeight(prof.heightWeight || '');
     setActorFormVentures(prof.venturesOrSkills || '');
-    setActorFormSpouse(prof.spouse || '');
+    setActorFormSpouse(prof.parents || prof.spouse || '');
     setActorFormZodiac(prof.zodiac || '');
     setActorFormFavoriteColors(prof.favoriteColors || '');
     setActorFormFavoriteFoods(prof.favoriteFoods || '');
@@ -435,6 +435,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         heightWeight: actorFormHeightWeight.trim() || undefined,
         venturesOrSkills: actorFormVentures.trim() || undefined,
         spouse: actorFormSpouse.trim() || undefined,
+        parents: editingActorProfile.id === 'avocean' ? (actorFormSpouse.trim() || undefined) : undefined,
         zodiac: actorFormZodiac.trim() || undefined,
         favoriteColors: actorFormFavoriteColors.trim() || undefined,
         favoriteFoods: actorFormFavoriteFoods.trim() || undefined,
@@ -1358,7 +1359,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     {currentSpouse && (
                       <div className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300 sm:col-span-2">
                         <Heart className={`${getFactsIconClass()} text-rose-500 fill-rose-500/20`} />
-                        <span className="font-bold text-slate-400 dark:text-slate-500 shrink-0">Spouse / Partner:</span>
+                        <span className="font-bold text-slate-400 dark:text-slate-500 shrink-0">
+                          {key === 'avocean' ? 'Parents:' : 'Spouse / Partner:'}
+                        </span>
                         <span className="font-semibold text-rose-700 dark:text-rose-400">{currentSpouse}</span>
                       </div>
                     )}
@@ -1580,25 +1583,40 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
           {/* Projects Cards Grid */}
           {filteredProjects.length === 0 ? (
-            <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-12 text-center border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
-              <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/70 text-purple-600 flex items-center justify-center text-2xl">
+            <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-10 sm:p-14 text-center border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
+              <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-950/70 text-purple-600 flex items-center justify-center text-3xl shadow-xs">
                 🎬
               </div>
-              <h3 className="text-lg font-bold text-[#1A3668] dark:text-white">
-                No projects found
+              <h3 className="text-lg sm:text-xl font-black text-[#1A3668] dark:text-white">
+                {projects.length === 0 ? 'No Career Projects Yet' : 'No projects found'}
               </h3>
-              <p className="text-xs text-[#607494] dark:text-slate-400 max-w-md">
-                No works or brands match your current filter selection. Try selecting &quot;All Projects&quot; or resetting your search keywords.
+              <p className="text-xs sm:text-sm text-[#607494] dark:text-slate-400 max-w-md">
+                {projects.length === 0
+                  ? 'All sample projects have been deleted. You and the admins can add your official series, movies, music videos, partner brands, and owned ventures using the "+ Add Project" button.'
+                  : 'No works or brands match your current filter selection. Try selecting "All Projects" or resetting your search keywords.'}
               </p>
-              <button
-                onClick={() => {
-                  setSelectedCategory('all');
-                  setSearchQuery('');
-                }}
-                className="mt-2 px-4 py-2 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-purple-600 cursor-pointer shadow-xs hover:opacity-90"
-              >
-                Reset Filters
-              </button>
+              {projects.length === 0 ? (
+                canEdit && (
+                  <button
+                    onClick={openAddModal}
+                    style={{ backgroundColor: currentAccent.colorHex }}
+                    className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                    <span>Add First Project</span>
+                  </button>
+                )
+              ) : (
+                <button
+                  onClick={() => {
+                    setSelectedCategory('all');
+                    setSearchQuery('');
+                  }}
+                  className="mt-2 px-4 py-2 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-purple-600 cursor-pointer shadow-xs hover:opacity-90"
+                >
+                  Reset Filters
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -2922,14 +2940,18 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 <div>
                   <label className={`block text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5 ${getModalFactsLabelClass()}`}>
                     <Heart className="w-3.5 h-3.5 text-rose-500" />
-                    <span>Spouse / Official Partner</span>
+                    <span>{editingActorProfile?.id === 'avocean' ? 'Parents' : 'Spouse / Official Partner'}</span>
                   </label>
                   <input
                     type="text"
                     value={actorFormSpouse}
                     onChange={(e) => setActorFormSpouse(e.target.value)}
                     title={actorFormSpouse}
-                    placeholder="e.g. Sea Tawinan Anukoolprasert (Official Duo & On-screen Partner)"
+                    placeholder={
+                      editingActorProfile?.id === 'avocean'
+                        ? 'e.g. Jimmy Jitaraphol & Sea Tawinan'
+                        : 'e.g. Sea Tawinan Anukoolprasert (Official Duo & On-screen Partner)'
+                    }
                     className={`w-full ${getModalFactsInputClass()} rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500 transition-all`}
                   />
                 </div>

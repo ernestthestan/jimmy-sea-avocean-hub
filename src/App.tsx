@@ -1544,16 +1544,14 @@ export default function App() {
   // --- Jimmy & Sea Career Projects State (Shows, Movies, MVs, Partner & Owned Brands) ---
   const [careerProjects, setCareerProjects] = useState<CareerProject[]>(() => {
     try {
-      const isInit = localStorage.getItem('avocean_projects_initialized') === 'true';
       const saved = localStorage.getItem('avocean_career_projects_v1');
       if (saved !== null) {
-        return JSON.parse(saved);
-      }
-      if (isInit) {
-        return [];
+        const samplePrefixes = ['proj-show-', 'proj-movie-', 'proj-mv-', 'proj-partner-'];
+        const parsed = JSON.parse(saved) as CareerProject[];
+        return parsed.filter((p) => !samplePrefixes.some((prefix) => p.id?.startsWith(prefix)));
       }
     } catch {}
-    return INITIAL_CAREER_PROJECTS;
+    return [];
   });
 
   const handleSaveCareerProject = (project: CareerProject) => {
