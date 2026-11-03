@@ -2456,7 +2456,6 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               }`}
                               loading="lazy"
                             />
-                            <div className="absolute inset-0 z-20 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
 
                             {/* Hover expand overlay indicator cue */}
                             <div className="absolute inset-0 z-20 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
@@ -3619,7 +3618,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               formMediaFit === 'contain' ? 'object-contain' : 'object-cover group-hover:scale-105'
                             }`}
                           />
-                          <div className="absolute inset-0 z-20 bg-gradient-to-t from-black/90 via-black/30 to-black/20 pointer-events-none" />
+                          <div className="absolute bottom-0 inset-x-0 h-24 z-20 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
 
                           {/* Top Badges (Category & Artist) */}
                           <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
