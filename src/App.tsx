@@ -5804,14 +5804,22 @@ export default function App() {
       {/* ============================================================== */}
       <div className="fixed bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-16px)] justify-center flex-wrap sm:flex-nowrap pointer-events-none">
         {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xl shadow-purple-500/25 pointer-events-auto shrink-0 transition-transform hover:scale-[1.03]">
-          <div className="bg-slate-900/90 dark:bg-slate-950/90 backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 border border-white/10">
+        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div
+            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              isDarkMode
+                ? 'bg-slate-900/95 border border-slate-800/80 shadow-lg'
+                : 'bg-white/95 border border-white/80 shadow-lg shadow-purple-500/10'
+            }`}
+          >
             <button
               onClick={() => setActiveTab('calendar')}
               className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
                 activeTab === 'calendar'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-lg shadow-purple-500/30 font-black'
-                  : 'text-white/85 hover:text-white hover:bg-white/15'
+                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
               }`}
               title="View Calendar schedule"
             >
@@ -5822,8 +5830,10 @@ export default function App() {
               onClick={() => setActiveTab('list')}
               className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
                 activeTab === 'list'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-lg shadow-purple-500/30 font-black'
-                  : 'text-white/85 hover:text-white hover:bg-white/15'
+                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
               }`}
               title="View List schedule"
             >
@@ -5834,14 +5844,22 @@ export default function App() {
         </div>
 
         {/* Bubble 2: Projects Navigation with Purple, Blue & Green Gradient */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xl shadow-purple-500/25 pointer-events-auto shrink-0 transition-transform hover:scale-[1.03]">
-          <div className="bg-slate-900/90 dark:bg-slate-950/90 backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 border border-white/10">
+        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div
+            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              isDarkMode
+                ? 'bg-slate-900/95 border border-slate-800/80 shadow-lg'
+                : 'bg-white/95 border border-white/80 shadow-lg shadow-purple-500/10'
+            }`}
+          >
             <button
               onClick={() => setActiveTab('projects')}
               className={`inline-flex items-center gap-1.5 px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
                 activeTab === 'projects'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-lg shadow-purple-500/30 font-black'
-                  : 'text-white/85 hover:text-white hover:bg-white/15'
+                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
               }`}
               title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
             >
@@ -5852,8 +5870,14 @@ export default function App() {
         </div>
 
         {/* Bubble 3: Fan Hub Navigation (Fan Clubs / Food Support) with Purple, Blue & Green Gradient */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xl shadow-purple-500/25 pointer-events-auto shrink-0 transition-transform hover:scale-[1.03]">
-          <div className="bg-slate-900/90 dark:bg-slate-950/90 backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 border border-white/10">
+        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div
+            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              isDarkMode
+                ? 'bg-slate-900/95 border border-slate-800/80 shadow-lg'
+                : 'bg-white/95 border border-white/80 shadow-lg shadow-purple-500/10'
+            }`}
+          >
             <button
               onClick={() => {
                 setActiveTab('fanhub');
@@ -5861,8 +5885,10 @@ export default function App() {
               }}
               className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
                 activeTab === 'fanhub' && fanHubSubTab === 'directory'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-lg shadow-purple-500/30 font-black'
-                  : 'text-white/85 hover:text-white hover:bg-white/15'
+                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
               }`}
               title="JimmySea Fan Clubs Directory"
             >
@@ -5876,8 +5902,10 @@ export default function App() {
               }}
               className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
                 activeTab === 'fanhub' && fanHubSubTab === 'foodsupport'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-lg shadow-purple-500/30 font-black'
-                  : 'text-white/85 hover:text-white hover:bg-white/15'
+                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-purple-50/80'
               }`}
               title="Fan Food Support & Catering Projects"
             >
