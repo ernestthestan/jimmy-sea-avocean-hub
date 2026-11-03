@@ -3380,34 +3380,64 @@ export default function App() {
     });
   };
 
-  // Handle Banner Photo Upload from file with compression
+  // Handle Banner Photo Upload from device with compression and Firestore real-time sync
   const handleBannerFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
-    if (file.size > 15 * 1024 * 1024) {
-      showToast('Banner photo is larger than 15MB. Please choose a smaller photo.');
-      return;
-    }
+    showToast(fileList.length === 1 ? 'Optimizing & uploading banner photo...' : `Optimizing & uploading ${fileList.length} banner photos...`);
 
-    showToast('Optimizing banner photo...');
     try {
-      const compressedUrl = await compressImageFile(file, 1600, 0.85);
-      setDraftBannerImageUrl(compressedUrl);
-      setSettings((prev) => ({ ...prev, bannerImageUrl: compressedUrl }));
-      showToast('Banner photo updated!');
-    } catch (err) {
-      console.warn('Banner compression error:', err);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const photoUrl = event.target.result as string;
-          setDraftBannerImageUrl(photoUrl);
-          setSettings((prev) => ({ ...prev, bannerImageUrl: photoUrl }));
-          showToast('Banner photo updated!');
+      const compressedUrls: string[] = [];
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        if (file.size > 20 * 1024 * 1024) {
+          showToast(`File ${file.name} is too large (>20MB). Skipping.`);
+          continue;
         }
+        try {
+          // Compress with 1280 max dimension and 0.78 quality to keep Firestore document compact & fast
+          const compressed = await compressImageFile(file, 1280, 0.78);
+          compressedUrls.push(compressed);
+        } catch (err) {
+          console.warn('Banner compression error:', err);
+          const rawUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve((ev.target?.result as string) || '');
+            reader.readAsDataURL(file);
+          });
+          if (rawUrl) compressedUrls.push(rawUrl);
+        }
+      }
+
+      if (compressedUrls.length === 0) return;
+
+      const currentList = settings.bannerPhotos && settings.bannerPhotos.length > 0
+        ? [...settings.bannerPhotos]
+        : (settings.bannerImageUrl ? [settings.bannerImageUrl] : []);
+
+      const updatedList = [...currentList, ...compressedUrls];
+
+      // Update local state and drafts
+      setDraftBannerImageUrl(compressedUrls[0]);
+      setDraftBannerPhotos((prev) => [...prev, ...compressedUrls]);
+      const updatedSettings: AppSettings = {
+        ...settings,
+        bannerPhotos: updatedList,
+        bannerImageUrl: updatedList[0] || ''
       };
-      reader.readAsDataURL(file);
+      setSettings(updatedSettings);
+
+      // Persist to Firestore so everyone (admins, fans, visitors worldwide) sees it in real time
+      await saveSettingsToFirestore(updatedSettings);
+      showToast(
+        compressedUrls.length === 1
+          ? 'Banner photo uploaded & synced live to Firestore! Everyone can now see it.'
+          : `${compressedUrls.length} banner photos uploaded & synced live to Firestore! Everyone can now see them.`
+      );
+    } catch (err) {
+      console.error('Failed to upload/sync banner photo:', err);
+      showToast('Could not save banner photo to Firestore. Please try again.');
     } finally {
       if (bannerFileInputRef.current) {
         bannerFileInputRef.current.value = '';
@@ -11084,6 +11114,16 @@ export default function App() {
           </div>
         );
       })()}
+
+      {/* Hidden File Input for Banner Photos (Device Camera / Storage) - Always mounted */}
+      <input
+        ref={bannerFileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleBannerFileUpload}
+        className="hidden"
+      />
     </div>
   );
 }

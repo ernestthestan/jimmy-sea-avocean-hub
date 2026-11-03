@@ -31,6 +31,10 @@ export interface CareerProject {
   status: ProjectStatus;
   description: string;
   imageUrl: string;
+  mediaPhotos?: string[]; // Multiple photo/media collection (posters, character visuals, stills)
+  mediaFit?: 'cover' | 'contain' | 'auto'; // Auto-fit (contain uncropped) vs cinematic crop (cover)
+  mediaPosition?: string; // Adjustable framing focal position (e.g. 'center 25%')
+  mediaOffsetY?: number; // Vertical focal offset percentage (0 to 100%)
   bannerUrl?: string;
   platform?: string;
   primaryLink?: string;
@@ -39,6 +43,8 @@ export interface CareerProject {
   tags?: string[];
   highlight?: string;
   releaseDate?: string;
+  titleSize?: 'compact' | 'medium' | 'large';
+  fontSize?: 'compact' | 'medium' | 'large';
   updatedAt?: string;
 }
 

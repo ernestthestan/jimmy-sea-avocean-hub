@@ -132,6 +132,93 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     sea: 'medium'
   });
 
+  // Global Font Zoom across all Career Projects (compact | medium | large | xl)
+  const [projectFontZoom, setProjectFontZoom] = useState<'compact' | 'medium' | 'large' | 'xl'>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_projects_font_zoom');
+      if (saved === 'compact' || saved === 'medium' || saved === 'large' || saved === 'xl') return saved;
+    } catch {}
+    return 'medium';
+  });
+
+  // Per-project individual font zoom overrides
+  const [projectCardZoom, setProjectCardZoom] = useState<Record<string, 'compact' | 'medium' | 'large' | 'xl'>>({});
+
+  // Poster Display Mode across Projects Hub:
+  // 'poster' (2:3 vertical portrait poster - shows the whole photo with faces and logos)
+  // 'contain' (Auto-Fit 100% whole photo without cropping)
+  // 'card' (16:10 landscape)
+  const [projectPosterAspect, setProjectPosterAspect] = useState<'poster' | 'contain' | 'card'>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_projects_poster_aspect');
+      if (saved === 'poster' || saved === 'contain' || saved === 'card') return saved;
+    } catch {}
+    return 'poster'; // Default to full poster so the whole photo is visible as requested!
+  });
+
+  const handleUpdateProjectPosterAspect = (mode: 'poster' | 'contain' | 'card') => {
+    setProjectPosterAspect(mode);
+    try {
+      localStorage.setItem('avocean_projects_poster_aspect', mode);
+    } catch {}
+    showToast(`Poster view set to ${mode === 'poster' ? 'Full Portrait Poster (Whole Photo)' : mode === 'contain' ? 'Auto-Fit (100% Visible)' : 'Landscape Card'}`);
+  };
+
+  const handleUpdateProjectFontZoom = (zoom: 'compact' | 'medium' | 'large' | 'xl') => {
+    setProjectFontZoom(zoom);
+    try {
+      localStorage.setItem('avocean_projects_font_zoom', zoom);
+    } catch {}
+    showToast(`Projects font size: ${zoom.toUpperCase()}`);
+  };
+
+  // Dynamic Typography Calculator for Career Projects
+  const getProjectTypography = (effectiveZoom: 'compact' | 'medium' | 'large' | 'xl') => {
+    switch (effectiveZoom) {
+      case 'compact':
+        return {
+          title: 'text-sm sm:text-base font-bold',
+          subtitle: 'text-[11px] font-semibold',
+          badges: 'text-[12px] sm:text-xs px-2.5 py-1 font-bold',
+          meta: 'text-[10px]',
+          body: 'text-[11px] leading-relaxed',
+          tags: 'text-[9.5px] px-1.5 py-0.5',
+          buttons: 'text-[11px] px-2.5 py-1.5'
+        };
+      case 'large':
+        return {
+          title: 'text-lg sm:text-xl md:text-2xl font-black',
+          subtitle: 'text-sm sm:text-base font-bold',
+          badges: 'text-sm sm:text-[15px] px-4 py-2 font-bold',
+          meta: 'text-xs sm:text-[13px]',
+          body: 'text-sm sm:text-base leading-relaxed',
+          tags: 'text-xs px-2.5 py-1',
+          buttons: 'text-xs sm:text-sm px-4 py-2 font-black'
+        };
+      case 'xl':
+        return {
+          title: 'text-xl sm:text-2xl md:text-3xl font-black',
+          subtitle: 'text-base sm:text-lg font-bold',
+          badges: 'text-base sm:text-lg px-5 py-2.5 font-black',
+          meta: 'text-sm font-semibold',
+          body: 'text-base sm:text-lg leading-relaxed',
+          tags: 'text-sm px-3 py-1',
+          buttons: 'text-sm sm:text-base px-5 py-2.5 font-black'
+        };
+      case 'medium':
+      default:
+        return {
+          title: 'text-base sm:text-lg md:text-xl font-bold',
+          subtitle: 'text-xs sm:text-sm font-semibold',
+          badges: 'text-xs sm:text-[13.5px] px-3.5 py-1.5 font-bold',
+          meta: 'text-[11px]',
+          body: 'text-xs sm:text-[13px] leading-relaxed',
+          tags: 'text-[10.5px] px-2 py-0.5',
+          buttons: 'text-xs px-3.5 py-1.5'
+        };
+    }
+  };
+
   // Selected translation language per card (defaults to global targetLang, or lets user pick any language)
   const [actorCardLangs, setActorCardLangs] = useState<Record<string, string>>({
     jimmy: preferredTranslationLang || 'en',
@@ -259,6 +346,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
   // Active photo index for profiles with multiple avatar photos on cards
   const [activeAvatarIndex, setActiveAvatarIndex] = useState<Record<string, number>>({});
+  // Active media photo index for project cards with multiple photos/media
+  const [projectCardMediaIndex, setProjectCardMediaIndex] = useState<Record<string, number>>({});
 
   // File upload to base64 canvas compression helper
   const compressImageFile = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<string> => {
@@ -540,51 +629,127 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     { label: 'YouTube Official Playlist', url: '', platform: 'YouTube' }
   ]);
 
-  // Poster / Media Preview and Upload State
+  // Multi-Photo Poster / Media Preview, Auto-Fit & Adjustment State
   const posterFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingPoster, setIsUploadingPoster] = useState<boolean>(false);
   const [posterLoadError, setPosterLoadError] = useState<boolean>(false);
   const [posterPreviewAspect, setPosterPreviewAspect] = useState<'card' | 'poster'>('card');
+  const [formMediaPhotos, setFormMediaPhotos] = useState<string[]>([]);
+  const [formActiveMediaIndex, setFormActiveMediaIndex] = useState<number>(0);
+  const [formMediaFit, setFormMediaFit] = useState<'cover' | 'contain' | 'auto'>('cover');
+  const [formMediaOffsetY, setFormMediaOffsetY] = useState<number>(50); // 0% to 100%
+  const [formTitleSize, setFormTitleSize] = useState<'compact' | 'medium' | 'large'>('medium');
+  const [formFontSize, setFormFontSize] = useState<'compact' | 'medium' | 'large'>('medium');
+  const [newMediaUrlInput, setNewMediaUrlInput] = useState<string>('');
 
-  // Handle Local Device Upload for Career Project Poster / Media
+  // Handle Local Device Upload for Multiple Career Project Photos / Media with compression
   const handlePosterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      showToast('Please select a valid image file (JPEG, PNG, WebP).');
-      return;
-    }
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
     setIsUploadingPoster(true);
     setPosterLoadError(false);
 
     try {
-      // Compress with 1400 maxDimension, quality 0.85 to keep Firestore document compact
-      const compressedDataUrl = await compressImageFile(file, 1400, 0.85);
-      setFormImageUrl(compressedDataUrl);
-      showToast('Poster uploaded and compressed successfully!');
+      const compressedList: string[] = [];
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        if (!file.type.startsWith('image/')) continue;
+        try {
+          // Compress with 1280 maxDimension, quality 0.80 to keep Firestore document compact & crisp
+          const compressed = await compressImageFile(file, 1280, 1280, 0.80);
+          compressedList.push(compressed);
+        } catch (err) {
+          console.warn('Compression fallback for file:', file.name, err);
+          const raw = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve((ev.target?.result as string) || '');
+            reader.readAsDataURL(file);
+          });
+          if (raw) compressedList.push(raw);
+        }
+      }
+
+      if (compressedList.length > 0) {
+        setFormMediaPhotos((prev) => [...prev, ...compressedList]);
+        setFormImageUrl(compressedList[0]);
+        setFormActiveMediaIndex(formMediaPhotos.length);
+        showToast(
+          compressedList.length === 1
+            ? 'Media photo uploaded successfully!'
+            : `${compressedList.length} media photos uploaded successfully!`
+        );
+      }
     } catch (err) {
       console.error('Failed to compress/upload poster image:', err);
-      // Fallback to basic FileReader if compression has an unexpected issue
-      const reader = new FileReader();
-      reader.onload = (loadEvt) => {
-        const result = loadEvt.target?.result as string;
-        if (result) {
-          setFormImageUrl(result);
-          showToast('Poster loaded successfully.');
-        }
-      };
-      reader.onerror = () => {
-        showToast('Could not read image file. Please try a different photo.');
-      };
-      reader.readAsDataURL(file);
+      showToast('Could not process some image files.');
     } finally {
       setIsUploadingPoster(false);
       if (posterFileInputRef.current) {
         posterFileInputRef.current.value = '';
       }
     }
+  };
+
+  const handleAddMediaUrl = (urlInput: string) => {
+    if (!urlInput.trim()) return;
+    const tokens = urlInput.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+    const additions: string[] = [];
+    tokens.forEach((url) => {
+      if (!formMediaPhotos.includes(url) && !additions.includes(url)) {
+        additions.push(url);
+      }
+    });
+    if (additions.length === 0) {
+      showToast('Photo is already in media collection');
+      return;
+    }
+    setFormMediaPhotos((prev) => [...prev, ...additions]);
+    setNewMediaUrlInput('');
+    setFormImageUrl(additions[0]);
+    setFormActiveMediaIndex(formMediaPhotos.length);
+    showToast(additions.length === 1 ? 'Photo added to media collection!' : `${additions.length} photos added to media collection!`);
+  };
+
+  const handleRemoveMediaPhoto = (idxToRemove: number) => {
+    setFormMediaPhotos((prev) => {
+      const updated = prev.filter((_, i) => i !== idxToRemove);
+      if (updated.length > 0) {
+        const nextIdx = Math.min(formActiveMediaIndex, updated.length - 1);
+        setFormActiveMediaIndex(nextIdx);
+        setFormImageUrl(updated[nextIdx]);
+      } else {
+        setFormImageUrl('');
+        setFormActiveMediaIndex(0);
+      }
+      return updated;
+    });
+    showToast('Photo removed from media collection');
+  };
+
+  const handleMoveMediaPhoto = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= formMediaPhotos.length) return;
+    setFormMediaPhotos((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(fromIdx, 1);
+      copy.splice(toIdx, 0, item);
+      return copy;
+    });
+    setFormActiveMediaIndex(toIdx);
+    setFormImageUrl(formMediaPhotos[fromIdx] || formImageUrl);
+  };
+
+  const handleSetPrimaryMedia = (idx: number) => {
+    if (idx === 0) return;
+    setFormMediaPhotos((prev) => {
+      const copy = [...prev];
+      const [item] = copy.splice(idx, 1);
+      copy.unshift(item);
+      return copy;
+    });
+    setFormActiveMediaIndex(0);
+    setFormImageUrl(formMediaPhotos[idx]);
+    showToast('Set as main cover poster!');
   };
 
   // Translate Full Project (Title, English Title, Character Names & Roles, Director, Highlight, Synopsis, Filmed Period)
@@ -746,7 +911,15 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormFilmedPeriod('');
     setFormStatus('released');
     setFormDescription('');
-    setFormImageUrl('https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80');
+    const sampleCover = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
+    setFormImageUrl(sampleCover);
+    setFormMediaPhotos([sampleCover]);
+    setFormActiveMediaIndex(0);
+    setFormMediaFit('cover');
+    setFormMediaOffsetY(50);
+    setFormTitleSize('medium');
+    setFormFontSize('medium');
+    setNewMediaUrlInput('');
     setFormPlatform('GMMTV / YouTube');
     setFormHighlight('');
     setFormTags('#JimmySea #Avocean');
@@ -787,7 +960,19 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormFilmedPeriod(proj.filmedPeriod || '');
     setFormStatus(proj.status);
     setFormDescription(proj.description);
-    setFormImageUrl(proj.imageUrl);
+
+    const photos = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
+      ? [...proj.mediaPhotos]
+      : (proj.imageUrl ? [proj.imageUrl] : []);
+    setFormMediaPhotos(photos);
+    setFormActiveMediaIndex(0);
+    setFormMediaFit(proj.mediaFit || 'cover');
+    setFormMediaOffsetY(typeof proj.mediaOffsetY === 'number' ? proj.mediaOffsetY : 50);
+    setFormTitleSize(proj.titleSize || 'medium');
+    setFormFontSize(proj.fontSize || 'medium');
+    setNewMediaUrlInput('');
+    setFormImageUrl(photos[0] || proj.imageUrl || '');
+
     setFormPlatform(proj.platform || '');
     setFormHighlight(proj.highlight || '');
     setFormTags((proj.tags || []).join(' '));
@@ -860,6 +1045,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       trimmedRole = parts.join(', ');
     }
 
+    const cleanMedia = formMediaPhotos.map((p) => p.trim()).filter(Boolean);
+    const primaryPoster = cleanMedia[0] || formImageUrl.trim() || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
+
     const projectToSave: CareerProject = {
       id: editingProject ? editingProject.id : `proj-${formCategory}-${Date.now()}`,
       title: formTitle.trim(),
@@ -874,7 +1062,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       filmedPeriod: formFilmedPeriod.trim() || undefined,
       status: formStatus,
       description: formDescription.trim(),
-      imageUrl: formImageUrl.trim() || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80',
+      imageUrl: primaryPoster,
+      mediaPhotos: cleanMedia.length > 0 ? cleanMedia : undefined,
+      mediaFit: formMediaFit,
+      mediaPosition: `center ${formMediaOffsetY}%`,
+      mediaOffsetY: formMediaOffsetY,
+      titleSize: formTitleSize,
+      fontSize: formFontSize,
       platform: formPlatform.trim() || undefined,
       primaryLink: validWatchLinks[0]?.url || undefined,
       extraLinks: validWatchLinks.length > 1 ? validWatchLinks.slice(1) : undefined,
@@ -1678,6 +1872,87 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             )}
           </div>
 
+          {/* Projects View Controls: Poster Display Ratio & Global Font Size */}
+          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs px-4 py-2.5 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+            {/* Poster Aspect Mode (Whole Photo vs Auto-Fit vs Landscape) */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-[#526586] dark:text-slate-400 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Poster Display:</span>
+              </span>
+              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateProjectPosterAspect('poster')}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    projectPosterAspect === 'poster'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="Shows full theatrical portrait poster (Whole photo with heads, bodies & logos)"
+                >
+                  🎬 Full Poster (2:3)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateProjectPosterAspect('contain')}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    projectPosterAspect === 'contain'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="100% of the entire photo visible without cropping, with ambient glow"
+                >
+                  ⚡ Auto-Fit (100% Whole)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateProjectPosterAspect('card')}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    projectPosterAspect === 'card'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                  }`}
+                  title="Classic horizontal 16:10 card"
+                >
+                  🖼️ Landscape (16:10)
+                </button>
+              </div>
+            </div>
+
+            {/* Global Projects Font Size Zoom Controls */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-[#526586] dark:text-slate-400 flex items-center gap-1">
+                <Type className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Font Size:</span>
+              </span>
+              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-[11px] font-bold">
+                {(
+                  [
+                    { id: 'compact', label: 'A-', tip: 'Compact Font' },
+                    { id: 'medium', label: 'A', tip: 'Medium / Standard Font' },
+                    { id: 'large', label: 'A+', tip: 'Large Font' },
+                    { id: 'xl', label: 'A++', tip: 'Extra Large Font' }
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    title={opt.tip}
+                    onClick={() => handleUpdateProjectFontZoom(opt.id)}
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      projectFontZoom === opt.id
+                        ? 'bg-purple-600 text-white shadow-xs font-black'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Projects Cards Grid */}
           {filteredProjects.length === 0 ? (
             <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-10 sm:p-14 text-center border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
@@ -1725,8 +2000,38 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 const cachedFullTrans = projectCardTranslations[proj.id]?.[cardLang];
                 const isShowingTrans = !!showingTranslatedIds[proj.id] && !!cachedFullTrans;
 
-                const displayTitle = (isShowingTrans && cachedFullTrans?.title) ? cachedFullTrans.title : proj.title;
-                const displayEnglishTitle = (isShowingTrans && cachedFullTrans?.englishTitle) ? cachedFullTrans.englishTitle : proj.englishTitle;
+                // Typography calculation per-card or from global toolbar
+                const effectiveZoom = projectCardZoom[proj.id] || proj.fontSize || projectFontZoom;
+                const typo = getProjectTypography(effectiveZoom);
+
+                // English title & original Thai script separation (Green underline = English, Yellow underline = Thai)
+                const hasThaiInTitle = /[\u0E00-\u0E7F]/.test(proj.title);
+                const hasThaiInEnglishTitle = proj.englishTitle ? /[\u0E00-\u0E7F]/.test(proj.englishTitle) : false;
+
+                let englishCandidate = '';
+                let thaiCandidate = '';
+
+                if (proj.englishTitle) {
+                  if (hasThaiInEnglishTitle && !hasThaiInTitle) {
+                    englishCandidate = proj.title;
+                    thaiCandidate = proj.englishTitle;
+                  } else {
+                    englishCandidate = proj.englishTitle;
+                    thaiCandidate = proj.title;
+                  }
+                } else if (hasThaiInTitle) {
+                  englishCandidate = isShowingTrans && cachedFullTrans?.title ? cachedFullTrans.title : proj.title;
+                  thaiCandidate = proj.title;
+                } else {
+                  englishCandidate = proj.title;
+                  thaiCandidate = '';
+                }
+
+                const primaryEnglishTitle = (isShowingTrans && cachedFullTrans?.title)
+                  ? cachedFullTrans.title
+                  : (englishCandidate || proj.title);
+                const originalThaiScript = thaiCandidate;
+
                 const displayJimmyRole = (isShowingTrans && cachedFullTrans?.jimmyRole) ? cachedFullTrans.jimmyRole : proj.jimmyRole;
                 const displaySeaRole = (isShowingTrans && cachedFullTrans?.seaRole) ? cachedFullTrans.seaRole : proj.seaRole;
                 const displayRole = (isShowingTrans && cachedFullTrans?.role) ? cachedFullTrans.role : proj.role;
@@ -1750,64 +2055,159 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
                   >
                     <div>
-                      {/* Poster / Cover Image */}
-                      <div className="relative aspect-[16/10] bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                        <img
-                          src={proj.imageUrl}
-                          alt={proj.title}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
+                      {/* Poster / Cover Image (Supports Multi-Photo Gallery, Whole Photo View, Direct Click to Expand) */}
+                      {(() => {
+                        const mediaList = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
+                          ? proj.mediaPhotos.filter(Boolean)
+                          : [proj.imageUrl];
+                        const activeMediaIdx = (projectCardMediaIndex[proj.id] ?? 0) % mediaList.length;
+                        const activePhoto = mediaList[activeMediaIdx] || proj.imageUrl;
+                        const isContain = proj.mediaFit === 'contain' || projectPosterAspect === 'contain';
+                        const focalPos = proj.mediaPosition || `center ${proj.mediaOffsetY ?? 50}%`;
 
-                        {/* Top Badges: Category & Artist */}
-                        <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/20">
-                            {getCategoryIcon(proj.category)}
-                            <span>{getCategoryBadge(proj.category)}</span>
-                          </span>
+                        // Aspect ratio calculation to show the whole poster photo
+                        const aspectClass =
+                          projectPosterAspect === 'poster'
+                            ? 'aspect-[2/3] sm:aspect-[3/4]'
+                            : projectPosterAspect === 'contain'
+                            ? 'aspect-[3/4] sm:aspect-[2/3]'
+                            : 'aspect-[16/10]';
 
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
-                            <span>{artistInfo.emoji}</span>
-                            <span>{artistInfo.label}</span>
-                          </span>
-                        </div>
-
-                        {/* Enlarged Photo Preview Button */}
-                        <button
-                          onClick={() => setLightboxImageUrl({ url: proj.imageUrl, title: proj.title })}
-                          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-md cursor-pointer"
-                          title="View Full Resolution Image"
-                        >
-                          <Maximize2 className="w-3.5 h-3.5" />
-                        </button>
-
-                        {/* Bottom Image Overlay: Release Year & Status */}
-                        <div className="absolute bottom-3 inset-x-3 flex items-end justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {proj.year && (
-                              <span className="text-[11px] font-bold text-white/95 bg-black/60 backdrop-blur-sm px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-white/10">
-                                <Calendar className="w-3 h-3 text-purple-300" />
-                                <span>{proj.year}</span>
-                              </span>
+                        return (
+                          <div
+                            onClick={() =>
+                              setLightboxImageUrl({
+                                url: activePhoto,
+                                title: `${primaryEnglishTitle} ${
+                                  mediaList.length > 1 ? `(Photo ${activeMediaIdx + 1} of ${mediaList.length})` : ''
+                                }`
+                              })
+                            }
+                            className={`relative ${aspectClass} bg-slate-950 overflow-hidden group cursor-pointer select-none transition-all`}
+                            title="Click poster to expand in high resolution"
+                          >
+                            {/* Ambient Blur Backdrop for Auto-Fit (contain) so 100% of the photo is visible */}
+                            {isContain && (
+                              <div
+                                className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-40 scale-110 pointer-events-none"
+                                style={{ backgroundImage: `url(${activePhoto})` }}
+                              />
                             )}
-                            {displayFilmedPeriod && (
-                              <span className="text-[10px] font-bold text-emerald-300 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md flex items-center gap-1 border border-emerald-500/20">
-                                <Clapperboard className="w-3 h-3 text-emerald-400" />
-                                <span>Filmed: {displayFilmedPeriod}</span>
+
+                            <img
+                              src={activePhoto}
+                              alt={primaryEnglishTitle}
+                              style={{ objectPosition: focalPos }}
+                              className={`w-full h-full relative z-10 transition-transform duration-500 ${
+                                isContain ? 'object-contain' : 'object-cover group-hover:scale-105'
+                              }`}
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 z-20 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
+
+                            {/* Hover expand overlay indicator cue */}
+                            <div className="absolute inset-0 z-20 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                              <span className="px-3.5 py-1.5 rounded-full bg-black/75 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-xl border border-white/20 transform scale-95 group-hover:scale-100 transition-transform">
+                                <Maximize2 className="w-3.5 h-3.5 text-purple-300" />
+                                <span>Click to Expand</span>
                               </span>
+                            </div>
+
+                            {/* Top Badges: Category & Artist */}
+                            <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/20">
+                                {getCategoryIcon(proj.category)}
+                                <span>{getCategoryBadge(proj.category)}</span>
+                              </span>
+
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
+                                <span>{artistInfo.emoji}</span>
+                                <span>{artistInfo.label}</span>
+                              </span>
+                            </div>
+
+                            {/* Top Right Actions: Photo Counter + Expand */}
+                            <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+                              {mediaList.length > 1 && (
+                                <span className="px-2 py-0.5 rounded-full text-[9.5px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20 shadow-xs pointer-events-none">
+                                  📷 {activeMediaIdx + 1}/{mediaList.length}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLightboxImageUrl({ url: activePhoto, title: `${primaryEnglishTitle} (Photo ${activeMediaIdx + 1})` });
+                                }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-md cursor-pointer shadow-md"
+                                title="Expand Full Resolution"
+                              >
+                                <Maximize2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Carousel Controls for Multi-Photo Projects */}
+                            {mediaList.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setProjectCardMediaIndex((prev) => ({
+                                      ...prev,
+                                      [proj.id]: (activeMediaIdx - 1 + mediaList.length) % mediaList.length
+                                    }));
+                                  }}
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 z-30 p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110"
+                                  title="Previous Photo"
+                                >
+                                  <ChevronLeft className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setProjectCardMediaIndex((prev) => ({
+                                      ...prev,
+                                      [proj.id]: (activeMediaIdx + 1) % mediaList.length
+                                    }));
+                                  }}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 z-30 p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110"
+                                  title="Next Photo"
+                                >
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              </>
                             )}
+
+                            {/* Bottom Image Overlay: Release Year & Status */}
+                            <div className="absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-2 flex-wrap pointer-events-none">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {proj.year && (
+                                  <span className="text-[11px] font-bold text-white/95 bg-black/60 backdrop-blur-sm px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-white/10">
+                                    <Calendar className="w-3 h-3 text-purple-300" />
+                                    <span>{proj.year}</span>
+                                  </span>
+                                )}
+                                {displayFilmedPeriod && (
+                                  <span className="text-[10px] font-bold text-emerald-300 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md flex items-center gap-1 border border-emerald-500/20">
+                                    <Clapperboard className="w-3 h-3 text-emerald-400" />
+                                    <span>Filmed: {displayFilmedPeriod}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${statusInfo.color}`}>
+                                {statusInfo.label}
+                              </span>
+                            </div>
                           </div>
-
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${statusInfo.color}`}>
-                            {statusInfo.label}
-                          </span>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       {/* Card Content Body */}
                       <div className="p-5 space-y-3">
-                        {/* Interactive Language Selector & Full Project Translator Bar */}
+                        {/* Interactive Language Selector, Card Typography Zoom & Translator Bar */}
                         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <Languages className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
@@ -1829,6 +2229,48 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
+                            {/* Card-level Font Size Controls */}
+                            <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextZoom = effectiveZoom === 'xl' ? 'large' : effectiveZoom === 'large' ? 'medium' : 'compact';
+                                  setProjectCardZoom((prev) => ({ ...prev, [proj.id]: nextZoom }));
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-black cursor-pointer transition-colors ${
+                                  effectiveZoom === 'compact' ? 'bg-purple-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                }`}
+                                title="Smaller text"
+                              >
+                                A-
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProjectCardZoom((prev) => ({ ...prev, [proj.id]: 'medium' }));
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[10.5px] font-black cursor-pointer transition-colors ${
+                                  effectiveZoom === 'medium' ? 'bg-purple-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                }`}
+                                title="Default text"
+                              >
+                                A
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextZoom = effectiveZoom === 'compact' ? 'medium' : effectiveZoom === 'medium' ? 'large' : 'xl';
+                                  setProjectCardZoom((prev) => ({ ...prev, [proj.id]: nextZoom }));
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[11px] font-black cursor-pointer transition-colors ${
+                                  effectiveZoom === 'large' || effectiveZoom === 'xl' ? 'bg-purple-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                }`}
+                                title="Larger text"
+                              >
+                                A+
+                              </button>
+                            </div>
+
                             {cachedFullTrans ? (
                               <button
                                 type="button"
@@ -1840,7 +2282,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 }`}
                               >
                                 <Languages className="w-3 h-3" />
-                                <span>{isShowingTrans ? 'Show Original' : `Show ${cardLang.toUpperCase()}`}</span>
+                                <span>{isShowingTrans ? 'Original' : cardLang.toUpperCase()}</span>
                               </button>
                             ) : (
                               <button
@@ -1850,16 +2292,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
                               >
                                 {isTranslating ? (
-                                  <>
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    <span>Translating...</span>
-                                  </>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
                                 ) : (
-                                  <>
-                                    <Sparkles className="w-3 h-3" />
-                                    <span>Translate All</span>
-                                  </>
+                                  <Sparkles className="w-3 h-3" />
                                 )}
+                                <span>Translate</span>
                               </button>
                             )}
                           </div>
@@ -1867,56 +2304,61 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                         {/* Dedicated Jimmy & Sea Character Names & Roles */}
                         {(displayJimmyRole || displaySeaRole || displayRole) && (
-                          <div className="flex flex-wrap items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
                             {displayJimmyRole && (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-2xs">
-                                <span>🥑</span>
-                                <span className="font-semibold text-purple-900 dark:text-purple-200">
+                              <div className={`inline-flex items-center gap-1.5 rounded-xl font-bold bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-2xs ${typo.badges}`}>
+                                <span className="text-sm sm:text-base">🥑</span>
+                                <span className="font-bold text-purple-950 dark:text-purple-100 tracking-tight">
                                   {displayJimmyRole.toLowerCase().startsWith('jimmy as') ? displayJimmyRole : `Jimmy as ${displayJimmyRole}`}
                                 </span>
                               </div>
                             )}
 
                             {displaySeaRole && (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs">
-                                <span>🌊</span>
-                                <span className="font-semibold text-sky-900 dark:text-sky-200">
+                              <div className={`inline-flex items-center gap-1.5 rounded-xl font-bold bg-sky-50 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs ${typo.badges}`}>
+                                <span className="text-sm sm:text-base">🌊</span>
+                                <span className="font-bold text-sky-950 dark:text-sky-100 tracking-tight">
                                   {displaySeaRole.toLowerCase().startsWith('sea as') ? displaySeaRole : `Sea as ${displaySeaRole}`}
                                 </span>
                               </div>
                             )}
 
                             {!displayJimmyRole && !displaySeaRole && displayRole && (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">
-                                <Sparkles className="w-3 h-3 text-purple-500" />
+                              <div className={`inline-flex items-center gap-1.5 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 ${typo.badges}`}>
+                                <Sparkles className="w-4 h-4 text-purple-500 shrink-0" />
                                 <span>{displayRole}</span>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* Title & English Subtitle */}
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base sm:text-lg font-bold text-[#1A3668] dark:text-white leading-snug group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                              {displayTitle}
-                            </h3>
-                            {isShowingTrans && (
-                              <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 font-black">
-                                {cardLang.toUpperCase()} Translated
-                              </span>
+                        {/* Title & Original Thai Script: Side by side separated by a bullet */}
+                        <div className="flex items-baseline gap-x-2 gap-y-1 flex-wrap">
+                          <h3 className={`${typo.title} text-[#1A3668] dark:text-white leading-snug group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors inline-flex items-baseline gap-2 flex-wrap`}>
+                            <span>{primaryEnglishTitle}</span>
+
+                            {originalThaiScript && originalThaiScript !== primaryEnglishTitle && (
+                              <>
+                                <span className="text-purple-400 dark:text-purple-500 font-bold select-none text-[0.85em] opacity-70">
+                                  •
+                                </span>
+                                <span className="font-thai font-bold text-[#526586] dark:text-slate-200 tracking-normal text-[0.95em] sm:text-[1em]">
+                                  {originalThaiScript}
+                                </span>
+                              </>
                             )}
-                          </div>
-                          {displayEnglishTitle && (
-                            <p className="text-xs font-semibold text-[#607494] dark:text-slate-400 mt-0.5">
-                              {displayEnglishTitle}
-                            </p>
+                          </h3>
+
+                          {isShowingTrans && (
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 font-black self-center">
+                              {cardLang.toUpperCase()} Translated
+                            </span>
                           )}
                         </div>
 
                         {/* Director (for TV Series & Movies) */}
                         {displayDirector && (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 ${typo.meta}`}>
                             <Clapperboard className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
                             <span>Directed by <strong className="text-[#1A3668] dark:text-white font-bold">{displayDirector}</strong></span>
                           </div>
@@ -1924,7 +2366,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                         {/* Award / Highlight Chip */}
                         {displayHighlight && (
-                          <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
+                          <div className={`p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-900 dark:text-amber-200 font-bold flex items-center gap-2 ${typo.meta}`}>
                             <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                             <span className="leading-tight">{displayHighlight}</span>
                           </div>
@@ -1933,12 +2375,12 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         {/* Description & Overview */}
                         <div className="space-y-1.5 pt-0.5">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                            <span className={`font-bold text-slate-400 flex items-center gap-1 ${typo.meta}`}>
                               <span>Overview &amp; Synopsis</span>
                             </span>
                           </div>
 
-                          <p className="text-xs font-medium text-[#475569] dark:text-slate-300 leading-relaxed">
+                          <p className={`font-medium text-[#475569] dark:text-slate-300 ${typo.body}`}>
                             {displayDescription}
                           </p>
                         </div>
@@ -1949,7 +2391,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             {proj.tags.map((tag, tIdx) => (
                               <span
                                 key={tIdx}
-                                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                                className={`rounded-md font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ${typo.tags}`}
                               >
                                 {tag}
                               </span>
@@ -1964,11 +2406,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       {allWatchLinks.length > 0 && (
                         <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/80 space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                            <span className={`font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5 ${typo.meta}`}>
                               <Play className="w-3 h-3 text-purple-600 dark:text-purple-400 fill-current" />
-                              <span>Where to Watch & Official Links</span>
+                              <span>Where to Watch &amp; Official Links</span>
                             </span>
-                            <span className="text-[10px] text-slate-400">
+                            <span className={`text-slate-400 ${typo.meta}`}>
                               {allWatchLinks.length} source{allWatchLinks.length > 1 ? 's' : ''}
                             </span>
                           </div>
@@ -1980,7 +2422,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 href={link.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs hover:border-purple-300 cursor-pointer"
+                                className={`inline-flex items-center gap-1.5 rounded-xl font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs hover:border-purple-300 cursor-pointer ${typo.buttons}`}
                               >
                                 <span>{getPlatformIcon(link.platform || link.label)}</span>
                                 <span className="truncate max-w-[170px]">{link.label}</span>
@@ -2124,6 +2566,59 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               </div>
 
+              {/* Title & Content Typography Sizing Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700">
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1 flex items-center justify-between">
+                    <span>Title Font Size</span>
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                      {formTitleSize}
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['compact', 'medium', 'large'] as const).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => setFormTitleSize(size)}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold capitalize transition-all border cursor-pointer ${
+                          formTitleSize === size
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1 flex items-center justify-between">
+                    <span>Card Text & Body Size</span>
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                      {formFontSize}
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['compact', 'medium', 'large'] as const).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => setFormFontSize(size)}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold capitalize transition-all border cursor-pointer ${
+                          formFontSize === size
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {/* DEDICATED CHARACTER NAMES & BILLING FOR JIMMY AND SEA */}
               <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50/80 to-sky-50/60 dark:from-purple-950/40 dark:to-sky-950/30 border border-purple-200/90 dark:border-purple-800/70 space-y-3.5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2244,21 +2739,21 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   {/* Live Character Badge Preview */}
                   <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60 flex items-center justify-between flex-wrap gap-2">
                     <span className="text-[10.5px] font-bold text-slate-400">Live Preview on Card:</span>
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
                       {formJimmyRole.trim() && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-[13px] font-bold bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border border-purple-200 dark:border-purple-800 shadow-2xs">
                           <span>🥑</span>
                           <span>{formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole : `Jimmy as ${formJimmyRole}`}</span>
                         </span>
                       )}
                       {formSeaRole.trim() && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-[13px] font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-200 border border-sky-200 dark:border-sky-800 shadow-2xs">
                           <span>🌊</span>
                           <span>{formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole : `Sea as ${formSeaRole}`}</span>
                         </span>
                       )}
                       {!formJimmyRole.trim() && !formSeaRole.trim() && (
-                        <span className="text-[10.5px] italic text-slate-400">
+                        <span className="text-xs italic text-slate-400">
                           {formRole.trim() || 'Enter character names above to preview badges'}
                         </span>
                       )}
@@ -2368,15 +2863,22 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               </div>
 
-              {/* Cover / Poster / Media Section with Live Interactive Preview */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3.5">
+              {/* ============================================================== */}
+              {/* MULTI-PHOTO MEDIA COLLECTION, AUTO-FIT & FRAMING ADJUSTMENTS   */}
+              {/* ============================================================== */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-4">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>Project Poster / Media Preview</span>
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Project Photos & Media ({formMediaPhotos.length})</span>
+                    </label>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      Multi-Photo Enabled
+                    </span>
+                  </div>
 
-                  {/* Ratio Toggles & Clear */}
+                  {/* Ratio Toggles */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-bold text-slate-400 mr-0.5">Ratio:</span>
                     <button
@@ -2403,137 +2905,385 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     >
                       2:3 Poster
                     </button>
+                  </div>
+                </div>
 
-                    {formImageUrl && (
+                {/* Media Fit (Auto Fit vs Fill Area) & Vertical Adjustment Slider */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  {/* Fit Style: Auto-Fit (Contain) vs Fill Area (Cover) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-[#1A3668] dark:text-slate-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Maximize2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                        <span>Media Sizing & Auto-Fit</span>
+                      </span>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                        {formMediaFit === 'contain' ? '⚡ Auto-Fit (100% visible)' : '🖼️ Fill Area'}
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => {
-                          setFormImageUrl('');
-                          setPosterLoadError(false);
-                        }}
-                        className="ml-1 text-[11px] font-bold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 px-1.5 py-0.5 hover:underline cursor-pointer"
-                        title="Clear current poster"
+                        onClick={() => setFormMediaFit('cover')}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
+                          formMediaFit === 'cover'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
                       >
-                        Clear
+                        Fill Area (Cover)
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => setFormMediaFit('contain')}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
+                          formMediaFit === 'contain'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                        title="Shows the entire poster/media without cropping any heads, text, or borders"
+                      >
+                        Auto-Fit (Contain)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Vertical Framing / Offset Adjustment */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[#1A3668] dark:text-slate-300">
+                      <span className="flex items-center gap-1">
+                        <Sliders className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                        <span>Framing Focal Adjustment</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400">
+                        {formMediaOffsetY}%
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 font-bold shrink-0">Top</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={formMediaOffsetY}
+                        onChange={(e) => setFormMediaOffsetY(Number(e.target.value))}
+                        className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                      />
+                      <span className="text-[10px] text-slate-400 font-bold shrink-0">Bottom</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-1 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setFormMediaOffsetY(15)}
+                        className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                          formMediaOffsetY === 15 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                        }`}
+                      >
+                        Top 15%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormMediaOffsetY(50)}
+                        className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                          formMediaOffsetY === 50 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                        }`}
+                      >
+                        Center 50%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormMediaOffsetY(85)}
+                        className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                          formMediaOffsetY === 85 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                        }`}
+                      >
+                        Bottom 85%
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 {/* Live Card Preview Box */}
-                <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 shadow-md">
-                  {formImageUrl && !posterLoadError ? (
-                    <div
-                      className={`relative w-full ${
-                        posterPreviewAspect === 'card' ? 'aspect-[16/10]' : 'aspect-[2/3] max-h-[360px]'
-                      } overflow-hidden bg-slate-950 flex items-center justify-center group`}
-                    >
-                      <img
-                        src={formImageUrl}
-                        alt={formTitle || 'Project Poster Preview'}
-                        onError={() => setPosterLoadError(true)}
-                        onLoad={() => setPosterLoadError(false)}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/20 pointer-events-none" />
+                {(() => {
+                  const currentPreviewPhoto =
+                    formMediaPhotos[formActiveMediaIndex] ||
+                    formMediaPhotos[0] ||
+                    formImageUrl;
 
-                      {/* Top Badges (Category & Artist) */}
-                      <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 pointer-events-none">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/20">
-                          {getCategoryIcon(formCategory)}
-                          <span>{getCategoryBadge(formCategory)}</span>
-                        </span>
+                  return (
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 shadow-md">
+                      {currentPreviewPhoto && !posterLoadError ? (
+                        <div
+                          className={`relative w-full ${
+                            posterPreviewAspect === 'card' ? 'aspect-[16/10]' : 'aspect-[2/3] max-h-[360px]'
+                          } overflow-hidden bg-slate-950 flex items-center justify-center group`}
+                        >
+                          {/* Ambient Blurred Backdrop when Auto-Fit (contain) is active */}
+                          {formMediaFit === 'contain' && (
+                            <div
+                              className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-35 scale-110 pointer-events-none"
+                              style={{
+                                backgroundImage: `url(${currentPreviewPhoto})`
+                              }}
+                            />
+                          )}
 
-                        {(() => {
-                          const artistInfo = getArtistLabel(formArtist);
-                          return (
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
-                              <span>{artistInfo.emoji}</span>
-                              <span>{artistInfo.label}</span>
+                          <img
+                            src={currentPreviewPhoto}
+                            alt={formTitle || 'Project Poster Preview'}
+                            onError={() => setPosterLoadError(true)}
+                            onLoad={() => setPosterLoadError(false)}
+                            style={{
+                              objectPosition: `center ${formMediaOffsetY}%`
+                            }}
+                            className={`w-full h-full relative z-10 transition-transform duration-300 ${
+                              formMediaFit === 'contain' ? 'object-contain' : 'object-cover group-hover:scale-105'
+                            }`}
+                          />
+                          <div className="absolute inset-0 z-20 bg-gradient-to-t from-black/90 via-black/30 to-black/20 pointer-events-none" />
+
+                          {/* Top Badges (Category & Artist) */}
+                          <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/20">
+                              {getCategoryIcon(formCategory)}
+                              <span>{getCategoryBadge(formCategory)}</span>
                             </span>
-                          );
-                        })()}
-                      </div>
 
-                      {/* Click to Enlarge / Lightbox Trigger */}
-                      <button
-                        type="button"
-                        onClick={() => setLightboxImageUrl({ url: formImageUrl, title: formTitle || 'Poster Preview' })}
-                        className="absolute top-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
-                        title="View Full Resolution in Lightbox"
-                      >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                      </button>
+                            {(() => {
+                              const artistInfo = getArtistLabel(formArtist);
+                              return (
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
+                                  <span>{artistInfo.emoji}</span>
+                                  <span>{artistInfo.label}</span>
+                                </span>
+                              );
+                            })()}
+                          </div>
 
-                      {/* Bottom Overlay with Real-time Title, Status, and Year */}
-                      <div className="absolute bottom-3 inset-x-3 space-y-1.5 pointer-events-none">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold text-white/90 drop-shadow-xs">
-                            {formYear || 'Year'}
-                          </span>
-                          {(() => {
-                            const statusObj = getStatusBadge(formStatus);
-                            return (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
-                                {statusObj.label}
+                          {/* Top Right Actions: Lightbox + Photo Counter */}
+                          <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+                            {formMediaPhotos.length > 1 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20">
+                                📷 {formActiveMediaIndex + 1} / {formMediaPhotos.length}
                               </span>
-                            );
-                          })()}
-                        </div>
-                        <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md">
-                          {formTitle || 'Your Project Title Here'}
-                        </h4>
-                        {formEnglishTitle && (
-                          <p className="text-[11px] font-semibold text-slate-300 line-clamp-1 drop-shadow-xs">
-                            {formEnglishTitle}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ) : posterLoadError ? (
-                    <div className="p-8 text-center flex flex-col items-center justify-center gap-2 bg-rose-50/10 text-slate-300">
-                      <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl">
-                        ⚠️
-                      </div>
-                      <p className="text-xs font-bold text-rose-400">
-                        Unable to load image from URL
-                      </p>
-                      <p className="text-[11px] text-slate-400 max-w-sm">
-                        The link provided might be restricted, expired, or invalid. You can upload an image directly from your computer or phone below.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => posterFileInputRef.current?.click()}
-                        className="mt-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 cursor-pointer"
-                      >
-                        Upload Local File Instead
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => posterFileInputRef.current?.click()}
-                      className="p-8 text-center flex flex-col items-center justify-center gap-2.5 cursor-pointer hover:bg-slate-800/80 transition-colors"
-                    >
-                      <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
-                        <ImageIcon className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-200">
-                          No poster image selected yet
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Upload a photo from your device or paste an image URL below
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setLightboxImageUrl({ url: currentPreviewPhoto, title: formTitle || 'Poster Preview' })}
+                              className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
+                              title="View Full Resolution in Lightbox"
+                            >
+                              <Maximize2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
 
-                {/* Hidden File Input for Device Upload */}
+                          {/* Carousel Navigation Arrows if multiple photos */}
+                          {formMediaPhotos.length > 1 && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFormActiveMediaIndex((prev) => (prev - 1 + formMediaPhotos.length) % formMediaPhotos.length);
+                                }}
+                                className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
+                                title="Previous Media Photo"
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFormActiveMediaIndex((prev) => (prev + 1) % formMediaPhotos.length);
+                                }}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
+                                title="Next Media Photo"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+
+                          {/* Bottom Overlay with Real-time Title, Status, and Year */}
+                          <div className="absolute bottom-3 inset-x-3 z-30 space-y-1.5 pointer-events-none">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-bold text-white/90 drop-shadow-xs">
+                                {formYear || 'Year'}
+                              </span>
+                              {(() => {
+                                const statusObj = getStatusBadge(formStatus);
+                                return (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
+                                    {statusObj.label}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                            <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
+                              <span>{formEnglishTitle || formTitle || 'Your Project Title Here'}</span>
+                              {formEnglishTitle && formTitle && formTitle !== formEnglishTitle && (
+                                <>
+                                  <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
+                                  <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formTitle}</span>
+                                </>
+                              )}
+                            </h4>
+                          </div>
+                        </div>
+                      ) : posterLoadError ? (
+                        <div className="p-8 text-center flex flex-col items-center justify-center gap-2 bg-rose-50/10 text-slate-300">
+                          <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl">
+                            ⚠️
+                          </div>
+                          <p className="text-xs font-bold text-rose-400">
+                            Unable to load image from URL
+                          </p>
+                          <p className="text-[11px] text-slate-400 max-w-sm">
+                            The link provided might be restricted, expired, or invalid. You can upload an image directly from your computer or phone below.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => posterFileInputRef.current?.click()}
+                            className="mt-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 cursor-pointer"
+                          >
+                            Upload Local File Instead
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => posterFileInputRef.current?.click()}
+                          className="p-8 text-center flex flex-col items-center justify-center gap-2.5 cursor-pointer hover:bg-slate-800/80 transition-colors"
+                        >
+                          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                            <ImageIcon className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-200">
+                              No poster image selected yet
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Upload a photo from your device or paste an image URL below
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Thumbnails Collection Manager (Active Photos Carousel) */}
+                {formMediaPhotos.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-[#526586] dark:text-slate-400">
+                      <span>Media Photos Strip ({formMediaPhotos.length})</span>
+                      <span className="text-[10px] text-slate-400">
+                        ⭐ Main cover is photo #1
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto pr-1">
+                      {formMediaPhotos.map((photo, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setFormActiveMediaIndex(idx);
+                            setFormImageUrl(photo);
+                            setPosterLoadError(false);
+                          }}
+                          className={`relative p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            formActiveMediaIndex === idx
+                              ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-500 ring-2 ring-purple-400/50'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                          }`}
+                        >
+                          <div className="relative aspect-[16/10] rounded-lg overflow-hidden bg-slate-950 mb-1.5">
+                            <img
+                              src={photo}
+                              alt={`Media ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            {idx === 0 && (
+                              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-black uppercase shadow-xs">
+                                Primary
+                              </span>
+                            )}
+                            <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-white text-[8.5px] font-mono">
+                              #{idx + 1}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1 pt-0.5">
+                            {idx !== 0 ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetPrimaryMedia(idx);
+                                }}
+                                className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                                title="Make this the main cover poster"
+                              >
+                                Set Main
+                              </button>
+                            ) : (
+                              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                                Cover
+                              </span>
+                            )}
+
+                            <div className="flex items-center gap-1">
+                              {idx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveMediaPhoto(idx, idx - 1);
+                                  }}
+                                  className="p-1 rounded text-slate-400 hover:text-purple-600 cursor-pointer"
+                                  title="Move earlier"
+                                >
+                                  <ArrowUp className="w-3 h-3" />
+                                </button>
+                              )}
+                              {idx < formMediaPhotos.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveMediaPhoto(idx, idx + 1);
+                                  }}
+                                  className="p-1 rounded text-slate-400 hover:text-purple-600 cursor-pointer"
+                                  title="Move later"
+                                >
+                                  <ArrowDown className="w-3 h-3" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveMediaPhoto(idx);
+                                }}
+                                className="p-1 rounded text-rose-500 hover:text-rose-700 cursor-pointer"
+                                title="Delete this photo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hidden File Input for Device Multiple Upload */}
                 <input
                   ref={posterFileInputRef}
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
                   onChange={handlePosterFileUpload}
                   className="hidden"
                 />
@@ -2550,27 +3300,38 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       {isUploadingPoster ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Compressing & Uploading...</span>
+                          <span>Compressing & Adding...</span>
                         </>
                       ) : (
                         <>
                           <Upload className="w-3.5 h-3.5" />
-                          <span>Upload From Device</span>
+                          <span>Upload From Device (Multiple)</span>
                         </>
                       )}
                     </button>
 
-                    <div className="flex-1 relative">
+                    <div className="flex-1 flex gap-1.5">
                       <input
                         type="url"
-                        value={formImageUrl}
-                        onChange={(e) => {
-                          setFormImageUrl(e.target.value);
-                          setPosterLoadError(false);
+                        value={newMediaUrlInput}
+                        onChange={(e) => setNewMediaUrlInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddMediaUrl(newMediaUrlInput);
+                          }
                         }}
-                        placeholder="Or paste image URL (e.g. https://...)"
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder-slate-400"
+                        placeholder="Or paste photo URL (comma/newline separated for multiple)..."
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder-slate-400"
                       />
+                      <button
+                        type="button"
+                        onClick={() => handleAddMediaUrl(newMediaUrlInput)}
+                        disabled={!newMediaUrlInput.trim()}
+                        className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer shrink-0 shadow-xs"
+                      >
+                        + Add
+                      </button>
                     </div>
                   </div>
 
@@ -2578,34 +3339,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                     <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-purple-500" />
-                      <span>Sample Presets:</span>
+                      <span>Add Sample Posters:</span>
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        setFormImageUrl('https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80');
-                        setPosterLoadError(false);
-                      }}
+                      onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80')}
                       className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                     >
                       🎬 Cinema Sunset
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setFormImageUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80');
-                        setPosterLoadError(false);
-                      }}
+                      onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80')}
                       className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                     >
                       🎭 Theater Spotlight
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setFormImageUrl('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80');
-                        setPosterLoadError(false);
-                      }}
+                      onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80')}
                       className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                     >
                       ✨ Concert & Stage
