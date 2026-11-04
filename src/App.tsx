@@ -102,6 +102,8 @@ import {
   ensureDefaultAdminAccounts,
   authenticateUserAccount,
   registerAdminAccount,
+  approveAdminAccount,
+  rejectAdminAccount,
   deleteAdminAccount,
   subscribeToAdminAccounts,
   updateAdminAccountPassword,
@@ -620,7 +622,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   bannerPreset: 'avocean-dream',
   websiteIcon: 'trio',
   ownerPin: 'ErnestTheStan05!',
-  adminPin: 'Avocean2026',
+  adminPin: 'Avocean2026!',
   timeFormat: '12h',
   members: [
     {
@@ -1440,7 +1442,8 @@ export default function App() {
   const [regDisplayNameInput, setRegDisplayNameInput] = useState<string>('');
   const [regPasswordInput, setRegPasswordInput] = useState<string>('');
   const [regConfirmPasswordInput, setRegConfirmPasswordInput] = useState<string>('');
-  const [regAdminPasscodeInput, setRegAdminPasscodeInput] = useState<string>('Avocean2026');
+  const [regAdminPasscodeInput, setRegAdminPasscodeInput] = useState<string>('');
+  const [showRegAuthCode, setShowRegAuthCode] = useState<boolean>(false);
   const [regError, setRegError] = useState<string>('');
   const [regLoading, setRegLoading] = useState<boolean>(false);
   const [showRegPassword, setShowRegPassword] = useState<boolean>(false);
@@ -2473,7 +2476,7 @@ export default function App() {
   const [copiedBannerUrlIdx, setCopiedBannerUrlIdx] = useState<number | null>(null);
   const [draftBannerPreset, setDraftBannerPreset] = useState<string>(settings.bannerPreset);
   const [draftOwnerPin, setDraftOwnerPin] = useState<string>(settings.ownerPin || 'ErnestTheStan05!');
-  const [draftAdminPin, setDraftAdminPin] = useState<string>(settings.adminPin || 'Avocean2026');
+  const [draftAdminPin, setDraftAdminPin] = useState<string>(settings.adminPin || 'Avocean2026!');
   const [draftTimeFormat, setDraftTimeFormat] = useState<'12h' | '24h'>(settings.timeFormat || '12h');
   const [draftWebsiteIcon, setDraftWebsiteIcon] = useState<string>(settings.websiteIcon || 'trio');
   const [draftMembers, setDraftMembers] = useState<Member[]>(settings.members);
@@ -2613,12 +2616,13 @@ export default function App() {
     setRegDisplayNameInput('');
     setRegPasswordInput('');
     setRegConfirmPasswordInput('');
-    setRegAdminPasscodeInput('Avocean2026');
+    setRegAdminPasscodeInput('');
     setShowRegPassword(false);
+    setShowRegAuthCode(false);
     setLoginModalOpen(true);
   };
 
-  // Submit Admin Account Registration (with own email and passcodes)
+  // Submit Admin Account Registration (with own email and passcodes, pending Owner approval)
   const handleRegisterAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
@@ -2629,6 +2633,10 @@ export default function App() {
     }
     if (regPasswordInput.length < 6) {
       setRegError('Password / passcode must be at least 6 characters.');
+      return;
+    }
+    if (!regAdminPasscodeInput.trim()) {
+      setRegError('Please enter the private Admin Authorization Code provided by the Hub Owner.');
       return;
     }
 
@@ -2642,29 +2650,55 @@ export default function App() {
       );
 
       if (res.success && res.account) {
-        setUserRole('admin');
-        setCurrentAccount(res.account);
-        setIsEditMode(true);
         setLoginModalOpen(false);
         setRegEmailInput('');
         setRegDisplayNameInput('');
         setRegPasswordInput('');
         setRegConfirmPasswordInput('');
+        setRegAdminPasscodeInput('');
         setRegError('');
 
-        try {
-          localStorage.setItem('avocean_current_account', JSON.stringify(res.account));
-          localStorage.setItem(STORAGE_ROLE_KEY, 'admin');
-        } catch {}
-
-        showToast(`🎉 Admin account created! Welcome, ${res.account.displayName}.`);
+        showToast(`🎉 Admin request submitted for ${res.account.displayName}! Your account is pending approval by the Hub Owner (Ernest). You will be able to log in once approved.`);
       } else {
-        setRegError(res.error || 'Could not create admin account. Please check your details.');
+        setRegError(res.error || 'Could not submit admin request. Please check your details.');
       }
     } catch (err: any) {
-      setRegError(err?.message || 'Error creating account. Please try again.');
+      setRegError(err?.message || 'Error submitting admin request. Please try again.');
     } finally {
       setRegLoading(false);
+    }
+  };
+
+  // Approve Admin Account (Owner only)
+  const handleApproveAdmin = async (emailToApprove: string) => {
+    if (!isOwner) return;
+    try {
+      const res = await approveAdminAccount(emailToApprove, currentUserEmail);
+      if (res.success) {
+        showToast(`✅ Approved admin access for ${emailToApprove}! They can now log in.`);
+      } else {
+        showToast(res.error || 'Could not approve admin account.');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error approving admin account.');
+    }
+  };
+
+  // Decline / Reject Admin Request (Owner only)
+  const handleRejectAdmin = async (emailToReject: string) => {
+    if (!isOwner) return;
+    if (!window.confirm(`Decline admin request for "${emailToReject}"?`)) {
+      return;
+    }
+    try {
+      const res = await rejectAdminAccount(emailToReject, currentUserEmail);
+      if (res.success) {
+        showToast(`Declined admin request for "${emailToReject}".`);
+      } else {
+        showToast(res.error || 'Could not decline admin request.');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error declining admin request.');
     }
   };
 
@@ -3728,7 +3762,7 @@ export default function App() {
     setDraftBannerTag(settings.bannerTag ?? '');
     setDraftBannerPreset(settings.bannerPreset || 'avocean-dream');
     setDraftOwnerPin(settings.ownerPin || 'ErnestTheStan05!');
-    setDraftAdminPin(settings.adminPin || 'Avocean2026');
+    setDraftAdminPin(settings.adminPin || 'Avocean2026!');
     setDraftTimeFormat(settings.timeFormat || '12h');
     setDraftWebsiteIcon(settings.websiteIcon || 'trio');
     setDraftMembers(settings.members.map((m) => ({ ...m })));
@@ -3800,7 +3834,7 @@ export default function App() {
       bannerPhotos: cleanBannerPhotos,
       bannerPreset: draftBannerPreset || 'avocean-dream',
       ownerPin: draftOwnerPin.trim() || settings.ownerPin || 'ErnestTheStan05!',
-      adminPin: draftAdminPin.trim() || settings.adminPin || 'Avocean2026',
+      adminPin: draftAdminPin.trim() || settings.adminPin || 'Avocean2026!',
       timeFormat: draftTimeFormat,
       websiteIcon: draftWebsiteIcon || 'trio',
       members: draftMembers.map((m) => ({
@@ -5029,11 +5063,24 @@ export default function App() {
 
                   <button
                     onClick={() => setAdminAccountsModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
-                    title="Manage Registered Admin Accounts"
+                    className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full shadow-xs border cursor-pointer transition-all ${
+                      registeredAdmins.some((a) => a.role !== 'owner' && a.status === 'pending')
+                        ? 'bg-amber-50 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/80 ring-2 ring-amber-400/40'
+                        : 'bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 border-slate-200/80 dark:border-slate-700'
+                    }`}
+                    title={
+                      registeredAdmins.some((a) => a.role !== 'owner' && a.status === 'pending')
+                        ? `${registeredAdmins.filter((a) => a.role !== 'owner' && a.status === 'pending').length} pending admin request(s) waiting for your approval!`
+                        : 'Manage Registered Admin Accounts'
+                    }
                   >
                     <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    <span>Admins ({registeredAdmins.length})</span>
+                    <span>Admins ({registeredAdmins.filter((a) => a.role !== 'owner' && a.status !== 'pending' && a.status !== 'rejected').length})</span>
+                    {registeredAdmins.some((a) => a.role !== 'owner' && a.status === 'pending') && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9.5px] font-black animate-pulse">
+                        {registeredAdmins.filter((a) => a.role !== 'owner' && a.status === 'pending').length} Pending
+                      </span>
+                    )}
                   </button>
                 </>
               ) : (
@@ -8267,26 +8314,44 @@ export default function App() {
                   />
                 </div>
 
-                {/* Admin Authorization Access Passcode */}
+                {/* Private Admin Authorization Code (Masked, not shown) */}
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-[#1A3668] dark:text-slate-200">
-                      Admin Authorization Code
+                      Private Admin Authorization Code <span className="text-rose-500">*</span>
                     </label>
-                    <span className="text-[10px] text-slate-400">
-                      Default: <code className="font-bold text-blue-600 dark:text-blue-400">Avocean2026</code>
-                    </span>
                   </div>
-                  <input
-                    type="text"
-                    value={regAdminPasscodeInput}
-                    onChange={(e) => setRegAdminPasscodeInput(e.target.value)}
-                    placeholder="Avocean2026"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showRegAuthCode ? 'text' : 'password'}
+                      required
+                      value={regAdminPasscodeInput}
+                      onChange={(e) => {
+                        setRegAdminPasscodeInput(e.target.value);
+                        setRegError('');
+                      }}
+                      placeholder="Enter the code provided by the Owner"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegAuthCode(!showRegAuthCode)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      {showRegAuthCode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <p className="text-[10.5px] font-medium text-[#607494] dark:text-slate-400">
-                    Enter the community admin code to verify your authorization to add and edit events.
+                    🔒 Enter the private authorization code given to you directly by the Hub Owner.
                   </p>
+                </div>
+
+                {/* Owner Approval Notice */}
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200/90 dark:border-amber-800 text-[11px] font-medium text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <span className="text-xs shrink-0">👑</span>
+                  <span>
+                    <strong>Owner Approval Required:</strong> Submitting this request sends an application to the Hub Owner (Ernest). Once approved, you will be able to log in to manage events.
+                  </span>
                 </div>
 
                 {regError && (
@@ -8323,7 +8388,7 @@ export default function App() {
                       className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-xs cursor-pointer active:scale-95 transition-all"
                     >
                       {regLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                      <span>Create & Sign In</span>
+                      <span>Submit Admin Request</span>
                     </button>
                   </div>
                 </div>
@@ -8493,57 +8558,151 @@ export default function App() {
               </button>
             </div>
 
-            {/* List of Admins */}
-            <div className="flex-1 overflow-y-auto py-3 space-y-2.5 min-h-[140px]">
-              {registeredAdmins.length === 0 ? (
-                <div className="text-center py-8 px-4 text-slate-400 text-xs">
-                  <Shield className="w-8 h-8 mx-auto mb-2 opacity-40 text-blue-500" />
-                  <p className="font-semibold text-slate-500 dark:text-slate-400">No admin accounts created yet.</p>
-                  <p className="mt-1 text-[11px]">Admins can register anytime using their own email and passcode.</p>
-                </div>
-              ) : (
-                registeredAdmins.map((acc) => (
-                  <div
-                    key={acc.id}
-                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
-                        🛡️
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
-                            {acc.displayName || acc.email.split('@')[0]}
-                          </span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                            Admin
-                          </span>
-                        </div>
-                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
-                          {acc.email}
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">
-                          {acc.lastLoginAt
-                            ? `Last active: ${new Date(acc.lastLoginAt).toLocaleDateString()}`
-                            : `Joined: ${new Date(acc.createdAt).toLocaleDateString()}`}
-                        </div>
-                      </div>
-                    </div>
+            {/* List of Admins (Pending Requests & Approved Admins) */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-4 min-h-[160px] max-h-[60vh] pr-1">
+              {(() => {
+                const nonOwnerAdmins = registeredAdmins.filter((acc) => acc.role !== 'owner');
+                const pendingAdmins = nonOwnerAdmins.filter((acc) => acc.status === 'pending');
+                const approvedAdmins = nonOwnerAdmins.filter((acc) => acc.status !== 'pending' && acc.status !== 'rejected');
 
-                    {isOwner && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAdmin(acc.email)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
-                        title={`Revoke access for ${acc.email}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                if (nonOwnerAdmins.length === 0) {
+                  return (
+                    <div className="text-center py-8 px-4 text-slate-400 text-xs">
+                      <Shield className="w-8 h-8 mx-auto mb-2 opacity-40 text-blue-500" />
+                      <p className="font-semibold text-slate-500 dark:text-slate-400">No admin accounts created yet.</p>
+                      <p className="mt-1 text-[11px]">Give trusted collaborators the private authorization code so they can request admin access.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {/* Section 1: Pending Owner Approval */}
+                    {pendingAdmins.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                            <span>Pending Owner Approval ({pendingAdmins.length})</span>
+                          </div>
+                          <span className="text-[10.5px] font-semibold text-amber-600 dark:text-amber-400">
+                            Action required
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {pendingAdmins.map((acc) => (
+                            <div
+                              key={acc.id}
+                              className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/90 dark:border-amber-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                  ⏳
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
+                                      {acc.displayName || acc.email.split('@')[0]}
+                                    </span>
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
+                                      Pending Approval
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 truncate">
+                                    {acc.email}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Requested: {new Date(acc.createdAt).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {isOwner && (
+                                <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveAdmin(acc.email)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all"
+                                    title={`Approve admin access for ${acc.email}`}
+                                  >
+                                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                    <span>Approve</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectAdmin(acc.email)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-bold border border-slate-200 dark:border-slate-700 cursor-pointer transition-all"
+                                    title={`Decline admin request for ${acc.email}`}
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Decline</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
+
+                    {/* Section 2: Approved Active Admins */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Active Approved Admins ({approvedAdmins.length})
+                      </div>
+
+                      {approvedAdmins.length === 0 ? (
+                        <div className="py-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                          No approved admins yet. Approve pending requests above.
+                        </div>
+                      ) : (
+                        approvedAdmins.map((acc) => (
+                          <div
+                            key={acc.id}
+                            className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-3 shadow-2xs"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                🛡️
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
+                                    {acc.displayName || acc.email.split('@')[0]}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                                    Approved Admin
+                                  </span>
+                                </div>
+                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                                  {acc.email}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {acc.lastLoginAt
+                                    ? `Last active: ${new Date(acc.lastLoginAt).toLocaleDateString()}`
+                                    : `Approved: ${new Date(acc.approvedAt || acc.createdAt).toLocaleDateString()}`}
+                                </div>
+                              </div>
+                            </div>
+
+                            {isOwner && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAdmin(acc.email)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
+                                title={`Revoke admin access for ${acc.email}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                ))
-              )}
+                );
+              })()}
             </div>
 
             {/* Footer Buttons */}

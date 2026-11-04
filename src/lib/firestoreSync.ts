@@ -651,10 +651,13 @@ export interface AdminAccount {
   id: string; // Normalized email
   email: string;
   role: 'owner' | 'admin';
+  status?: 'approved' | 'pending' | 'rejected';
   password: string;
   displayName: string;
   createdAt: string;
   updatedAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
   lastLoginAt?: string;
 }
 
@@ -671,6 +674,7 @@ export const DEFAULT_ACCOUNTS: Record<string, AdminAccount> = {
     id: 'ernestthestan@gmail.com',
     email: 'ernestthestan@gmail.com',
     role: 'owner',
+    status: 'approved',
     password: 'ErnestTheStan05!',
     displayName: 'Ernest (Hub Owner)',
     createdAt: '2026-10-01T00:00:00Z',
@@ -704,7 +708,8 @@ export async function ensureDefaultAdminAccounts(): Promise<void> {
 }
 
 /**
- * Register a new Admin account using their own email, name, and chosen password/passcode
+ * Register a new Admin account using their own email, name, and chosen password/passcode.
+ * Account starts in 'pending' status until explicitly approved by the Hub Owner.
  */
 export async function registerAdminAccount(
   rawEmail: string,
@@ -723,23 +728,29 @@ export async function registerAdminAccount(
     return { success: false, error: 'Password / passcode must be at least 6 characters.' };
   }
 
-  // Authorization check: Must provide the community Admin Access Passcode (Default: Avocean2026)
-  const validSecret = 'Avocean2026';
+  // Authorization check: Must provide the private Admin Access Code (Default: Avocean2026!)
+  const validSecret = 'Avocean2026!';
   const enteredSecret = (authPasscode || '').trim();
-  if (enteredSecret) {
-    let storedAdminPin = '';
-    try {
-      const savedSettings = localStorage.getItem('avocean_app_settings_v3');
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        storedAdminPin = parsed.adminPin;
-      }
-    } catch {}
+  if (!enteredSecret) {
+    return { success: false, error: 'Please enter the private Admin Authorization Code provided by the Hub Owner.' };
+  }
 
-    const isValidSecret = enteredSecret === validSecret || (storedAdminPin && enteredSecret === storedAdminPin);
-    if (!isValidSecret) {
-      return { success: false, error: 'Incorrect Admin Access Code. Enter the admin passcode (Avocean2026) to create your account.' };
+  let storedAdminPin = '';
+  try {
+    const savedSettings = localStorage.getItem('avocean_app_settings_v3');
+    if (savedSettings) {
+      const parsed = JSON.parse(savedSettings);
+      storedAdminPin = parsed.adminPin;
     }
+  } catch {}
+
+  const isValidSecret =
+    enteredSecret === validSecret ||
+    enteredSecret === 'Avocean2026' || // backwards-compatibility
+    (storedAdminPin && enteredSecret === storedAdminPin);
+
+  if (!isValidSecret) {
+    return { success: false, error: 'Incorrect Admin Authorization Code. Please check the code given to you by the Hub Owner.' };
   }
 
   // Prevent hijacking owner email
@@ -753,6 +764,10 @@ export async function registerAdminAccount(
       const accRef = doc(db, 'admin_accounts', email);
       const snap = await getDoc(accRef);
       if (snap.exists()) {
+        const existingData = snap.data() as AdminAccount;
+        if (existingData.status === 'pending') {
+          return { success: false, error: 'You already submitted an admin request with this email. It is currently awaiting Owner approval.' };
+        }
         return { success: false, error: 'An account with this email already exists. Please log in directly.' };
       }
     }
@@ -765,11 +780,11 @@ export async function registerAdminAccount(
     id: email,
     email,
     role: 'admin',
+    status: 'pending', // Requires Owner Approval!
     password: pass,
     displayName,
     createdAt: nowIso,
-    updatedAt: nowIso,
-    lastLoginAt: nowIso
+    updatedAt: nowIso
   };
 
   // Save to Firestore
@@ -786,10 +801,9 @@ export async function registerAdminAccount(
     }
   }
 
-  // Save to local cache
+  // Save credentials for local fallback
   try {
     localStorage.setItem(`avocean_pwd_${email}`, pass);
-    localStorage.setItem('avocean_current_account', JSON.stringify(newAccount));
   } catch {}
 
   // Record audit log entry
@@ -797,10 +811,78 @@ export async function registerAdminAccount(
     userEmail: email,
     role: 'admin',
     actionType: 'create_admin',
-    details: `New admin account registered: "${displayName}" (${email})`
+    details: `New admin request submitted (pending Owner approval): "${displayName}" (${email})`
   });
 
   return { success: true, account: newAccount };
+}
+
+/**
+ * Approve a pending Admin account (Owner only)
+ */
+export async function approveAdminAccount(
+  rawEmail: string,
+  ownerEmail: string
+): Promise<{ success: boolean; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  const nowIso = new Date().toISOString();
+
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      await updateDoc(accRef, {
+        status: 'approved',
+        approvedAt: nowIso,
+        approvedBy: ownerEmail,
+        updatedAt: nowIso
+      });
+    }
+  } catch (err: any) {
+    console.warn('Could not approve admin account in Firestore:', err);
+    return { success: false, error: err?.message || 'Could not approve account' };
+  }
+
+  await recordAuditLog({
+    userEmail: ownerEmail,
+    role: 'owner',
+    actionType: 'approve_admin',
+    details: `Owner approved admin account: ${email}`
+  });
+
+  return { success: true };
+}
+
+/**
+ * Reject / Decline a pending Admin account (Owner only)
+ */
+export async function rejectAdminAccount(
+  rawEmail: string,
+  ownerEmail: string
+): Promise<{ success: boolean; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  const nowIso = new Date().toISOString();
+
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      await updateDoc(accRef, {
+        status: 'rejected',
+        updatedAt: nowIso
+      });
+    }
+  } catch (err: any) {
+    console.warn('Could not reject admin account in Firestore:', err);
+    return { success: false, error: err?.message || 'Could not decline request' };
+  }
+
+  await recordAuditLog({
+    userEmail: ownerEmail,
+    role: 'owner',
+    actionType: 'reject_admin',
+    details: `Owner declined admin request: ${email}`
+  });
+
+  return { success: true };
 }
 
 /**
@@ -859,6 +941,23 @@ export async function authenticateUserAccount(
       if (snap.exists()) {
         const data = snap.data() as AdminAccount;
         if (data.password === pass) {
+          // Check approval status for non-owner accounts
+          if (data.role !== 'owner') {
+            const status = data.status || 'approved'; // legacy accounts without status are approved
+            if (status === 'pending') {
+              return {
+                success: false,
+                error: '⏳ Your admin account request is pending Owner approval. The Hub Owner (Ernest) will review and approve your account before you can log in.'
+              };
+            }
+            if (status === 'rejected') {
+              return {
+                success: false,
+                error: '❌ Your admin request was declined by the Hub Owner.'
+              };
+            }
+          }
+
           // Update lastLoginAt
           const nowIso = new Date().toISOString();
           updateDoc(accRef, { lastLoginAt: nowIso }).catch(() => {});
