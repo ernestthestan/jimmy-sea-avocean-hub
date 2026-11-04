@@ -5311,87 +5311,89 @@ export default function App() {
             )}
           </div>
 
-          {/* Integrated Member Filters Row - Removed count number badges as requested */}
-          <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1">
-                <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span>Filter:</span>
-              </div>
+          {/* Integrated Member Filters Row - Moved into Jimmy & Sea Career Projects when on projects tab */}
+          {activeTab !== 'projects' && (
+            <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1">
+                  <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>Filter:</span>
+                </div>
 
-              {/* All Members Toggle (Clean without count number) */}
-              <button
-                onClick={() => setActiveMemberIds(settings.members.map((m) => m.id))}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
-                  activeMemberIds.length === settings.members.length
-                    ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                <span>All Members</span>
-              </button>
-
-              {/* Individual Member Filter Pills (Clean without count numbers) */}
-              {settings.members.map((member) => {
-                const isActive = activeMemberIds.includes(member.id);
-
-                return (
-                  <button
-                    key={member.id}
-                    onClick={() => toggleMemberFilter(member.id)}
-                    style={{
-                      backgroundColor: isActive
-                        ? isDarkMode
-                          ? '#1E293B'
-                          : member.pillBg
-                        : isDarkMode
-                        ? '#0F172A'
-                        : '#FFFFFF',
-                      borderColor: isActive
-                        ? member.pillBorder
-                        : isDarkMode
-                        ? '#334155'
-                        : '#E2E8F0'
-                    }}
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border-[1.5px] text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                      isActive
-                        ? 'opacity-100 scale-100 shadow-xs ring-1 ring-purple-300/30'
-                        : 'opacity-40 hover:opacity-80'
-                    }`}
-                  >
-                    <MemberCircleIcon member={member} size="sm" />
-                    <span className="text-[#1A3668] dark:text-white font-bold">
-                      {member.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Filter Status / Quick Reset */}
-            <div className="flex items-center gap-2">
-              {activeMemberIds.length < settings.members.length && (
+                {/* All Members Toggle (Clean without count number) */}
                 <button
                   onClick={() => setActiveMemberIds(settings.members.map((m) => m.id))}
-                  className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer flex items-center gap-1"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                    activeMemberIds.length === settings.members.length
+                      ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
                 >
-                  <span>Filtering {activeMemberIds.length}/{settings.members.length}</span>
-                  <span className="text-purple-400 font-semibold">· Show All</span>
+                  <span>All Members</span>
                 </button>
-              )}
 
-              {isOwner && (
-                <button
-                  onClick={openSettingsModal}
-                  className="text-xs font-semibold text-[#607494] dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 flex items-center gap-1 cursor-pointer"
-                  title="Edit member names, colors & badges"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  <span className="hidden sm:inline">Edit Members</span>
-                </button>
-              )}
+                {/* Individual Member Filter Pills (Clean without count numbers) */}
+                {settings.members.map((member) => {
+                  const isActive = activeMemberIds.includes(member.id);
+
+                  return (
+                    <button
+                      key={member.id}
+                      onClick={() => toggleMemberFilter(member.id)}
+                      style={{
+                        backgroundColor: isActive
+                          ? isDarkMode
+                            ? '#1E293B'
+                            : member.pillBg
+                          : isDarkMode
+                          ? '#0F172A'
+                          : '#FFFFFF',
+                        borderColor: isActive
+                          ? member.pillBorder
+                          : isDarkMode
+                          ? '#334155'
+                          : '#E2E8F0'
+                      }}
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border-[1.5px] text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                        isActive
+                          ? 'opacity-100 scale-100 shadow-xs ring-1 ring-purple-300/30'
+                          : 'opacity-40 hover:opacity-80'
+                      }`}
+                    >
+                      <MemberCircleIcon member={member} size="sm" />
+                      <span className="text-[#1A3668] dark:text-white font-bold">
+                        {member.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Filter Status / Quick Reset */}
+              <div className="flex items-center gap-2">
+                {activeMemberIds.length < settings.members.length && (
+                  <button
+                    onClick={() => setActiveMemberIds(settings.members.map((m) => m.id))}
+                    className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Filtering {activeMemberIds.length}/{settings.members.length}</span>
+                    <span className="text-purple-400 font-semibold">· Show All</span>
+                  </button>
+                )}
+
+                {isOwner && (
+                  <button
+                    onClick={openSettingsModal}
+                    className="text-xs font-semibold text-[#607494] dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 flex items-center gap-1 cursor-pointer"
+                    title="Edit member names, colors & badges"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span className="hidden sm:inline">Edit Members</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -5849,6 +5851,8 @@ export default function App() {
           currentAccent={currentAccent}
           containerWidthClass={containerWidthClass}
           activeMemberIds={activeMemberIds}
+          onToggleMemberFilter={toggleMemberFilter}
+          onSetActiveMemberIds={setActiveMemberIds}
           preferredTranslationLang={preferredTranslationLang}
           onSelectTranslationLang={handleSelectTranslationLang}
           onSaveProject={handleSaveCareerProject}

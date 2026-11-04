@@ -6,6 +6,7 @@ import {
   ShoppingBag,
   Sparkles,
   Search,
+  Filter,
   Plus,
   ExternalLink,
   Edit3,
@@ -105,6 +106,8 @@ interface ProjectsHubProps {
   };
   containerWidthClass?: string;
   activeMemberIds?: string[];
+  onToggleMemberFilter?: (memberId: string) => void;
+  onSetActiveMemberIds?: (memberIds: string[]) => void;
   preferredTranslationLang?: string;
   onSelectTranslationLang?: (lang: string) => void;
   onSaveProject: (project: CareerProject) => void;
@@ -119,12 +122,59 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   currentAccent,
   containerWidthClass,
   activeMemberIds = ['jimmy', 'sea', 'avocean'],
+  onToggleMemberFilter,
+  onSetActiveMemberIds,
   preferredTranslationLang = 'en',
   onSelectTranslationLang,
   onSaveProject,
   onDeleteProject,
   showToast
 }) => {
+  // Member Filters State (All Member / Jimmy / Sea / Avocean)
+  const [localMemberIds, setLocalMemberIds] = useState<string[]>(activeMemberIds || ['jimmy', 'sea', 'avocean']);
+
+  useEffect(() => {
+    if (activeMemberIds && activeMemberIds.length > 0) {
+      setLocalMemberIds(activeMemberIds);
+    }
+  }, [activeMemberIds]);
+
+  const currentMemberIds = activeMemberIds || localMemberIds;
+  const isAllMembersActive = currentMemberIds.length === 3 || currentMemberIds.length === 0;
+  const isJimmyActive = currentMemberIds.includes('jimmy');
+  const isSeaActive = currentMemberIds.includes('sea');
+  const isAvoceanActive = currentMemberIds.includes('avocean');
+
+  const handleSelectAllMembers = () => {
+    const all = ['jimmy', 'sea', 'avocean'];
+    setLocalMemberIds(all);
+    if (onSetActiveMemberIds) onSetActiveMemberIds(all);
+  };
+
+  const handleToggleMember = (memberId: string) => {
+    let next: string[];
+    if (isAllMembersActive) {
+      next = [memberId];
+    } else if (currentMemberIds.includes(memberId)) {
+      if (currentMemberIds.length === 1) {
+        next = ['jimmy', 'sea', 'avocean'];
+      } else {
+        next = currentMemberIds.filter((id) => id !== memberId);
+      }
+    } else {
+      next = [...currentMemberIds, memberId];
+      if (next.length === 3) {
+        next = ['jimmy', 'sea', 'avocean'];
+      }
+    }
+    setLocalMemberIds(next);
+    if (onSetActiveMemberIds) {
+      onSetActiveMemberIds(next);
+    } else if (onToggleMemberFilter) {
+      onToggleMemberFilter(memberId);
+    }
+  };
+
   // Category & Search State
   const [selectedCategory, setSelectedCategory] = useState<'all' | ProjectCategory>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -886,20 +936,20 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   // Count by category (taking into account top member filters)
   const categoryCounts = useMemo(() => {
     const memberFiltered = projects.filter((p) => {
-      if (!activeMemberIds || activeMemberIds.length === 0 || activeMemberIds.length === 3) {
+      if (!currentMemberIds || currentMemberIds.length === 0 || currentMemberIds.length === 3) {
         return true;
       }
       if (p.artist === 'jimmysea') {
-        return activeMemberIds.includes('jimmy') || activeMemberIds.includes('sea');
+        return currentMemberIds.includes('jimmy') || currentMemberIds.includes('sea');
       }
       if (p.artist === 'jimmy') {
-        return activeMemberIds.includes('jimmy');
+        return currentMemberIds.includes('jimmy');
       }
       if (p.artist === 'sea') {
-        return activeMemberIds.includes('sea');
+        return currentMemberIds.includes('sea');
       }
       if (p.artist === 'avocean') {
-        return activeMemberIds.includes('avocean');
+        return currentMemberIds.includes('avocean');
       }
       return true;
     });
@@ -911,7 +961,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       }
     });
     return counts;
-  }, [projects, activeMemberIds]);
+  }, [projects, currentMemberIds]);
 
   // Sorting Order State ('newest' = newest on left, 'oldest' = oldest on left, 'az' = alphabetical)
   const [projectSortOrder, setProjectSortOrder] = useState<'newest' | 'oldest' | 'az'>('newest');
@@ -920,17 +970,17 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const filteredProjects = useMemo(() => {
     const list = projects.filter((p) => {
       // 1. Top member filter
-      if (activeMemberIds && activeMemberIds.length > 0 && activeMemberIds.length < 3) {
+      if (currentMemberIds && currentMemberIds.length > 0 && currentMemberIds.length < 3) {
         if (p.artist === 'jimmysea') {
-          if (!activeMemberIds.includes('jimmy') && !activeMemberIds.includes('sea')) {
+          if (!currentMemberIds.includes('jimmy') && !currentMemberIds.includes('sea')) {
             return false;
           }
         } else if (p.artist === 'jimmy') {
-          if (!activeMemberIds.includes('jimmy')) return false;
+          if (!currentMemberIds.includes('jimmy')) return false;
         } else if (p.artist === 'sea') {
-          if (!activeMemberIds.includes('sea')) return false;
+          if (!currentMemberIds.includes('sea')) return false;
         } else if (p.artist === 'avocean') {
-          if (!activeMemberIds.includes('avocean')) return false;
+          if (!currentMemberIds.includes('avocean')) return false;
         }
       }
 
@@ -973,7 +1023,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       // 'newest' default: newest on top-left, oldest at the end
       return getProjectChronologicalScore(b) - getProjectChronologicalScore(a);
     });
-  }, [projects, activeMemberIds, selectedCategory, searchQuery, projectSortOrder]);
+  }, [projects, currentMemberIds, selectedCategory, searchQuery, projectSortOrder]);
 
   // Status Filter State ('all' | 'upcoming' | 'airing' | 'past')
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'upcoming' | 'airing' | 'past'>('all');
@@ -1930,40 +1980,134 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       {/* ============================================================== */}
       {/* 2. HERO HEADER: PROJECTS & CAREER PORTFOLIO                    */}
       {/* ============================================================== */}
-      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-5">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-              <Film className="w-3.5 h-3.5" />
-              <span>Official Filmography & Ventures</span>
-            </span>
-            {/* Exactly with Green Heart 💚 as requested */}
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              🥑 Jimmy · 🌊 Sea · 💚 Avocean
-            </span>
+      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                <Film className="w-3.5 h-3.5" />
+                <span>Official Filmography & Ventures</span>
+              </span>
+              {/* Exactly with Green Heart 💚 as requested */}
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                🥑 Jimmy · 🌊 Sea · 💚 Avocean
+              </span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-black text-[#1A3668] dark:text-white tracking-tight">
+              Jimmy & Sea Career Projects
+            </h2>
+            <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 max-w-3xl">
+              Explore Jimmy and Sea&apos;s complete catalog of award-winning series, movies, official music videos, global partner brand endorsements, and personal ventures.
+            </p>
           </div>
 
-          <h2 className="text-2xl sm:text-3xl font-black text-[#1A3668] dark:text-white tracking-tight">
-            Jimmy & Sea Career Projects
-          </h2>
-          <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 max-w-3xl">
-            Explore Jimmy and Sea&apos;s complete catalog of award-winning series, movies, official music videos, global partner brand endorsements, and personal ventures.
-          </p>
+          {/* Right Action: Admin Add Button */}
+          {canEdit && (
+            <div className="shrink-0 self-start md:self-auto">
+              <button
+                onClick={openAddModal}
+                style={{ backgroundColor: currentAccent.colorHex }}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer active:scale-95 transition-all"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>Add Project</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Right Action: Admin Add Button */}
-        {canEdit && (
-          <div className="shrink-0 self-start md:self-auto">
+        {/* Member Filters Row: All Member / Jimmy / Sea / Avocean */}
+        <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1">
+              <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Filter:</span>
+            </div>
+
+            {/* All Member */}
             <button
-              onClick={openAddModal}
-              style={{ backgroundColor: currentAccent.colorHex }}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer active:scale-95 transition-all"
+              type="button"
+              onClick={handleSelectAllMembers}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                isAllMembersActive
+                  ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs ring-1 ring-purple-300/30'
+                  : 'bg-slate-100 dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
             >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Add Project</span>
+              <span>All Member</span>
+            </button>
+
+            {/* Jimmy */}
+            <button
+              type="button"
+              onClick={() => handleToggleMember('jimmy')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                isJimmyActive && !isAllMembersActive
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-400/40'
+                  : isJimmyActive
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700 shadow-2xs hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+                  : 'bg-white dark:bg-slate-800/60 text-slate-400 border-slate-200 dark:border-slate-700 opacity-50 hover:opacity-80'
+              }`}
+            >
+              <span>🥑</span>
+              <span>Jimmy</span>
+            </button>
+
+            {/* Sea */}
+            <button
+              type="button"
+              onClick={() => handleToggleMember('sea')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                isSeaActive && !isAllMembersActive
+                  ? 'bg-sky-600 text-white border-sky-600 shadow-xs ring-2 ring-sky-400/40'
+                  : isSeaActive
+                  ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200 border-sky-300 dark:border-sky-700 shadow-2xs hover:bg-sky-100 dark:hover:bg-sky-900/60'
+                  : 'bg-white dark:bg-slate-800/60 text-slate-400 border-slate-200 dark:border-slate-700 opacity-50 hover:opacity-80'
+              }`}
+            >
+              <span>🌊</span>
+              <span>Sea</span>
+            </button>
+
+            {/* Avocean */}
+            <button
+              type="button"
+              onClick={() => handleToggleMember('avocean')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                isAvoceanActive && !isAllMembersActive
+                  ? 'bg-teal-600 text-white border-teal-600 shadow-xs ring-2 ring-teal-400/40'
+                  : isAvoceanActive
+                  ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-200 border-teal-300 dark:border-teal-700 shadow-2xs hover:bg-teal-100 dark:hover:bg-teal-900/60'
+                  : 'bg-white dark:bg-slate-800/60 text-slate-400 border-slate-200 dark:border-slate-700 opacity-50 hover:opacity-80'
+              }`}
+            >
+              <span>💚</span>
+              <span>Avocean</span>
             </button>
           </div>
-        )}
+
+          <div className="flex items-center gap-2">
+            {!isAllMembersActive ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-purple-600 dark:text-purple-400">
+                  Filtered: {currentMemberIds.map((id) => (id === 'jimmy' ? '🥑 Jimmy' : id === 'sea' ? '🌊 Sea' : '💚 Avocean')).join(' + ')} ({filteredProjects.length} projects)
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSelectAllMembers}
+                  className="text-xs font-bold text-purple-700 dark:text-purple-300 underline hover:text-purple-900 cursor-pointer"
+                >
+                  Show All
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Showing all {filteredProjects.length} projects
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ============================================================== */}
