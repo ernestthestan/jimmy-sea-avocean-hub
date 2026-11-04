@@ -189,6 +189,7 @@ export interface ScheduleEvent {
   locationUrl?: string; // Google Maps link
   posterUrl?: string; // Image URL or Base64 data URL (primary cover)
   posterUrls?: string[]; // Multiple photos/posters (e.g. seating map, perks chart, teaser posters)
+  posterFit?: 'contain' | 'cover'; // Display fit: 'contain' = Auto-fit full photo without crop, 'cover' = Fill container
   members: string[]; // member ids
   category?: string;
   link?: string;
@@ -1695,6 +1696,18 @@ export default function App() {
   // Active photo index for events with multiple posters/photos (eventId -> photoIndex)
   const [activePhotoIndexByEvent, setActivePhotoIndexByEvent] = useState<Record<string, number>>({});
 
+  // Event photo fit preference ('contain' = auto-fit full uncropped poster with ambient blur, 'cover' = fill card)
+  const [eventMediaFitPreference, setEventMediaFitPreference] = useState<'contain' | 'cover'>(() => {
+    try {
+      const saved = localStorage.getItem('avocean_event_media_fit');
+      if (saved === 'contain' || saved === 'cover') return saved;
+      return 'contain'; // Default to auto-fit full poster
+    } catch {
+      return 'contain';
+    }
+  });
+  const [eventPhotoFitOverrides, setEventPhotoFitOverrides] = useState<Record<string, 'contain' | 'cover'>>({});
+
   // Viewer & Inbox message modal states
   const [leaveMessageModalOpen, setLeaveMessageModalOpen] = useState<boolean>(false);
   const [inboxModalOpen, setInboxModalOpen] = useState<boolean>(false);
@@ -2407,6 +2420,7 @@ export default function App() {
   const [formLocationUrl, setFormLocationUrl] = useState<string>('');
   const [formPosterUrl, setFormPosterUrl] = useState<string>('');
   const [formPosterUrls, setFormPosterUrls] = useState<string[]>([]);
+  const [formPosterFit, setFormPosterFit] = useState<'contain' | 'cover'>('contain');
   const [formNewPosterUrlInput, setFormNewPosterUrlInput] = useState<string>('');
   const [showBatchPosterUrlInput, setShowBatchPosterUrlInput] = useState<boolean>(false);
   const [draftBatchPosterUrls, setDraftBatchPosterUrls] = useState<string>('');
@@ -2927,6 +2941,7 @@ export default function App() {
     setFormLocationUrl('');
     setFormPosterUrl('');
     setFormPosterUrls([]);
+    setFormPosterFit('contain');
     setFormNewPosterUrlInput('');
     setShowBatchPosterUrlInput(false);
     setDraftBatchPosterUrls('');
@@ -3018,6 +3033,7 @@ export default function App() {
     const evPosters = getEventPosters(ev);
     setFormPosterUrls(evPosters);
     setFormPosterUrl(evPosters[0] || '');
+    setFormPosterFit(ev.posterFit || 'contain');
     setFormNewPosterUrlInput('');
     setShowBatchPosterUrlInput(false);
     setDraftBatchPosterUrls('');
@@ -3105,6 +3121,7 @@ export default function App() {
         locationUrl: formLocationUrl.trim(),
         posterUrl: primaryPoster,
         posterUrls: compressedPostersList.length > 0 ? compressedPostersList : undefined,
+        posterFit: formPosterFit,
         members: formMembers.length > 0 ? formMembers : [settings.members[0].id],
         category: formCategory,
         link: formLink.trim(),
@@ -4045,6 +4062,7 @@ export default function App() {
               {allPosters.length > 0 && (() => {
                 const currentIdx = (activePhotoIndexByEvent[ev.id] ?? 0) % allPosters.length;
                 const activePhotoUrl = allPosters[currentIdx] || allPosters[0];
+                const isFit = (eventPhotoFitOverrides[ev.id] ?? ev.posterFit ?? eventMediaFitPreference) === 'contain';
 
                 return (
                   <div className="flex flex-col gap-2.5">
@@ -4055,18 +4073,34 @@ export default function App() {
                         photos: allPosters,
                         currentIndex: currentIdx
                       })}
-                      className="w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none"
+                      className={`w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none ${
+                        isFit
+                          ? 'h-[380px] sm:h-[430px] md:h-[460px] bg-slate-950 flex items-center justify-center'
+                          : 'max-h-[380px] sm:max-h-[430px] bg-white dark:bg-slate-800'
+                      }`}
                       title="Click to view full photo"
                     >
+                      {/* Ambient Blur Backdrop when Fit Mode is active so 100% of the poster is visible without awkward black bars */}
+                      {isFit && (
+                        <div
+                          className="absolute inset-0 bg-cover bg-center filter blur-2xl opacity-45 scale-125 saturate-150 pointer-events-none"
+                          style={{ backgroundImage: `url(${activePhotoUrl})` }}
+                        />
+                      )}
+
                       <img
                         src={activePhotoUrl}
                         alt={`${ev.title} - Photo ${currentIdx + 1}`}
-                        className="w-full max-h-[360px] object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                        className={`w-full transition-transform duration-300 ${
+                          isFit
+                            ? 'h-full object-contain relative z-10 group-hover:scale-[1.01]'
+                            : 'max-h-[380px] sm:max-h-[430px] object-cover group-hover:scale-[1.02]'
+                        }`}
                       />
 
                       {/* Multi-photo badge & counter at top-left */}
                       {allPosters.length > 1 && (
-                        <div className="absolute top-2.5 left-2.5 z-10 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-xs font-bold backdrop-blur-xs shadow-sm">
+                        <div className="absolute top-2.5 left-2.5 z-20 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-xs font-bold backdrop-blur-xs shadow-sm">
                           <ImageIcon className="w-3.5 h-3.5 text-purple-300" />
                           <span>{currentIdx + 1} / {allPosters.length}</span>
                         </div>
@@ -4084,7 +4118,7 @@ export default function App() {
                                 [ev.id]: (currentIdx - 1 + allPosters.length) % allPosters.length
                               }));
                             }}
-                            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-20 cursor-pointer active:scale-95"
                             title="Previous photo"
                           >
                             <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
@@ -4099,7 +4133,7 @@ export default function App() {
                                 [ev.id]: (currentIdx + 1) % allPosters.length
                               }));
                             }}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-20 cursor-pointer active:scale-95"
                             title="Next photo"
                           >
                             <ChevronRight className="w-4 h-4 stroke-[2.5]" />
@@ -4108,16 +4142,55 @@ export default function App() {
                       )}
 
                       {/* Hover Overlay with Enlarge Badge */}
-                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">
                         <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/80 text-white text-xs font-bold backdrop-blur-xs shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-transform">
                           <Maximize2 className="w-3.5 h-3.5" />
                           <span>Click to view full photo</span>
                         </span>
                       </div>
 
-                      {/* Pinned Expand Badge at Top-Right */}
-                      <div className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs opacity-85 group-hover:opacity-100 transition-all shadow-sm">
-                        <Maximize2 className="w-3.5 h-3.5" />
+                      {/* Top-Right Control Group: Quick Fit / Fill Toggle + Expand Badge */}
+                      <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextFit = isFit ? 'cover' : 'contain';
+                            setEventPhotoFitOverrides((prev) => ({ ...prev, [ev.id]: nextFit }));
+                            showToast(nextFit === 'contain' ? 'Poster set to Fit (full uncropped poster)' : 'Poster set to Fill card');
+                          }}
+                          className="px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-xs flex items-center gap-1 text-[11px] font-bold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                          title={isFit ? 'Switch to Fill (cover container)' : 'Switch to Fit (show entire uncropped poster)'}
+                        >
+                          {isFit ? (
+                            <>
+                              <Minimize2 className="w-3 h-3 text-cyan-300" />
+                              <span>Fit</span>
+                            </>
+                          ) : (
+                            <>
+                              <Maximize2 className="w-3 h-3 text-purple-300" />
+                              <span>Fill</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEnlargedPhoto({
+                              url: activePhotoUrl,
+                              title: `${ev.title}${allPosters.length > 1 ? ` (${currentIdx + 1}/${allPosters.length})` : ''}`,
+                              photos: allPosters,
+                              currentIndex: currentIdx
+                            });
+                          }}
+                          className="p-1.5 rounded-full bg-black/60 hover:bg-black/85 text-white backdrop-blur-xs shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                          title="Click to view full photo"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -5656,7 +5729,46 @@ export default function App() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-auto">
+            <div className="flex items-center gap-2.5 self-end sm:self-auto flex-wrap">
+              {/* Global Event Photo Fit Toggle */}
+              <div className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800/80 p-0.5 border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
+                <span className="text-[11px] text-[#607494] dark:text-slate-400 pl-2.5 pr-1">Photo:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEventMediaFitPreference('contain');
+                    try { localStorage.setItem('avocean_event_media_fit', 'contain'); } catch {}
+                    setEventPhotoFitOverrides({});
+                    showToast('All event photos set to Fit (full uncropped poster)');
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-[11px] transition-all cursor-pointer ${
+                    eventMediaFitPreference === 'contain'
+                      ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Fit whole poster without cropping"
+                >
+                  Fit (Full)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEventMediaFitPreference('cover');
+                    try { localStorage.setItem('avocean_event_media_fit', 'cover'); } catch {}
+                    setEventPhotoFitOverrides({});
+                    showToast('All event photos set to Fill cards');
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-[11px] transition-all cursor-pointer ${
+                    eventMediaFitPreference === 'cover'
+                      ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Fill card container"
+                >
+                  Fill
+                </button>
+              </div>
+
               <span className="text-xs font-bold text-[#607494] dark:text-slate-400">
                 {listViewFilter === 'upcoming'
                   ? `${listViewEvents.length} Active`
@@ -7209,6 +7321,42 @@ export default function App() {
                     </p>
                   </div>
                 )}
+
+                {/* Poster Display Fit (Fit vs Fill) */}
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200/70 dark:border-purple-800/60 flex-wrap gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-extrabold text-[#1A3668] dark:text-white">
+                      Poster Display Fit
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      "Fit" shows 100% of the poster without cropping top/bottom text or cast.
+                    </span>
+                  </div>
+                  <div className="inline-flex rounded-xl bg-white dark:bg-slate-800 p-0.5 border border-slate-200 dark:border-slate-700 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setFormPosterFit('contain')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        formPosterFit === 'contain'
+                          ? 'bg-purple-600 text-white shadow-2xs font-extrabold'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Fit (No Crop)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormPosterFit('cover')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        formPosterFit === 'cover'
+                          ? 'bg-purple-600 text-white shadow-2xs font-extrabold'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Fill (Cover)
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Location & Category */}
@@ -9385,11 +9533,11 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+            className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl sm:max-w-3xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-between mb-4 pb-3.5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
                 <div
                   style={{
                     backgroundColor:
@@ -9403,22 +9551,22 @@ export default function App() {
                         ? '#DCFCE7'
                         : '#EDE9FE'
                   }}
-                  className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                 >
                   {msgCategory === 'thanks' ? (
-                    <Heart className="w-5 h-5 text-rose-600 dark:text-rose-300 fill-rose-500" />
+                    <Heart className="w-6 h-6 text-rose-600 dark:text-rose-300 fill-rose-500" />
                   ) : msgCategory === 'project' ? (
-                    <Film className="w-5 h-5 text-purple-700 dark:text-purple-300" />
+                    <Film className="w-6 h-6 text-purple-700 dark:text-purple-300" />
                   ) : msgCategory === 'fanclub' ? (
-                    <Users className="w-5 h-5 text-sky-700 dark:text-sky-300" />
+                    <Users className="w-6 h-6 text-sky-700 dark:text-sky-300" />
                   ) : msgCategory === 'foodsupport' ? (
-                    <HeartHandshake className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />
+                    <HeartHandshake className="w-6 h-6 text-emerald-700 dark:text-emerald-300" />
                   ) : (
-                    <MessageSquare className="w-5 h-5 text-purple-700 dark:text-purple-300" />
+                    <MessageSquare className="w-6 h-6 text-purple-700 dark:text-purple-300" />
                   )}
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                  <h3 className="text-lg sm:text-xl font-black text-[#1A3668] dark:text-white tracking-tight">
                     {msgCategory === 'thanks'
                       ? 'Wanna Say Thanks? 💖'
                       : msgCategory === 'project'
@@ -9429,7 +9577,7 @@ export default function App() {
                       ? 'Submit Food Support'
                       : 'Leave a Message'}
                   </h3>
-                  <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
+                  <p className="text-xs sm:text-sm font-semibold text-[#607494] dark:text-slate-400 mt-0.5">
                     {msgCategory === 'thanks'
                       ? 'Send your love, heartfelt appreciation, or cheering message to Jimmy, Sea, or the admins!'
                       : msgCategory === 'project'
@@ -9444,18 +9592,18 @@ export default function App() {
               </div>
               <button
                 onClick={() => setLeaveMessageModalOpen(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Category Selector Tabs */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mb-4 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mb-5 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
               <button
                 type="button"
                 onClick={() => setMsgCategory('calendar')}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   msgCategory === 'calendar'
                     ? 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-white shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
@@ -9468,7 +9616,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setMsgCategory('project')}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   msgCategory === 'project'
                     ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
@@ -9481,7 +9629,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setMsgCategory('fanclub')}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   msgCategory === 'fanclub'
                     ? 'bg-white dark:bg-slate-700 text-sky-700 dark:text-sky-300 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
@@ -9494,7 +9642,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setMsgCategory('foodsupport')}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   msgCategory === 'foodsupport'
                     ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
@@ -9507,9 +9655,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setMsgCategory('thanks')}
-                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer col-span-2 sm:col-span-1 ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer col-span-2 sm:col-span-1 ${
                   msgCategory === 'thanks'
-                    ? 'bg-rose-500 text-white shadow-xs font-extrabold'
+                    ? 'bg-rose-500 text-white shadow-xs font-black'
                     : 'text-rose-700 dark:text-rose-300 bg-rose-50/70 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40'
                 }`}
               >
@@ -9567,7 +9715,7 @@ export default function App() {
 
                 {/* Sender Name / Handle */}
                 <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                     Your Name or Social Handle *
                   </label>
                   <input
@@ -9576,7 +9724,7 @@ export default function App() {
                     value={msgSenderName}
                     onChange={(e) => setMsgSenderName(e.target.value)}
                     placeholder="e.g. AvoceanFan_BKK or @twitterhandle"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                   />
                 </div>
 
@@ -9584,7 +9732,7 @@ export default function App() {
                 {msgCategory === 'calendar' && (
                   <>
                     <div>
-                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                         Event Title / Topic *
                       </label>
                       <input
@@ -9593,24 +9741,24 @@ export default function App() {
                         value={msgEventTitle}
                         onChange={(e) => setMsgEventTitle(e.target.value)}
                         placeholder="e.g. JimmySea live shopping on GMMTV"
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                           Event Date (Optional)
                         </label>
                         <input
                           type="date"
                           value={msgEventDate}
                           onChange={(e) => setMsgEventDate(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                           Source / Official Link *
                         </label>
                         <input
@@ -9619,22 +9767,22 @@ export default function App() {
                           value={msgSourceUrl}
                           onChange={(e) => setMsgSourceUrl(e.target.value)}
                           placeholder="https://x.com/... or official link"
-                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                         Details / Schedule Information *
                       </label>
                       <textarea
-                        rows={3}
+                        rows={4}
                         required
                         value={msgContent}
                         onChange={(e) => setMsgContent(e.target.value)}
                         placeholder="Describe time, venue, channel or any extra info..."
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-medium text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                       />
                     </div>
                   </>
@@ -9936,10 +10084,10 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1.5">
+                      <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-2">
                         Who do you want to say thanks to? 💖
                       </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {[
                           { id: 'JimmySea', label: '🥑🌊 JimmySea' },
                           { id: 'Jimmy', label: '🥑 Jimmy' },
@@ -9952,9 +10100,9 @@ export default function App() {
                             key={item.id}
                             type="button"
                             onClick={() => setMsgThanksTo(item.id)}
-                            className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                            className={`py-2 px-3 rounded-xl text-xs sm:text-sm font-bold border transition-all text-center cursor-pointer ${
                               msgThanksTo === item.id
-                                ? 'bg-rose-500 text-white border-rose-600 shadow-xs font-black'
+                                ? 'bg-rose-500 text-white border-rose-600 shadow-xs font-black scale-[1.02]'
                                 : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-rose-300'
                             }`}
                           >
@@ -9965,29 +10113,29 @@ export default function App() {
                     </div>
 
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-bold text-[#526586] dark:text-slate-400">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300">
                           Your Heartfelt Thank You Message *
                         </label>
-                        <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400">
+                        <span className="text-xs font-bold text-pink-600 dark:text-pink-400">
                           🌐 Any Language Welcome
                         </span>
                       </div>
                       <textarea
-                        rows={4}
+                        rows={5}
                         required
                         value={msgContent}
                         onChange={(e) => setMsgContent(e.target.value)}
                         placeholder="Write in your native language (English, ไทย, Español, 中文, 日本語, Tagalog, Bahasa, etc.)! Words of gratitude, appreciation, encouragement, or love... 🥑🌊💚"
-                        className="w-full rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/20 dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
+                        className="w-full rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/20 dark:bg-slate-800 px-4 py-3 text-sm sm:text-[15px] font-medium text-[#1A3668] dark:text-white leading-relaxed focus:outline-none focus:border-rose-400"
                       />
-                      <p className="text-[10px] text-slate-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1.5">
                         Tip: You can use emojis and write in whichever language you express yourself best!
                       </p>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                         Topic / Title (Optional)
                       </label>
                       <input
@@ -9995,12 +10143,12 @@ export default function App() {
                         value={msgEventTitle}
                         onChange={(e) => setMsgEventTitle(e.target.value)}
                         placeholder="e.g. Thank you for this schedule! or Always cheering for Jimmy & Sea"
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      <label className="block text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-300 mb-1.5">
                         Optional Fan Art / Tweet / Social Post Link
                       </label>
                       <input
@@ -10008,18 +10156,18 @@ export default function App() {
                         value={msgSourceUrl}
                         onChange={(e) => setMsgSourceUrl(e.target.value)}
                         placeholder="https://x.com/... (optional)"
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
                       />
                     </div>
                   </>
                 )}
 
                 {/* Form Buttons */}
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => setLeaveMessageModalOpen(false)}
-                    className="px-3.5 py-2 rounded-full text-xs font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    className="px-4 py-2.5 rounded-full text-xs sm:text-sm font-bold text-[#526586] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -10027,16 +10175,16 @@ export default function App() {
                     type="submit"
                     disabled={isSendingMessage}
                     style={{ backgroundColor: currentAccent.colorHex }}
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all hover:opacity-90 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all hover:opacity-90 disabled:opacity-50"
                   >
                     {isSendingMessage ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-4 h-4 animate-spin" />
                         <span>Sending in real time...</span>
                       </>
                     ) : (
                       <>
-                        <Send className="w-3.5 h-3.5" />
+                        <Send className="w-4 h-4" />
                         <span>
                           {msgCategory === 'thanks'
                             ? 'Send Thank You Note 💖'
@@ -10068,42 +10216,42 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+            className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-4xl lg:max-w-5xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
           >
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center">
-                  <Inbox className="w-4 h-4" />
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 shadow-2xs">
+                  <Inbox className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 className="text-xl sm:text-2xl font-black text-[#1A3668] dark:text-white tracking-tight">
                       Viewer Messages & Suggestions
                     </h3>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span>Live Cloud Sync</span>
                     </span>
                   </div>
-                  <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
+                  <p className="text-xs sm:text-sm font-semibold text-[#607494] dark:text-slate-400 mt-1">
                     Visible only to Admins and Owner ({fanMessages.length} total · {unreadMessageCount} unread)
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleRefreshInbox}
                   disabled={isRefreshingInbox}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 text-xs font-bold transition-all cursor-pointer border border-slate-200/80 dark:border-slate-700"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 text-xs sm:text-sm font-bold transition-all cursor-pointer border border-slate-200/80 dark:border-slate-700"
                   title="Force re-sync inbox with cloud database"
                 >
-                  <RotateCcw className={`w-3.5 h-3.5 text-purple-600 dark:text-purple-400 ${isRefreshingInbox ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Refresh</span>
+                  <RotateCcw className={`w-4 h-4 text-purple-600 dark:text-purple-400 ${isRefreshingInbox ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
                 </button>
                 <button
                   onClick={() => setInboxModalOpen(false)}
-                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -10111,11 +10259,11 @@ export default function App() {
             </div>
 
             {/* Category Filter Pills */}
-            <div className="flex items-center gap-1.5 mb-3.5 pb-2 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-2 mb-5 pb-2 overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => setInboxFilterCategory('all')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   inboxFilterCategory === 'all'
                     ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
@@ -10126,7 +10274,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInboxFilterCategory('calendar')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   inboxFilterCategory === 'calendar'
                     ? 'bg-purple-600 text-white shadow-xs'
                     : 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100'
@@ -10137,7 +10285,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInboxFilterCategory('project')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   inboxFilterCategory === 'project'
                     ? 'bg-purple-600 text-white shadow-xs'
                     : 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100'
@@ -10148,7 +10296,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInboxFilterCategory('fanclub')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   inboxFilterCategory === 'fanclub'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100'
@@ -10159,7 +10307,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInboxFilterCategory('foodsupport')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   inboxFilterCategory === 'foodsupport'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
@@ -10170,7 +10318,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInboxFilterCategory('thanks')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   inboxFilterCategory === 'thanks'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
@@ -10181,17 +10329,17 @@ export default function App() {
             </div>
 
             {fanMessages.length === 0 ? (
-              <div className="py-12 flex flex-col items-center justify-center text-center">
-                <Inbox className="w-10 h-10 text-slate-300 mb-2" />
-                <span className="text-sm font-bold text-[#1A3668] dark:text-white">
+              <div className="py-14 flex flex-col items-center justify-center text-center">
+                <Inbox className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3" />
+                <span className="text-base font-bold text-[#1A3668] dark:text-white">
                   Inbox is empty
                 </span>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs sm:text-sm text-slate-400 max-w-sm mt-1">
                   When viewers submit events, project suggestions, fan club tips, or thank you notes, they will appear here.
                 </span>
               </div>
             ) : (
-              <div className="space-y-3.5">
+              <div className="space-y-4">
                 {fanMessages
                   .filter((msg) => {
                     if (inboxFilterCategory === 'all') return true;
@@ -10208,7 +10356,7 @@ export default function App() {
                     return (
                       <div
                         key={msg.id}
-                        className={`p-4 rounded-2xl border transition-all ${
+                        className={`p-5 sm:p-6 rounded-[26px] border transition-all ${
                           msg.isRead
                             ? 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
                             : isThanks
@@ -10223,15 +10371,15 @@ export default function App() {
                         }`}
                       >
                         {/* Header Row: Title, Category Badge, Status, Date */}
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-extrabold text-[#1A3668] dark:text-white">
+                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="text-sm sm:text-base font-black text-[#1A3668] dark:text-white">
                               {msg.eventTitle}
                             </span>
 
                             {/* Category Pill Badge */}
                             <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              className={`text-xs font-bold px-3 py-1 rounded-full border ${
                                 isThanks
                                   ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 flex items-center gap-1'
                                   : isProject
@@ -10255,45 +10403,45 @@ export default function App() {
                             </span>
 
                             {!msg.isRead && (
-                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-500 text-white">
+                              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-rose-500 text-white shadow-2xs">
                                 New
                               </span>
                             )}
 
                             {msg.eventDate && (
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 border border-slate-200 dark:border-slate-600">
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 border border-slate-200 dark:border-slate-600">
                                 🗓️ {msg.eventDate}
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-400 shrink-0">
+                          <span className="text-xs font-semibold text-slate-400 shrink-0">
                             {new Date(msg.createdAt).toLocaleDateString()}
                           </span>
                         </div>
 
                         {/* Extra Context Badges */}
                         {(isProject || isFanClub || isFoodSupport || isThanks) && (
-                          <div className="flex items-center gap-1.5 flex-wrap mb-2 text-[11px]">
+                          <div className="flex items-center gap-2 flex-wrap mb-3 text-xs sm:text-[13px]">
                             {isThanks && (
-                              <span className="font-semibold px-2 py-0.5 rounded-md bg-rose-100/80 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 flex items-center gap-1">
-                                💌 Appreciation for: {msg.thanksTo || 'JimmySea'}
+                              <span className="font-semibold px-2.5 py-1 rounded-lg bg-rose-100/80 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 flex items-center gap-1.5">
+                                💌 Appreciation for: <strong className="font-bold">{msg.thanksTo || 'JimmySea'}</strong>
                               </span>
                             )}
 
                             {isProject && (
                               <>
                                 {msg.projectArtist && (
-                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-purple-100/70 dark:bg-purple-950/70 text-purple-800 dark:text-purple-200">
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-purple-100/70 dark:bg-purple-950/70 text-purple-800 dark:text-purple-200">
                                     ⭐ {msg.projectArtist}
                                   </span>
                                 )}
                                 {msg.characterNames && (
-                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200">
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200">
                                     🎭 {msg.characterNames}
                                   </span>
                                 )}
                                 {msg.projectYear && (
-                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300">
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300">
                                     📅 {msg.projectYear}
                                   </span>
                                 )}
@@ -10303,7 +10451,7 @@ export default function App() {
                             {isFanClub && (
                               <>
                                 {msg.fanClubCountry && (
-                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-sky-100/70 dark:bg-sky-950/70 text-sky-800 dark:text-sky-200">
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-sky-100/70 dark:bg-sky-950/70 text-sky-800 dark:text-sky-200">
                                     📍 {msg.fanClubCountry} {msg.fanClubCity ? `(${msg.fanClubCity})` : ''}
                                   </span>
                                 )}
@@ -10313,12 +10461,12 @@ export default function App() {
                             {isFoodSupport && (
                               <>
                                 {msg.foodSupportOrganizer && (
-                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-emerald-100/70 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200">
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-emerald-100/70 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200">
                                     🤝 Organized by: {msg.foodSupportOrganizer}
                                   </span>
                                 )}
                                 {msg.foodSupportTarget && (
-                                  <span className="font-semibold px-2 py-0.5 rounded-md bg-amber-100/70 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200">
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-amber-100/70 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200">
                                     🎯 Target: {msg.foodSupportTarget}
                                   </span>
                                 )}
@@ -10329,44 +10477,46 @@ export default function App() {
 
                         {/* Message / Description Body */}
                         {isThanks ? (
-                          <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-rose-100 dark:border-rose-900/60 shadow-2xs mb-3">
-                            <p className="text-xs text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-line font-medium italic">
+                          <div className="p-4 sm:p-5 rounded-2xl bg-white/85 dark:bg-slate-900/85 border border-rose-200/80 dark:border-rose-900/70 shadow-xs mb-3.5">
+                            <p className="text-sm sm:text-[15.5px] text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-line font-medium italic">
                               "{msg.message}"
                             </p>
                           </div>
                         ) : (
-                          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-3 whitespace-pre-line">
-                            "{msg.message}"
-                          </p>
+                          <div className="p-4 sm:p-5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-700/70 shadow-xs mb-3.5">
+                            <p className="text-sm sm:text-[15px] text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line font-medium">
+                              "{msg.message}"
+                            </p>
+                          </div>
                         )}
 
                         {/* Footer row: Sender, Link, Action buttons */}
-                        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex-wrap gap-2">
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center justify-between text-xs sm:text-sm pt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex-wrap gap-2.5">
+                          <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
                             From: <span className="font-bold text-[#1A3668] dark:text-white">{msg.senderName}</span>
                             {msg.sourceUrl && (
                               <a
                                 href={msg.sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="ml-2 text-purple-600 dark:text-purple-400 underline inline-flex items-center gap-1 font-semibold"
+                                className="ml-2.5 text-purple-600 dark:text-purple-400 underline inline-flex items-center gap-1 font-bold"
                               >
                                 <span>Official Link</span>
-                                <ExternalLink className="w-3 h-3" />
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {/* Action based on category */}
                             {isCalendar && (
                               <button
                                 onClick={() => handlePrefillEventFromMessage(msg)}
                                 style={{ backgroundColor: currentAccent.colorHex }}
-                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white shadow-2xs hover:opacity-90 cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white shadow-2xs hover:opacity-90 cursor-pointer"
                                 title="Pre-fill Add Event Form"
                               >
-                                <Sparkles className="w-3 h-3" />
+                                <Sparkles className="w-3.5 h-3.5" />
                                 <span>+ Add to Calendar</span>
                               </button>
                             )}
@@ -10379,10 +10529,10 @@ export default function App() {
                                   handleMarkMessageRead(msg.id);
                                   showToast(`Switched to Projects Hub! You can now add "${msg.eventTitle}".`);
                                 }}
-                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-2xs cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-2xs cursor-pointer"
                                 title="Switch to Projects Tab"
                               >
-                                <Film className="w-3 h-3" />
+                                <Film className="w-3.5 h-3.5" />
                                 <span>Go to Projects</span>
                               </button>
                             )}
@@ -10396,10 +10546,10 @@ export default function App() {
                                   handleMarkMessageRead(msg.id);
                                   showToast(`Switched to Fan Clubs Directory! You can add "${msg.eventTitle}".`);
                                 }}
-                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-2xs cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-2xs cursor-pointer"
                                 title="Switch to Fan Clubs Directory"
                               >
-                                <Users className="w-3 h-3" />
+                                <Users className="w-3.5 h-3.5" />
                                 <span>Go to Fan Clubs</span>
                               </button>
                             )}
@@ -10413,10 +10563,10 @@ export default function App() {
                                   handleMarkMessageRead(msg.id);
                                   showToast(`Switched to Food Support! You can add "${msg.eventTitle}".`);
                                 }}
-                                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs cursor-pointer"
                                 title="Switch to Food Support Projects"
                               >
-                                <HeartHandshake className="w-3 h-3" />
+                                <HeartHandshake className="w-3.5 h-3.5" />
                                 <span>Go to Food Support</span>
                               </button>
                             )}
@@ -10425,14 +10575,14 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handleToggleApproveForWall(msg, !msg.approvedForWall)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 cursor-pointer shadow-xs ${
+                                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs ${
                                   msg.approvedForWall
                                     ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/70 dark:text-rose-200 border border-rose-300 dark:border-rose-700'
                                     : 'bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 hover:opacity-95 text-white'
                                 }`}
                                 title={msg.approvedForWall ? 'Remove from Appreciation Wall' : 'Approve and publish to public Appreciation Wall'}
                               >
-                                <Heart className={`w-3 h-3 ${msg.approvedForWall ? 'fill-rose-500 text-rose-500' : 'fill-white text-white'}`} />
+                                <Heart className={`w-3.5 h-3.5 ${msg.approvedForWall ? 'fill-rose-500 text-rose-500' : 'fill-white text-white'}`} />
                                 <span>{msg.approvedForWall ? '⭐ Posted on Wall (Unpost)' : 'Post to Appreciation Wall'}</span>
                               </button>
                             )}
@@ -10440,17 +10590,17 @@ export default function App() {
                             {/* Copy Full Info Helper */}
                             <button
                               onClick={() => handleCopyMessageDetails(msg)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer shadow-2xs"
                               title="Copy all details to clipboard"
                             >
-                              <Copy className="w-3 h-3" />
+                              <Copy className="w-3.5 h-3.5" />
                               <span>Copy</span>
                             </button>
 
                             {/* Read / Unread toggle */}
                             <button
                               onClick={() => handleMarkMessageRead(msg.id)}
-                              className="px-2.5 py-1 rounded-full text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer"
+                              className="px-3 py-1.5 rounded-full text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer shadow-2xs"
                             >
                               {msg.isRead ? 'Mark Unread' : 'Mark Read'}
                             </button>
@@ -10458,10 +10608,10 @@ export default function App() {
                             {/* Delete button */}
                             <button
                               onClick={() => handleDeleteMessage(msg.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                              className="p-1.5 rounded-full text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
                               title="Delete message"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
