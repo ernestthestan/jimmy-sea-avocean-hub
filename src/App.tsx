@@ -5464,11 +5464,11 @@ export default function App() {
       {/* 3. WIDE RESPONSIVE DASHBOARD LAYOUT                            */}
       {/* ============================================================== */}
       {activeTab === 'calendar' ? (
-        <div className={`${containerWidthClass} flex flex-col lg:flex-row md:landscape:flex-row lg:items-start items-start justify-center gap-5 lg:gap-6 xl:gap-8`}>
-          {/* LEFT COLUMN: Calendar Card (Self-start & Natural Height, Never Stretched!) */}
-          <div className="w-full lg:w-[480px] md:landscape:w-[460px] xl:w-[540px] 2xl:w-[600px] shrink-0 flex flex-col gap-5 self-start order-1">
+        <div className={`${containerWidthClass} flex flex-col xl:flex-row xl:items-start items-start justify-center gap-6 xl:gap-8`}>
+          {/* LEFT COLUMN: Calendar Card (Full width on tablet & mobile, 15% less width on desktop) */}
+          <div className="w-full xl:w-[700px] 2xl:w-[780px] 3xl:w-[850px] shrink-0 flex flex-col gap-5 self-start order-1">
             {/* Calendar Header with Navigation */}
-            <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] sm:rounded-[32px] p-3.5 sm:p-8 md:p-9 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
+            <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] sm:rounded-[32px] p-4 sm:p-8 md:p-9 lg:p-10 pb-8 sm:pb-10 md:pb-12 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
@@ -5480,7 +5480,7 @@ export default function App() {
                         📍 {userLocalTimezone}
                       </span>
                     </div>
-                    <h2 className="text-xl sm:text-3xl md:text-[32px] font-black text-[#1A3668] dark:text-white leading-tight">
+                    <h2 className="text-xl sm:text-3xl md:text-[32px] lg:text-[34px] font-black text-[#1A3668] dark:text-white leading-tight">
                       {MONTHS[currentMonthDate.getMonth()]}
                       {currentMonthDate.getFullYear() !== 2026
                         ? ` '${String(currentMonthDate.getFullYear()).slice(-2)}`
@@ -5517,7 +5517,7 @@ export default function App() {
               </div>
 
               {/* Weekdays Grid */}
-              <div className="grid grid-cols-7 mb-2 sm:mb-4 text-center text-[11px] sm:text-sm md:text-[15px] font-black text-[#526586] dark:text-slate-400">
+              <div className="grid grid-cols-7 mb-2 sm:mb-4 md:mb-5 text-center text-[11px] sm:text-sm md:text-base font-black text-[#526586] dark:text-slate-400">
                 {WEEKDAYS.map((d) => (
                   <div key={d} className="py-1 sm:py-2 uppercase tracking-wider">
                     {d}
@@ -5526,12 +5526,12 @@ export default function App() {
               </div>
 
               {/* Days Grid */}
-              <div className="flex flex-col gap-2 sm:gap-4 md:gap-4.5">
+              <div className="flex flex-col gap-2 sm:gap-4 md:gap-5">
                 {displayedWeeks.map((week, wIdx) => (
                   <div key={wIdx} className="grid grid-cols-7 items-start">
                     {week.map((cell, cIdx) => {
                       if (!cell) {
-                        return <div key={`empty-${cIdx}`} className="h-[56px] sm:h-[78px] md:h-[86px]" />;
+                        return <div key={`empty-${cIdx}`} className="h-[62px] sm:h-[84px] md:h-[94px] lg:h-[98px]" />;
                       }
 
                       const isSelected = cell.dateStr === selectedDateStr;
@@ -5551,7 +5551,7 @@ export default function App() {
                             setSelectedDateStr(cell.dateStr);
                             setSelectedDayActiveEventId(null);
                           }}
-                          className={`flex flex-col items-center justify-start py-0.5 sm:py-1 px-0.5 sm:px-1 group cursor-pointer focus:outline-none min-h-[56px] sm:min-h-[78px] md:min-h-[86px] rounded-xl sm:rounded-2xl transition-all relative ${
+                          className={`flex flex-col items-center justify-start py-0.5 sm:py-1 px-0.5 sm:px-1 group cursor-pointer focus:outline-none min-h-[62px] sm:min-h-[84px] md:min-h-[94px] lg:min-h-[98px] rounded-xl sm:rounded-2xl transition-all relative ${
                             isToday
                               ? 'bg-[#E0F2FE] dark:bg-sky-950/70 border-2 border-sky-300 dark:border-sky-600 shadow-xs'
                               : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border-2 border-transparent'
@@ -5567,7 +5567,7 @@ export default function App() {
                           {/* Day Number Badge */}
                           <div
                             style={isSelected ? { backgroundColor: currentAccent.colorHex } : {}}
-                            className={`w-8 h-8 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center text-xs sm:text-base md:text-lg transition-all ${
+                            className={`w-8 h-8 sm:w-11 sm:h-11 md:w-12 md:h-12 lg:w-13 lg:h-13 rounded-full flex items-center justify-center text-xs sm:text-base md:text-lg transition-all ${
                               isSelected
                                 ? 'text-white font-black shadow-lg scale-105 ring-2 sm:ring-3 ring-purple-400/40'
                                 : isToday
@@ -5586,7 +5586,7 @@ export default function App() {
                                   <span
                                     key={mId}
                                     style={{ backgroundColor: m.circleBg }}
-                                    className="w-5 h-5 sm:w-7 sm:h-7 md:w-7.5 md:h-7.5 rounded-full text-[10px] sm:text-sm md:text-base flex items-center justify-center text-white ring-1.5 sm:ring-2 ring-white dark:ring-slate-900 shadow-xs select-none transition-transform group-hover:scale-110"
+                                    className="w-5 h-5 sm:w-7 sm:h-7 md:w-7.5 md:h-7.5 lg:w-8 lg:h-8 rounded-full text-[10px] sm:text-sm md:text-base flex items-center justify-center text-white ring-1.5 sm:ring-2 ring-white dark:ring-slate-900 shadow-xs select-none transition-transform group-hover:scale-110"
                                     title={m.name}
                                   >
                                     <span className="leading-none">{m.emoji}</span>
@@ -5610,7 +5610,7 @@ export default function App() {
               </div>
 
               {/* Week Toggle */}
-              <div className="border-t border-slate-100 dark:border-slate-800 mt-6 pt-3.5 pb-1 flex justify-center">
+              <div className="border-t border-slate-100 dark:border-slate-800 mt-6 md:mt-8 pt-4 pb-1 flex justify-center">
                 <button
                   onClick={() => setShowWeekOnly(!showWeekOnly)}
                   className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-[#1A3668] dark:text-purple-300 hover:text-purple-700 py-1 px-4 rounded-full transition-colors cursor-pointer"
@@ -5663,7 +5663,7 @@ export default function App() {
 
               {/* Event switcher tabs if day has multiple events */}
               {selectedDayEvents.length > 1 && (
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-3">
+                <div className="flex items-center gap-2 flex-wrap mb-3.5">
                   <button
                     onClick={() => setSelectedDayActiveEventId(null)}
                     className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
