@@ -5154,12 +5154,12 @@ export default function App() {
           const currentHeight = settings.bannerHeight || 'medium';
           const heightClass =
             currentHeight === 'compact'
-              ? 'h-32 sm:h-40 md:h-48 lg:h-60 xl:h-72 max-h-[22vh] sm:max-h-[25vh] landscape:h-32 sm:landscape:h-36 landscape:max-h-[140px] md:landscape:max-h-[165px]'
+              ? 'h-32 sm:h-40 md:h-48 lg:h-60 xl:h-72 max-h-[20vh] sm:max-h-[22vh] landscape:h-28 sm:landscape:h-32 landscape:max-h-[110px] md:landscape:max-h-[130px]'
               : currentHeight === 'tall'
-              ? 'h-48 sm:h-60 md:h-72 lg:h-[360px] xl:h-[440px] max-h-[32vh] sm:max-h-[36vh] landscape:h-40 sm:landscape:h-44 landscape:max-h-[185px] md:landscape:max-h-[210px]'
+              ? 'h-48 sm:h-60 md:h-72 lg:h-[360px] xl:h-[440px] max-h-[30vh] sm:max-h-[34vh] landscape:h-36 sm:landscape:h-40 landscape:max-h-[150px] md:landscape:max-h-[175px]'
               : currentHeight === 'auto'
-              ? 'h-38 sm:h-48 md:h-56 lg:h-68 xl:h-80 max-h-[26vh] sm:max-h-[30vh] landscape:h-36 sm:landscape:h-40 landscape:max-h-[155px] md:landscape:max-h-[180px]'
-              : 'h-36 sm:h-46 md:h-56 lg:h-68 xl:h-76 max-h-[25vh] sm:max-h-[28vh] landscape:h-34 sm:landscape:h-38 landscape:max-h-[150px] md:landscape:max-h-[175px]'; // medium default
+              ? 'h-38 sm:h-48 md:h-56 lg:h-68 xl:h-80 max-h-[24vh] sm:max-h-[28vh] landscape:h-32 sm:landscape:h-36 landscape:max-h-[125px] md:landscape:max-h-[145px]'
+              : 'h-36 sm:h-46 md:h-56 lg:h-68 xl:h-76 max-h-[24vh] sm:max-h-[26vh] landscape:h-30 sm:landscape:h-34 landscape:max-h-[120px] md:landscape:max-h-[140px]'; // medium default
 
           const activePhoto =
             activeBannerPhotos.length > 0
@@ -5183,17 +5183,17 @@ export default function App() {
               {activePhoto ? (
                 isContain ? (
                   /* Contain Mode: Full photo shown with soft blurred ambient backdrop */
-                  <div className="relative w-full h-full overflow-hidden flex items-center justify-center bg-slate-900/90 dark:bg-slate-950">
+                  <div className="relative w-full h-full overflow-hidden flex items-center justify-center bg-slate-900/95 dark:bg-slate-950">
                     <img
                       src={activePhoto}
                       alt="Ambient banner backdrop"
-                      className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-50 scale-125 saturate-150 pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-60 scale-125 saturate-150 pointer-events-none"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none z-5" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/20 to-black/30 pointer-events-none z-5" />
                     <img
                       src={activePhoto}
                       alt="Jimmy & Sea Hub Banner Artwork"
-                      className="w-full h-full object-contain relative z-10 transition-opacity duration-300"
+                      className="w-full h-full object-contain relative z-10 transition-opacity duration-300 drop-shadow-md"
                     />
                   </div>
                 ) : (
@@ -5308,10 +5308,10 @@ export default function App() {
       {/* ============================================================== */}
       {/* 2. SEPARATED HUB HEADER CARD WITH INTEGRATED MEMBER FILTERS     */}
       {/* ============================================================== */}
-      <div className={`${containerWidthClass} mb-4 sm:mb-6`}>
-        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[24px] sm:rounded-[28px] p-4 sm:p-6 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-3.5 sm:gap-4">
+      <div className={`${containerWidthClass} mb-3 sm:mb-5 landscape:mb-2.5`}>
+        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-6 landscape:p-3 sm:landscape:p-4 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-2.5 sm:gap-4">
           {/* Top Row: Title, Badges, Greeting & Owner Quick Actions */}
-          <div className={`flex flex-col md:flex-row gap-3 sm:gap-4 ${
+          <div className={`flex flex-col md:flex-row gap-2.5 sm:gap-4 ${
             (settings.headerAlignment || 'left') === 'center'
               ? 'items-center justify-between'
               : (settings.headerAlignment || 'left') === 'right'
@@ -5376,26 +5376,27 @@ export default function App() {
 
           {/* Integrated Member Filters Row - Moved into Jimmy Sea Avocean Career Projects when on projects tab */}
           {activeTab !== 'projects' && (
-            <div className="mt-0.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+            <div className="mt-0.5 pt-2.5 sm:pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1 shrink-0">
+                <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-0.5 shrink-0">
                   <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>Filter:</span>
+                  <span className="hidden xs:inline sm:inline">Filter:</span>
                 </div>
 
-                {/* All Members Toggle (Clean without count number) */}
+                {/* All Members Toggle (Compact 'All' on mobile so 4 pills fit on 1 row) */}
                 <button
                   onClick={() => setActiveMemberIds(settings.members.map((m) => m.id))}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border shrink-0 ${
+                  className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer border shrink-0 ${
                     activeMemberIds.length === settings.members.length
                       ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs'
                       : 'bg-slate-100 dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
-                  <span>All Members</span>
+                  <span className="sm:hidden">All</span>
+                  <span className="hidden sm:inline">All Members</span>
                 </button>
 
-                {/* Individual Member Filter Pills (Clean without count numbers) */}
+                {/* Individual Member Filter Pills (Compact on mobile portrait) */}
                 {settings.members.map((member) => {
                   const isActive = activeMemberIds.includes(member.id);
 
@@ -5417,7 +5418,7 @@ export default function App() {
                           ? '#334155'
                           : '#E2E8F0'
                       }}
-                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border-[1.5px] text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0 ${
+                      className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full border-[1.5px] text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0 ${
                         isActive
                           ? 'opacity-100 scale-100 shadow-xs ring-1 ring-purple-300/30'
                           : 'opacity-40 hover:opacity-80'
