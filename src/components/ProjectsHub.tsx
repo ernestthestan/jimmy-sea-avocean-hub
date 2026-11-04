@@ -1995,10 +1995,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-black text-[#1A3668] dark:text-white tracking-tight">
-              Jimmy & Sea Career Projects
+              Jimmy Sea Avocean Career Projects
             </h2>
             <p className="text-xs sm:text-sm font-medium text-[#607494] dark:text-slate-400 max-w-3xl">
-              Explore Jimmy and Sea&apos;s complete catalog of award-winning series, movies, official music videos, global partner brand endorsements, and personal ventures.
+              Explore Jimmy, Sea, and Avocean&apos;s complete catalog of award-winning series, movies, official music videos, global partner brand endorsements, and personal ventures.
             </p>
           </div>
 
