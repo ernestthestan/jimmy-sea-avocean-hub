@@ -360,6 +360,7 @@ const ALL_TIMEZONES: TimezoneOption[] = [
 ];
 
 const STREAMING_PLATFORM_PRESETS = [
+  { name: 'Official Trailer', platform: 'Trailer', icon: 'film', defaultUrl: 'https://youtube.com/@gmmtv' },
   { name: 'GMMTV', platform: 'YouTube', icon: 'youtube', defaultUrl: 'https://youtube.com/@gmmtv' },
   { name: 'GMMTV', platform: 'Facebook', icon: 'facebook', defaultUrl: 'https://facebook.com/gmmtvofficial' },
   { name: 'TrueID', platform: 'TrueID', icon: 'tv', defaultUrl: 'https://trueid.net' },
@@ -381,6 +382,16 @@ export function detectPlatformFromUrl(url: string): DetectedPlatformInfo {
   const trimmed = (url || '').trim().toLowerCase();
   if (!trimmed) {
     return { name: 'GMMTV', platform: 'YouTube' };
+  }
+
+  // 0. Official Trailer / Teaser
+  if (trimmed.includes('trailer') || trimmed.includes('teaser') || trimmed.includes('pilot')) {
+    const isGMMTV = trimmed.includes('gmmtv');
+    return {
+      name: isGMMTV ? 'GMMTV Official Trailer' : 'Official Trailer',
+      platform: 'Trailer',
+      categoryTag: 'Trailer'
+    };
   }
 
   // 1. YouTube
@@ -4346,30 +4357,47 @@ export default function App() {
                     Where to watch
                   </span>
                   <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] shadow-2xs border border-slate-200/80 dark:border-slate-700/80 divide-y divide-slate-200/80 dark:divide-slate-700/80 overflow-hidden">
-                    {ev.watchPlatforms.map((wp) => (
-                      <a
-                        key={wp.id}
-                        href={wp.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-3.5 flex items-center justify-between hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-slate-200/80 dark:bg-slate-700 group-hover:bg-purple-100 dark:group-hover:bg-purple-900 text-[#1A3668] dark:text-white flex items-center justify-center shrink-0 transition-colors">
-                            <Tv className="w-4 h-4" />
+                    {ev.watchPlatforms.map((wp) => {
+                      const isTrailer = (wp.platform || '').toLowerCase().includes('trailer') ||
+                        (wp.name || '').toLowerCase().includes('trailer') ||
+                        (wp.platform || '').toLowerCase().includes('teaser') ||
+                        (wp.name || '').toLowerCase().includes('teaser');
+                      return (
+                        <a
+                          key={wp.id}
+                          href={wp.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-3.5 flex items-center justify-between hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-xl ${
+                              isTrailer
+                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 group-hover:bg-amber-200 dark:group-hover:bg-amber-900'
+                                : 'bg-slate-200/80 dark:bg-slate-700 group-hover:bg-purple-100 dark:group-hover:bg-purple-900 text-[#1A3668] dark:text-white'
+                            } flex items-center justify-center shrink-0 transition-colors`}>
+                              {isTrailer ? <Film className="w-4 h-4" /> : <Tv className="w-4 h-4" />}
+                            </div>
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-bold text-[#1A3668] dark:text-white leading-tight">
+                                  {wp.name}
+                                </span>
+                                {isTrailer && (
+                                  <span className="text-[10px] font-black px-1.5 py-0.2 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 uppercase tracking-wider">
+                                    Trailer
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs font-medium text-[#475569] dark:text-slate-400">
+                                {wp.platform}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold text-[#1A3668] dark:text-white leading-tight">
-                              {wp.name}
-                            </span>
-                            <span className="text-xs font-medium text-[#475569] dark:text-slate-400">
-                              {wp.platform}
-                            </span>
-                          </div>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-purple-600 transition-colors" />
-                      </a>
-                    ))}
+                          <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-purple-600 transition-colors" />
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -7541,20 +7569,27 @@ export default function App() {
                 {/* Quick Add Presets Bar */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10.5px] font-bold text-slate-400">Quick add presets:</span>
-                  {STREAMING_PLATFORM_PRESETS.map((p, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        setNewPlatformName(p.name);
-                        setNewPlatformType(p.platform);
-                        setNewPlatformUrl(p.defaultUrl);
-                      }}
-                      className="text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[#1A3668] dark:text-white hover:bg-purple-50 dark:hover:bg-purple-950/60 cursor-pointer transition-colors shadow-2xs"
-                    >
-                      {p.name} {p.platform}
-                    </button>
-                  ))}
+                  {STREAMING_PLATFORM_PRESETS.map((p, idx) => {
+                    const isTrailerPreset = p.platform === 'Trailer' || p.name.includes('Trailer');
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setNewPlatformName(p.name);
+                          setNewPlatformType(p.platform);
+                          setNewPlatformUrl(p.defaultUrl);
+                        }}
+                        className={`text-[10.5px] font-bold px-2 py-0.5 rounded-md border cursor-pointer transition-colors shadow-2xs ${
+                          isTrailerPreset
+                            ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100'
+                            : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-[#1A3668] dark:text-white hover:bg-purple-50 dark:hover:bg-purple-950/60'
+                        }`}
+                      >
+                        {isTrailerPreset ? '🎬 ' : ''}{p.name === 'Official Trailer' ? 'Official Trailer' : `${p.name} ${p.platform}`}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Auto-detected website indicator badge */}
@@ -7628,29 +7663,43 @@ export default function App() {
 
                 {formWatchPlatforms.length > 0 && (
                   <div className="space-y-1.5 pt-1">
-                    {formWatchPlatforms.map((wp) => (
-                      <div
-                        key={wp.id}
-                        className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-semibold shadow-2xs"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <Tv className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-                          <span className="font-bold text-[#1A3668] dark:text-white">{wp.name}</span>
-                          <span className="text-slate-400">·</span>
-                          <span className="text-[#607494] dark:text-slate-300">{wp.platform}</span>
-                          <span className="text-slate-400">·</span>
-                          <span className="text-[11px] text-slate-400 truncate max-w-[200px]">{wp.url}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveWatchPlatform(wp.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
-                          title="Remove streaming link"
+                    {formWatchPlatforms.map((wp) => {
+                      const isTrailer = (wp.platform || '').toLowerCase().includes('trailer') ||
+                        (wp.name || '').toLowerCase().includes('trailer') ||
+                        (wp.platform || '').toLowerCase().includes('teaser') ||
+                        (wp.name || '').toLowerCase().includes('teaser');
+                      return (
+                        <div
+                          key={wp.id}
+                          className={`flex items-center justify-between p-2 rounded-xl border text-xs font-semibold shadow-2xs ${
+                            isTrailer
+                              ? 'bg-amber-50/70 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800'
+                              : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600'
+                          }`}
                         >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-2 truncate">
+                            {isTrailer ? (
+                              <Film className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            ) : (
+                              <Tv className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                            )}
+                            <span className="font-bold text-[#1A3668] dark:text-white">{wp.name}</span>
+                            <span className="text-slate-400">·</span>
+                            <span className="text-[#607494] dark:text-slate-300">{wp.platform}</span>
+                            <span className="text-slate-400">·</span>
+                            <span className="text-[11px] text-slate-400 truncate max-w-[200px]">{wp.url}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveWatchPlatform(wp.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
+                            title="Remove streaming link"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

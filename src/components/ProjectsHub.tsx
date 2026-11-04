@@ -55,6 +55,7 @@ import { TRANSLATION_LANGUAGES, translateText } from '../lib/translateService';
 import { compressImageFile } from '../lib/imageCompression';
 
 export const PROJECT_WATCH_PLATFORMS = [
+  { value: 'Trailer', label: 'Official Trailer', icon: '🎬' },
   { value: 'Viki', label: 'Viki (Rakuten Viki)', icon: '🟣' },
   { value: 'iQiyi', label: 'iQiyi', icon: '🟢' },
   { value: 'Viu', label: 'Viu', icon: '🟡' },
@@ -77,6 +78,9 @@ export const PROJECT_WATCH_PLATFORMS = [
 export function detectProjectWatchPlatform(url: string): { platform: string; label: string } | null {
   const u = (url || '').trim().toLowerCase();
   if (!u) return null;
+  if (u.includes('trailer') || u.includes('teaser') || u.includes('pilot')) {
+    return { platform: 'Trailer', label: 'Official Trailer' };
+  }
   if (u.includes('viki.com')) return { platform: 'Viki', label: 'Viki' };
   if (u.includes('iqiyi.com') || u.includes('iq.com')) return { platform: 'iQiyi', label: 'iQiyi' };
   if (u.includes('viu.com')) return { platform: 'Viu', label: 'Viu' };
@@ -1386,6 +1390,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
   const getPlatformIcon = (platformStr?: string) => {
     const p = (platformStr || '').toLowerCase();
+    if (p.includes('trailer') || p.includes('teaser') || p.includes('pilot')) return '🎬';
     if (p.includes('viki')) return '🟣';
     if (p.includes('iqiyi') || p.includes('iq.com')) return '🟢';
     if (p.includes('viu')) return '🟡';
@@ -3042,19 +3047,34 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           </div>
 
                           <div className="flex flex-wrap gap-2">
-                            {allWatchLinks.map((link, lIdx) => (
-                              <a
-                                key={lIdx}
-                                href={link.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`inline-flex items-center gap-1.5 rounded-xl font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs hover:border-purple-300 cursor-pointer ${typo.buttons}`}
-                              >
-                                <span>{getPlatformIcon(link.platform || link.label)}</span>
-                                <span className="truncate max-w-[170px]">{link.label}</span>
-                                <ExternalLink className="w-3 h-3 text-slate-400" />
-                              </a>
-                            ))}
+                            {allWatchLinks.map((link, lIdx) => {
+                              const isTrailer = (link.platform || '').toLowerCase().includes('trailer') ||
+                                (link.label || '').toLowerCase().includes('trailer') ||
+                                (link.platform || '').toLowerCase().includes('teaser') ||
+                                (link.label || '').toLowerCase().includes('teaser');
+                              return (
+                                <a
+                                  key={lIdx}
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-1.5 rounded-xl font-bold transition-all shadow-2xs cursor-pointer ${
+                                    isTrailer
+                                      ? 'bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700/80 hover:border-amber-400'
+                                      : 'bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                                  } ${typo.buttons}`}
+                                >
+                                  <span>{getPlatformIcon(link.platform || link.label)}</span>
+                                  <span className="truncate max-w-[170px]">{link.label}</span>
+                                  {isTrailer && (
+                                    <span className="text-[9.5px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+                                      Trailer
+                                    </span>
+                                  )}
+                                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                                </a>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
