@@ -4790,7 +4790,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen w-full flex flex-col items-center pb-[max(7rem,calc(5.5rem+env(safe-area-inset-bottom)))] sm:pb-32 landscape:pb-20 md:landscape:pb-28 px-2.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 landscape:pt-3.5 select-none sm:select-auto relative transition-colors duration-300 ${
+      className={`min-h-screen w-full flex flex-col items-center pb-32 sm:pb-36 md:pb-40 landscape:pb-28 md:landscape:pb-36 lg:landscape:pb-40 px-2.5 sm:px-6 lg:px-8 pt-3 sm:pt-5 landscape:pt-3 select-none sm:select-auto relative transition-colors duration-300 ${
         isDarkMode ? 'dark text-[#F8FAFC]' : 'text-[#1A3668]'
       }`}
       style={{
@@ -4839,10 +4839,10 @@ export default function App() {
         </div>
       )}
 
-      {/* TOP TOOLBAR: BALANCED TWO-TIER RESPONSIVE LAYOUT FOR LAPTOP & MOBILE */}
+      {/* TOP TOOLBAR: BALANCED RESPONSIVE LAYOUT FOR FOLDABLE, TABLET & DESKTOP */}
       <div className={`${containerWidthClass} flex flex-col gap-2 sm:gap-2.5 mb-3 sm:mb-4`}>
         {/* ROW 1: Engagement & Stats on Left, User Display Preferences & Logins on Right */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-2.5 w-full">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 w-full">
           {/* Left Side: "Leave a message" (viewers), Inbox (admins/owner), Stats & Role Badge */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {/* Leave a Message button: visible to everyone */}
@@ -4931,7 +4931,7 @@ export default function App() {
           </div>
 
           {/* Right Controls: Accent Selector, 12H/24H, Dark Mode, Cloud Sync, Reminders, and Visitor Logins */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap ml-0 sm:ml-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap ml-0 md:ml-auto">
             {/* Accent Color Switcher: Purple, Blue, Green (Saved to user's device only) */}
             <div
               className="inline-flex items-center p-1 rounded-full bg-white/90 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-xs gap-1"
@@ -5154,12 +5154,12 @@ export default function App() {
           const currentHeight = settings.bannerHeight || 'medium';
           const heightClass =
             currentHeight === 'compact'
-              ? 'h-40 sm:h-52 md:h-64 lg:h-72 xl:h-80 landscape:max-h-[160px] md:landscape:max-h-none'
+              ? 'h-32 sm:h-40 md:h-48 lg:h-60 xl:h-72 max-h-[22vh] sm:max-h-[25vh] landscape:h-32 sm:landscape:h-36 landscape:max-h-[140px] md:landscape:max-h-[165px]'
               : currentHeight === 'tall'
-              ? 'h-60 sm:h-80 md:h-[400px] lg:h-[480px] xl:h-[540px] 2xl:h-[620px] landscape:max-h-[210px] md:landscape:max-h-none'
+              ? 'h-48 sm:h-60 md:h-72 lg:h-[360px] xl:h-[440px] max-h-[32vh] sm:max-h-[36vh] landscape:h-40 sm:landscape:h-44 landscape:max-h-[185px] md:landscape:max-h-[210px]'
               : currentHeight === 'auto'
-              ? 'h-52 sm:h-68 md:h-84 lg:h-96 xl:h-[440px] 2xl:h-[500px] landscape:max-h-[180px] md:landscape:max-h-none'
-              : 'h-48 sm:h-64 md:h-80 lg:h-96 xl:h-[420px] 2xl:h-[480px] landscape:max-h-[175px] md:landscape:max-h-none'; // medium default
+              ? 'h-38 sm:h-48 md:h-56 lg:h-68 xl:h-80 max-h-[26vh] sm:max-h-[30vh] landscape:h-36 sm:landscape:h-40 landscape:max-h-[155px] md:landscape:max-h-[180px]'
+              : 'h-36 sm:h-46 md:h-56 lg:h-68 xl:h-76 max-h-[25vh] sm:max-h-[28vh] landscape:h-34 sm:landscape:h-38 landscape:max-h-[150px] md:landscape:max-h-[175px]'; // medium default
 
           const activePhoto =
             activeBannerPhotos.length > 0
@@ -6157,147 +6157,152 @@ export default function App() {
       {/* ============================================================== */}
       {/* 2. DESKTOP & TABLET FLOATING DOCK (>= 640px)                    */}
       {/* ============================================================== */}
-      <div className="hidden sm:flex fixed bottom-3 sm:bottom-4 md:bottom-5 landscape:bottom-2 md:landscape:bottom-4 left-1/2 -translate-x-1/2 z-40 items-center gap-1.5 sm:gap-2.5 md:gap-3 max-w-[calc(100vw-16px)] justify-center flex-nowrap pointer-events-none scale-[0.88] sm:scale-95 md:scale-[0.88] lg:scale-100 landscape:scale-[0.80] md:landscape:scale-95 lg:landscape:scale-100 origin-bottom">
-        {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
-          <div
-            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
-              isDarkMode
-                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
-                : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
-            }`}
-          >
-            <button
-              onClick={() => setActiveTab('calendar')}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-                activeTab === 'calendar'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+      <div className="hidden sm:flex fixed bottom-2 sm:bottom-3 md:bottom-4 lg:bottom-5 landscape:bottom-1.5 md:landscape:bottom-2.5 left-0 right-0 z-40 justify-center pointer-events-none px-2">
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 lg:gap-2.5 xl:gap-3 flex-nowrap shrink-0 pointer-events-none scale-[0.75] sm:scale-[0.78] md:scale-[0.84] lg:scale-95 xl:scale-100 landscape:scale-[0.68] sm:landscape:scale-[0.72] md:landscape:scale-[0.78] lg:landscape:scale-90 xl:landscape:scale-100 origin-bottom">
+          {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
+          <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+            <div
+              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
+                  : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
               }`}
-              title="View Calendar schedule"
             >
-              <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-              <span>Calendar</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('list')}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-                activeTab === 'list'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
-              }`}
-              title="View List schedule"
-            >
-              <ListIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-              <span>List</span>
-            </button>
+              <button
+                onClick={() => setActiveTab('calendar')}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs lg:text-[13px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeTab === 'calendar'
+                    ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                    : isDarkMode
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                    : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+                }`}
+                title="View Calendar schedule"
+              >
+                <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                <span className="shrink-0">Calendar</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('list')}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs lg:text-[13px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeTab === 'list'
+                    ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                    : isDarkMode
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                    : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+                }`}
+                title="View List schedule"
+              >
+                <ListIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                <span className="shrink-0">List</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Bubble 2: Projects Navigation with Purple, Blue & Green Gradient */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
-          <div
-            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
-              isDarkMode
-                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
-                : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
-            }`}
-          >
-            <button
-              onClick={() => setActiveTab('projects')}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-                activeTab === 'projects'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+          {/* Bubble 2: Projects Navigation with Purple, Blue & Green Gradient */}
+          <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+            <div
+              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
+                  : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
               }`}
-              title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
             >
-              <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-              <span>Projects</span>
-            </button>
+              <button
+                onClick={() => setActiveTab('projects')}
+                className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs lg:text-[13px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeTab === 'projects'
+                    ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                    : isDarkMode
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                    : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+                }`}
+                title="Jimmy, Sea & Avocean Shows, Movies, MVs, Partner Brands & Owned Brands"
+              >
+                <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                <span className="shrink-0">Projects</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Bubble 3: Fan Hub Navigation (Fan Clubs / Food Support) with Purple, Blue & Green Gradient */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
-          <div
-            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
-              isDarkMode
-                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
-                : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
-            }`}
-          >
-            <button
-              onClick={() => {
-                setActiveTab('fanhub');
-                setFanHubSubTab('directory');
-              }}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-                activeTab === 'fanhub' && fanHubSubTab === 'directory'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+          {/* Bubble 3: Fan Hub Navigation (Fan Clubs / Food Support) with Purple, Blue & Green Gradient */}
+          <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+            <div
+              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
+                  : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
               }`}
-              title="JimmySea Fan Clubs Directory"
             >
-              <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-              <span>Fan Clubs</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('fanhub');
-                setFanHubSubTab('foodsupport');
-              }}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-                activeTab === 'fanhub' && fanHubSubTab === 'foodsupport'
-                  ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
-              }`}
-              title="Fan Food Support & Catering Projects"
-            >
-              <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-              <span>Food Support</span>
-            </button>
+              <button
+                onClick={() => {
+                  setActiveTab('fanhub');
+                  setFanHubSubTab('directory');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs lg:text-[13px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeTab === 'fanhub' && fanHubSubTab === 'directory'
+                    ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                    : isDarkMode
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                    : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+                }`}
+                title="JimmySea Fan Clubs Directory"
+              >
+                <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                <span className="shrink-0">Fan Clubs</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('fanhub');
+                  setFanHubSubTab('foodsupport');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs lg:text-[13px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeTab === 'fanhub' && fanHubSubTab === 'foodsupport'
+                    ? 'bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 text-white shadow-md shadow-purple-500/25'
+                    : isDarkMode
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                    : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+                }`}
+                title="Fan Food Support & Catering Projects"
+              >
+                <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0" />
+                <span className="shrink-0">Food Support</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Bubble 4: Appreciation Wall Navigation Bubble */}
-        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-400 shadow-xl shadow-pink-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
-          <div
-            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
-              isDarkMode
-                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-rose-950/80 border border-pink-500/30 shadow-lg'
-                : 'bg-gradient-to-r from-purple-50/95 via-pink-50/95 to-rose-50/95 border border-white/90 shadow-lg shadow-pink-500/15'
-            }`}
-          >
-            <button
-              onClick={() => setActiveTab('appreciation')}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
-                activeTab === 'appreciation'
-                  ? 'bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 text-white shadow-md shadow-pink-500/25'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+          {/* Bubble 4: Appreciation Wall Navigation Bubble */}
+          <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-400 shadow-xl shadow-pink-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+            <div
+              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                isDarkMode
+                  ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-rose-950/80 border border-pink-500/30 shadow-lg'
+                  : 'bg-gradient-to-r from-purple-50/95 via-pink-50/95 to-rose-50/95 border border-white/90 shadow-lg shadow-pink-500/15'
               }`}
-              title="JimmySea & Avocean Appreciation Wall"
             >
-              <Heart className={`w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] ${activeTab === 'appreciation' ? 'fill-white text-white' : 'text-pink-500'}`} />
-              <span>Appreciation Wall</span>
-              {approvedThanksCount > 0 && (
-                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${activeTab === 'appreciation' ? 'bg-white/25 text-white' : 'bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-200'}`}>
-                  {approvedThanksCount}
+              <button
+                onClick={() => setActiveTab('appreciation')}
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 lg:py-2.5 rounded-full text-xs lg:text-[13px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeTab === 'appreciation'
+                    ? 'bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 text-white shadow-md shadow-pink-500/25'
+                    : isDarkMode
+                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                    : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+                }`}
+                title="JimmySea & Avocean Appreciation Wall"
+              >
+                <Heart className={`w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] shrink-0 ${activeTab === 'appreciation' ? 'fill-white text-white' : 'text-pink-500'}`} />
+                <span className="whitespace-nowrap shrink-0">
+                  <span>Appreciation</span>
+                  <span className="hidden xl:inline">&nbsp;Wall</span>
                 </span>
-              )}
-            </button>
+                {approvedThanksCount > 0 && (
+                  <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full shrink-0 ${activeTab === 'appreciation' ? 'bg-white/25 text-white' : 'bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-200'}`}>
+                    {approvedThanksCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
