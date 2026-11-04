@@ -59,30 +59,39 @@ export interface LiveStats {
   liveViewers?: number;
 }
 
-// Helper to get Bangkok YYYY-MM-DD to guarantee cross-device date sync (Asia/Bangkok timezone)
-export const getBangkokDateKey = (): string => {
+/**
+ * Helper to get Philippine Time YYYY-MM-DD (Asia/Manila, UTC+8)
+ * Resets precisely at 12:00 Midnight Philippine Time (00:00 PHT).
+ */
+export const getPhilippineDateKey = (): string => {
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
   } catch {
     const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
+    // UTC+8 offset for Philippine Time
+    const phTime = new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
+    const y = phTime.getFullYear();
+    const m = String(phTime.getMonth() + 1).padStart(2, '0');
+    const d = String(phTime.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
 };
 
+// Backwards-compatible alias
+export const getBangkokDateKey = getPhilippineDateKey;
+
 /**
  * DAILY REFRESHING VISITS TRACKING
- * - Standardized on Bangkok schedule timezone (Asia/Bangkok)
- * - Registers visit once per device per calendar day in stats/global
- * - Guarantees phone, laptop, and desktop see the exact same count without timezone resets
+ * - Standardized on Philippine Time (Asia/Manila, UTC+8)
+ * - Automatically resets today's visit count at 12:00 Midnight Philippine Time
+ * - Registers visit once per device per PH calendar day in stats/global
+ * - Guarantees phone, laptop, and desktop see the exact same count
  */
 export function startDailyVisitsTracking(
   onStatsUpdate: (stats: LiveStats) => void
 ) {
   let unsubscribeStats: (() => void) | null = null;
-  const todayKey = getBangkokDateKey();
+  let activeTodayKey = getPhilippineDateKey();
 
   // Initial stats from localStorage
   let currentTodayVisits = 1;
@@ -108,47 +117,60 @@ export function startDailyVisitsTracking(
     return () => {};
   }
 
-  // Register visit for TODAY once per device per Bangkok calendar day
-  try {
-    const lastCountedDate = localStorage.getItem('avocean_visit_date_bkk_v3');
-    if (lastCountedDate !== todayKey) {
-      localStorage.setItem('avocean_visit_date_bkk_v3', todayKey);
-      const statsDocRef = doc(db, 'stats', 'global');
-      getDoc(statsDocRef)
-        .then((snap) => {
-          const data = snap.exists() ? snap.data() : null;
-          const isSameDay = data && data.currentDate === todayKey;
-          const updatePayload = isSameDay
-            ? {
-                todayVisits: increment(1),
-                totalVisits: increment(1),
-                currentDate: todayKey,
-                lastUpdated: new Date().toISOString()
-              }
-            : {
-                todayVisits: 1,
-                totalVisits: increment(1),
-                currentDate: todayKey,
-                lastUpdated: new Date().toISOString()
-              };
+  // Register visit for TODAY once per device per Philippine calendar day
+  const recordVisitForToday = (key: string) => {
+    try {
+      const lastCountedDate = localStorage.getItem('avocean_visit_date_ph_v1');
+      if (lastCountedDate !== key) {
+        localStorage.setItem('avocean_visit_date_ph_v1', key);
+        const statsDocRef = doc(db, 'stats', 'global');
+        getDoc(statsDocRef)
+          .then((snap) => {
+            const data = snap.exists() ? snap.data() : null;
+            const isSameDay = data && data.currentDate === key;
+            const updatePayload = isSameDay
+              ? {
+                  todayVisits: increment(1),
+                  totalVisits: increment(1),
+                  currentDate: key,
+                  lastUpdated: new Date().toISOString()
+                }
+              : {
+                  todayVisits: 1,
+                  totalVisits: increment(1),
+                  currentDate: key,
+                  lastUpdated: new Date().toISOString()
+                };
 
-          setDoc(statsDocRef, updatePayload, { merge: true }).catch((err: any) => {
+            setDoc(statsDocRef, updatePayload, { merge: true }).catch((err: any) => {
+              if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+                notifyQuotaExceeded();
+              }
+            });
+          })
+          .catch((err: any) => {
             if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
               notifyQuotaExceeded();
+            } else {
+              console.warn('Could not update daily visit counter:', err);
             }
           });
-        })
-        .catch((err: any) => {
-          if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
-            notifyQuotaExceeded();
-          } else {
-            console.warn('Could not update daily visit counter:', err);
-          }
-        });
+      }
+    } catch (err) {
+      console.warn('Session visit check error:', err);
     }
-  } catch (err) {
-    console.warn('Session visit check error:', err);
-  }
+  };
+
+  recordVisitForToday(activeTodayKey);
+
+  // Periodic check for 12:00 Midnight Philippine Time rollover
+  const midnightCheckInterval = setInterval(() => {
+    const freshKey = getPhilippineDateKey();
+    if (freshKey !== activeTodayKey) {
+      activeTodayKey = freshKey;
+      recordVisitForToday(freshKey);
+    }
+  }, 30000);
 
   // Listen to stats doc with safe error handler
   try {
@@ -158,9 +180,9 @@ export function startDailyVisitsTracking(
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          const currentTodayKey = getBangkokDateKey();
+          const currentTodayKey = getPhilippineDateKey();
           const isToday = data.currentDate === currentTodayKey;
-          currentTodayVisits = isToday && typeof data.todayVisits === 'number' ? Math.max(1, data.todayVisits) : (typeof data.todayVisits === 'number' ? data.todayVisits : 1);
+          currentTodayVisits = isToday && typeof data.todayVisits === 'number' ? Math.max(1, data.todayVisits) : 1;
           currentTotalVisits = typeof data.totalVisits === 'number' ? Math.max(1, data.totalVisits) : currentTodayVisits;
           onStatsUpdate({
             todayVisits: currentTodayVisits,
@@ -190,6 +212,7 @@ export function startDailyVisitsTracking(
 
   return () => {
     if (unsubscribeStats) unsubscribeStats();
+    clearInterval(midnightCheckInterval);
   };
 }
 

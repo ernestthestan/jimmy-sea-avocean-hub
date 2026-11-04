@@ -1181,6 +1181,51 @@ const formatEventTime = (ev: ScheduleEvent, prefer12h: boolean = true) => {
   return timeRange;
 };
 
+/**
+ * Automatically calculates the visitor's device local time for an event
+ * e.g. An event at 18:00 BKK (UTC+7) displays in Manila (UTC+8) as 7:00 PM Your Time
+ */
+const getVisitorLocalTimeLabel = (ev: ScheduleEvent, prefer12h: boolean = true): string | null => {
+  if (ev.isAllDay || !ev.time || ev.time.toLowerCase() === 'all day') return null;
+  try {
+    const fromOffset = getTimezoneOffsetHours(ev.timezone || 'BKK');
+    const [h, m] = parseHourAndMinute(ev.time);
+    const [y, mon, d] = ev.date.split('-').map(Number);
+    const startUtcMs = Date.UTC(y, mon - 1, d, h - fromOffset, m || 0);
+    const startDate = new Date(startUtcMs);
+
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: prefer12h
+    };
+    const localStartStr = new Intl.DateTimeFormat(undefined, timeOptions).format(startDate);
+
+    let localEndStr = '';
+    if (ev.endTime) {
+      const [eh, em] = parseHourAndMinute(ev.endTime);
+      const endUtcMs = Date.UTC(y, mon - 1, d, eh - fromOffset, em || 0);
+      const endDate = new Date(endUtcMs);
+      localEndStr = new Intl.DateTimeFormat(undefined, timeOptions).format(endDate);
+    }
+
+    const range = localEndStr ? `${localStartStr} – ${localEndStr}` : localStartStr;
+
+    // Check if the date rolled over to next or previous day in visitor's local timezone
+    const localDateStr = toDateKey(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    let dateShift = '';
+    if (localDateStr > ev.date) {
+      dateShift = ' (+1 day)';
+    } else if (localDateStr < ev.date) {
+      dateShift = ' (-1 day)';
+    }
+
+    return `${range}${dateShift}`;
+  } catch {
+    return null;
+  }
+};
+
 // Generate 1-Click Google Calendar URL
 const createGoogleCalendarUrl = (ev: ScheduleEvent) => {
   const fromOffset = getTimezoneOffsetHours(ev.timezone || 'BKK');
@@ -4034,6 +4079,15 @@ export default function App() {
                         {getEventTimeDurationLabel(ev.time, ev.endTime)}
                       </span>
                     )}
+                    {/* Visitor Local Time Conversion (Calculated automatically for the person visiting) */}
+                    {getVisitorLocalTimeLabel(ev, is12Hour) && (
+                      <span
+                        className="text-[10.5px] font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/70 px-2 py-0.5 rounded-full border border-sky-200/80 dark:border-sky-800"
+                        title={`Converted to your device local time (${userLocalTimezone})`}
+                      >
+                        🕒 {getVisitorLocalTimeLabel(ev, is12Hour)} (Your Time)
+                      </span>
+                    )}
                   </>
                 )}
               </span>
@@ -4892,7 +4946,7 @@ export default function App() {
             {canEditEvents && (
               <div
                 className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
-                title={`${visitorStats.todayVisits.toLocaleString()} visits today · ${visitorStats.totalVisits.toLocaleString()} all-time`}
+                title={`${visitorStats.todayVisits.toLocaleString()} visits today (Resets at 12:00 Midnight Philippine Time) · ${visitorStats.totalVisits.toLocaleString()} all-time`}
               >
                 <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
                 <span>{visitorStats.todayVisits.toLocaleString()} visits today</span>
@@ -5456,9 +5510,14 @@ export default function App() {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
-                    <span className="text-xs sm:text-sm font-extrabold text-[#607494] dark:text-slate-400 uppercase tracking-widest">
-                      Calendar View
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs sm:text-sm font-extrabold text-[#607494] dark:text-slate-400 uppercase tracking-widest">
+                        Calendar View
+                      </span>
+                      <span className="text-[10px] font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/70 px-2 py-0.5 rounded-full border border-sky-200/80 dark:border-sky-800" title="Dates & times are shown based on your device local time">
+                        📍 {userLocalTimezone}
+                      </span>
+                    </div>
                     <h2 className="text-2xl sm:text-3xl md:text-[32px] font-black text-[#1A3668] dark:text-white leading-tight">
                       {MONTHS[currentMonthDate.getMonth()]}
                       {currentMonthDate.getFullYear() !== 2026
