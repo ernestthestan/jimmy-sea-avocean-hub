@@ -5461,12 +5461,12 @@ export default function App() {
       </div>
 
       {/* ============================================================== */}
-      {/* 3. WIDE RESPONSIVE DASHBOARD LAYOUT                            */}
+      {/* 3. WIDE RESPONSIVE DASHBOARD LAYOUT (50-50 SPLIT ON DESKTOP)   */}
       {/* ============================================================== */}
       {activeTab === 'calendar' ? (
-        <div className={`${containerWidthClass} flex flex-col xl:flex-row xl:items-start items-start justify-center gap-6 xl:gap-8`}>
-          {/* LEFT COLUMN: Calendar Card (Full width on tablet & mobile, 15% less width on desktop) */}
-          <div className="w-full xl:w-[700px] 2xl:w-[780px] 3xl:w-[850px] shrink-0 flex flex-col gap-5 self-start order-1">
+        <div className={`${containerWidthClass} grid grid-cols-1 xl:grid-cols-2 items-start justify-center gap-6 xl:gap-8`}>
+          {/* LEFT COLUMN: Calendar Card (Exactly 50% on desktop, full width on tablet/mobile) */}
+          <div className="w-full min-w-0 flex flex-col gap-5 self-start order-1">
             {/* Calendar Header with Navigation */}
             <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] sm:rounded-[32px] p-4 sm:p-8 md:p-9 lg:p-10 pb-8 sm:pb-10 md:pb-12 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
@@ -5631,8 +5631,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Selected Day Schedule */}
-          <div className="w-full flex-1 min-w-0 flex flex-col order-2 self-start">
+          {/* RIGHT COLUMN: Selected Day Schedule (Exactly 50% on desktop, full width on tablet/mobile) */}
+          <div className="w-full min-w-0 flex flex-col order-2 self-start">
             <div className="flex flex-col flex-1">
               {/* Selected Day Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1 mb-4">
