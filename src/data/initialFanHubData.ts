@@ -24,7 +24,7 @@ export const INITIAL_FOOD_SUPPORT_PROJECTS: FoodSupportProject[] = [
     announcementUrl: 'https://x.com/Avocean_Official',
     deliveryNotes: 'กำลังประสานงานจุดจอดรถหน้าตึก GMM และแพ็กเกจของขวัญพิเศษประจำปี 2026',
     translatedDeliveryNotes: 'Currently coordinating parking access at GMMTV building and preparing the special 2026 annual celebratory gift packs for the team.',
-    hashtags: '#JimmySea #AVOCEAN #jimmyyjp #sea_tawinan',
+    hashtags: '#JimmySea #AVOCEAN #jimmyyjp #Sea_tawinan',
     proofMedia: [],
     createdAt: '2026-10-25T08:00:00.000Z'
   },

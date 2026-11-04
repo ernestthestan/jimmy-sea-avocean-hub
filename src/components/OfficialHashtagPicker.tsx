@@ -10,7 +10,7 @@ export interface PopularHashtagItem {
 export const POPULAR_HASHTAGS: PopularHashtagItem[] = [
   { tag: '#jimmyyjp', category: 'jimmy', desc: 'Jimmy Jitaraphol (Official X/IG)' },
   { tag: '#Tiny', category: 'jimmy', desc: 'Jimmy Fandom' },
-  { tag: '#sea_tawinan', category: 'sea', desc: 'Sea Tawinan (Official X/IG)' },
+  { tag: '#Sea_tawinan', category: 'sea', desc: 'Sea Tawinan (Official X/IG)' },
   { tag: '#ChaoTalay', category: 'sea', desc: 'Sea Fandom (English)' },
   { tag: '#ชาวทะเล', category: 'sea', desc: 'Sea Fandom (Thai)' },
   { tag: '#AVOCEAN', category: 'avocean', desc: 'JimmySea Official Fandom' },
@@ -33,7 +33,7 @@ export const OfficialHashtagPicker: React.FC<OfficialHashtagPickerProps> = ({
   onChange,
   onShowToast,
   title = 'Official Hashtags',
-  placeholder = 'e.g. #jimmyyjp #Tiny #sea_tawinan #ChaoTalay #ชาวทะเล #AVOCEAN',
+  placeholder = 'e.g. #jimmyyjp #Tiny #Sea_tawinan #ChaoTalay #ชาวทะเล #AVOCEAN',
   className = ''
 }) => {
   // Helper for checking if hashtag is currently present
@@ -60,7 +60,7 @@ export const OfficialHashtagPicker: React.FC<OfficialHashtagPickerProps> = ({
   };
 
   const handleAddAllTags = () => {
-    const requested = ['#jimmyyjp', '#Tiny', '#sea_tawinan', '#ChaoTalay', '#ชาวทะเล', '#AVOCEAN'];
+    const requested = ['#jimmyyjp', '#Tiny', '#Sea_tawinan', '#ChaoTalay', '#ชาวทะเล', '#AVOCEAN'];
     const words = (value || '').trim().split(/[\s,]+/).filter(Boolean);
     requested.forEach((tag) => {
       if (!words.some((w) => w.toLowerCase() === tag.toLowerCase())) {
@@ -115,7 +115,7 @@ export const OfficialHashtagPicker: React.FC<OfficialHashtagPickerProps> = ({
         <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-400 flex-wrap gap-1">
           <span>Quick add usually used tags:</span>
           <span className="text-[10px] text-purple-600 dark:text-purple-400">
-            🥑 Jimmy: #jimmyyjp #Tiny · 🌊 Sea: #sea_tawinan #ChaoTalay #ชาวทะเล · 💚 #AVOCEAN
+            🥑 Jimmy: #jimmyyjp #Tiny · 🌊 Sea: #Sea_tawinan #ChaoTalay #ชาวทะเล · 💚 #AVOCEAN
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">

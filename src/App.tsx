@@ -535,7 +535,7 @@ export const POPULAR_HASHTAGS: PopularHashtagItem[] = [
   { tag: '#jimmyyjp', category: 'jimmy', desc: 'Jimmy Jitaraphol (Official X/IG)' },
   { tag: '#Tiny', category: 'jimmy', desc: 'Jimmy Fandom' },
   // User requested Sea individual hashtags
-  { tag: '#sea_tawinan', category: 'sea', desc: 'Sea Tawinan (Official X/IG)' },
+  { tag: '#Sea_tawinan', category: 'sea', desc: 'Sea Tawinan (Official X/IG)' },
   { tag: '#ChaoTalay', category: 'sea', desc: 'Sea Fandom (English)' },
   { tag: '#ชาวทะเล', category: 'sea', desc: 'Sea Fandom (Thai)' },
   // User requested Avocean fandom & JimmySea couple hashtags
@@ -3534,7 +3534,7 @@ export default function App() {
   };
 
   const handleAddAllRequestedTags = () => {
-    const requested = ['#jimmyyjp', '#Tiny', '#sea_tawinan', '#ChaoTalay', '#ชาวทะเล', '#AVOCEAN'];
+    const requested = ['#jimmyyjp', '#Tiny', '#Sea_tawinan', '#ChaoTalay', '#ชาวทะเล', '#AVOCEAN'];
     setFormHashtags((prev) => {
       const words = (prev || '').trim().split(/\s+/).filter(Boolean);
       requested.forEach((tag) => {
