@@ -8960,6 +8960,36 @@ export default function App() {
                     <span className="text-slate-400 text-[10px] ml-auto">✕</span>
                   </div>
                 </div>
+
+                {/* Website Social Share & Link Preview Card (OpenGraph 1200x630) */}
+                <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Website Social Share & Link Preview (1200 × 630)
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      Live
+                    </span>
+                  </div>
+                  <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-xs bg-white dark:bg-slate-800">
+                    <img
+                      src="/og-image.jpg"
+                      alt="Website Social Share Preview"
+                      className="w-full h-auto max-h-44 object-cover"
+                    />
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-100 dark:border-slate-700 space-y-0.5">
+                      <span className="text-[9.5px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 block">
+                        jimmy-sea-avocean-hub.ernestthestan.workers.dev
+                      </span>
+                      <p className="text-xs font-black text-[#1A3668] dark:text-white truncate">
+                        JIMMY SEA AVOCEAN HUB
+                      </p>
+                      <p className="text-[10.5px] text-[#607494] dark:text-slate-400 truncate">
+                        Official Fan Schedule, Live Streams, Appearances & Trending Projects for Jimmy, Sea, and Avocean 🥑🌊💚
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Dedicated Banner Photos Manager (Never a single confusing long line!) */}
