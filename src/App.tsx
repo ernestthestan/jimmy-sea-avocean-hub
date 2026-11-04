@@ -124,6 +124,7 @@ import { INITIAL_FAN_CLUBS, INITIAL_FOOD_SUPPORT_PROJECTS } from './data/initial
 import { ProjectsHub } from './components/ProjectsHub';
 import type { CareerProject } from './types/projects';
 import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
+import { AppreciationWall } from './components/AppreciationWall';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -141,8 +142,10 @@ export interface FanMessage {
   createdAt: string;
   isRead: boolean;
   category?: FanMessageCategory;
-  // Wanna say thanks fields
-  thanksTo?: string; // e.g. 'Jimmy & Sea', 'Jimmy', 'Sea', 'Admins & Website Team', 'Everyone'
+  // Wanna say thanks & Appreciation Wall fields
+  thanksTo?: string; // e.g. 'Jimmy & Sea', 'Jimmy', 'Sea', 'Admins & Hub Team', 'Avocean', 'JimmySea Avocean Family'
+  approvedForWall?: boolean; // When true, public on Appreciation Wall
+  wallApprovedAt?: string;
   // Career Project fields
   projectCategory?: string; // Series, Movie, Music Video, Brand Endorsement, Owned Brand, Other
   projectArtist?: string; // Jimmy & Sea, Jimmy, Sea, Avocean
@@ -1486,7 +1489,7 @@ export default function App() {
     return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
   });
   const [showWeekOnly, setShowWeekOnly] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'calendar' | 'list' | 'projects' | 'fanhub'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'list' | 'projects' | 'fanhub' | 'appreciation'>('calendar');
   const [fanHubSubTab, setFanHubSubTab] = useState<'directory' | 'foodsupport'>('directory');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [listViewFilter, setListViewFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
@@ -1924,7 +1927,7 @@ export default function App() {
   const [msgFoodSupportOrganizer, setMsgFoodSupportOrganizer] = useState<string>('');
 
   // Category-specific fields for Wanna Say Thanks
-  const [msgThanksTo, setMsgThanksTo] = useState<string>('Jimmy & Sea');
+  const [msgThanksTo, setMsgThanksTo] = useState<string>('JimmySea');
 
   // Inbox category filter tab
   const [inboxFilterCategory, setInboxFilterCategory] = useState<'all' | 'calendar' | 'project' | 'fanclub' | 'foodsupport' | 'thanks'>('all');
@@ -1933,10 +1936,16 @@ export default function App() {
     return fanMessages.filter((m) => !m.isRead).length;
   }, [fanMessages]);
 
+  const approvedThanksCount = useMemo(() => {
+    return fanMessages.filter((m) => m.category === 'thanks' && m.approvedForWall === true).length;
+  }, [fanMessages]);
+
   const openLeaveMessageModal = (overrideCategory?: FanMessageCategory) => {
     setMessageSubmitted(false);
     if (overrideCategory) {
       setMsgCategory(overrideCategory);
+    } else if (activeTab === 'appreciation') {
+      setMsgCategory('thanks');
     } else if (activeTab === 'projects') {
       setMsgCategory('project');
     } else if (activeTab === 'fanhub') {
@@ -2153,6 +2162,27 @@ export default function App() {
       showToast('Message removed');
     } catch (e) {
       console.warn('Could not delete message from Firestore:', e);
+    }
+  };
+
+  const handleToggleApproveForWall = async (msg: FanMessage, approve: boolean) => {
+    const updated: FanMessage = {
+      ...msg,
+      approvedForWall: approve,
+      wallApprovedAt: approve ? new Date().toISOString() : undefined,
+      isRead: true
+    };
+    setFanMessages((prev) => prev.map((m) => (m.id === msg.id ? updated : m)));
+    try {
+      await updateFanMessageInFirestore(msg.id, {
+        approvedForWall: approve,
+        wallApprovedAt: approve ? new Date().toISOString() : (null as any),
+        isRead: true
+      });
+      showToast(approve ? '💖 Approved & posted to Appreciation Wall!' : 'Removed from Appreciation Wall.');
+    } catch (err) {
+      console.warn('Could not sync wall approval to Firestore:', err);
+      showToast(approve ? '💖 Posted to wall! (Will sync to cloud once connected)' : 'Removed from wall.');
     }
   };
 
@@ -5713,6 +5743,26 @@ export default function App() {
           onDeleteProject={handleDeleteCareerProject}
           showToast={showToast}
         />
+      ) : activeTab === 'appreciation' ? (
+        /* ============================================================== */
+        /* APPRECIATION WALL: FAN THANK YOU NOTES & LOVE MESSAGES         */
+        /* ============================================================== */
+        <AppreciationWall
+          messages={fanMessages}
+          allMessages={fanMessages}
+          canEdit={canEditEvents}
+          isOwner={isOwner}
+          currentAccent={currentAccent}
+          containerWidthClass={containerWidthClass}
+          onOpenSayThanks={(recipient) => {
+            if (recipient) setMsgThanksTo(recipient);
+            openLeaveMessageModal('thanks');
+          }}
+          onToggleApproveForWall={handleToggleApproveForWall}
+          onDeleteMessage={handleDeleteMessage}
+          onOpenInbox={() => setInboxModalOpen(true)}
+          showToast={showToast}
+        />
       ) : (
         /* ============================================================== */
         /* FAN HUB: FAN CLUBS DIRECTORY & FOOD SUPPORT PROJECTS           */
@@ -5851,6 +5901,37 @@ export default function App() {
             >
               <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span>Food Support</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Bubble 4: Appreciation Wall Navigation Bubble */}
+        <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-400 shadow-xl shadow-pink-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
+          <div
+            className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              isDarkMode
+                ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-rose-950/80 border border-pink-500/30 shadow-lg'
+                : 'bg-gradient-to-r from-purple-50/95 via-pink-50/95 to-rose-50/95 border border-white/90 shadow-lg shadow-pink-500/15'
+            }`}
+          >
+            <button
+              onClick={() => setActiveTab('appreciation')}
+              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-[13px] font-bold transition-all cursor-pointer ${
+                activeTab === 'appreciation'
+                  ? 'bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 text-white shadow-md shadow-pink-500/25'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[#3B4D6B] hover:text-[#1A3668] hover:bg-white/80'
+              }`}
+              title="JimmySea & Avocean Appreciation Wall"
+            >
+              <Heart className={`w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] ${activeTab === 'appreciation' ? 'fill-white text-white' : 'text-pink-500'}`} />
+              <span>Appreciation Wall</span>
+              {approvedThanksCount > 0 && (
+                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${activeTab === 'appreciation' ? 'bg-white/25 text-white' : 'bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-200'}`}>
+                  {approvedThanksCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -9834,17 +9915,38 @@ export default function App() {
                 {/* 5. WANNA SAY THANKS FIELDS */}
                 {msgCategory === 'thanks' && (
                   <>
+                    {/* Native Language Encouragement Banner */}
+                    <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-emerald-500/10 dark:from-purple-950/40 dark:via-pink-950/40 dark:to-emerald-950/40 border border-pink-200/80 dark:border-pink-900/60 flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-pink-100 dark:bg-pink-950/80 text-pink-600 dark:text-pink-300 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                        <Languages className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 text-xs">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-black text-[#1A3668] dark:text-white">
+                            🌏 Feel Free to Post in Your Native Language!
+                          </span>
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-pink-500 text-white">
+                            Auto-Translatable
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-[#526586] dark:text-slate-300 mt-1 leading-relaxed">
+                          NomNoms and fans worldwide can write in Thai (ไทย), English, Español, 中文, 日本語, Tagalog, Bahasa, or your mother tongue. Once approved, visitors can translate your note into their chosen language with 1 click! 🥑🌊💚
+                        </p>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1.5">
                         Who do you want to say thanks to? 💖
                       </label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                         {[
-                          { id: 'Jimmy & Sea', label: '🥑🌊 Jimmy & Sea' },
-                          { id: 'Jimmy Jitaraphol', label: '🥑 Jimmy' },
-                          { id: 'Sea Tawinan', label: '🌊 Sea' },
-                          { id: 'Admins & Website Team', label: '🛠️ Admins & Hub Team' },
-                          { id: 'Whole Avocean Family', label: '💚 Whole Avocean Family' }
+                          { id: 'JimmySea', label: '🥑🌊 JimmySea' },
+                          { id: 'Jimmy', label: '🥑 Jimmy' },
+                          { id: 'Sea', label: '🌊 Sea' },
+                          { id: 'Avocean', label: '💚 Avocean' },
+                          { id: 'JimmySea Avocean Family', label: '🥑🌊💚 JimmySea Avocean Family' },
+                          { id: 'Admins & Hub Team', label: '🛠️ Admins & Hub Team' }
                         ].map((item) => (
                           <button
                             key={item.id}
@@ -9863,17 +9965,25 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                        Your Heartfelt Thank You Message *
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-[#526586] dark:text-slate-400">
+                          Your Heartfelt Thank You Message *
+                        </label>
+                        <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400">
+                          🌐 Any Language Welcome
+                        </span>
+                      </div>
                       <textarea
                         rows={4}
                         required
                         value={msgContent}
                         onChange={(e) => setMsgContent(e.target.value)}
-                        placeholder="Write your sweet words of appreciation, encouragement, gratitude, or love... 🥑🌊💚"
+                        placeholder="Write in your native language (English, ไทย, Español, 中文, 日本語, Tagalog, Bahasa, etc.)! Words of gratitude, appreciation, encouragement, or love... 🥑🌊💚"
                         className="w-full rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/20 dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
                       />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Tip: You can use emojis and write in whichever language you express yourself best!
+                      </p>
                     </div>
 
                     <div>
@@ -10134,7 +10244,7 @@ export default function App() {
                               }`}
                             >
                               {isThanks
-                                ? `💖 Say Thanks · To: ${msg.thanksTo || 'Jimmy & Sea'}`
+                                ? `💖 Say Thanks · To: ${msg.thanksTo || 'JimmySea'}`
                                 : isProject
                                 ? `🎬 Project · ${msg.projectCategory || 'Work'}`
                                 : isFanClub
@@ -10166,7 +10276,7 @@ export default function App() {
                           <div className="flex items-center gap-1.5 flex-wrap mb-2 text-[11px]">
                             {isThanks && (
                               <span className="font-semibold px-2 py-0.5 rounded-md bg-rose-100/80 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 flex items-center gap-1">
-                                💌 Appreciation for: {msg.thanksTo || 'Jimmy & Sea'}
+                                💌 Appreciation for: {msg.thanksTo || 'JimmySea'}
                               </span>
                             )}
 
@@ -10308,6 +10418,22 @@ export default function App() {
                               >
                                 <HeartHandshake className="w-3 h-3" />
                                 <span>Go to Food Support</span>
+                              </button>
+                            )}
+
+                            {isThanks && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleApproveForWall(msg, !msg.approvedForWall)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 cursor-pointer shadow-xs ${
+                                  msg.approvedForWall
+                                    ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/70 dark:text-rose-200 border border-rose-300 dark:border-rose-700'
+                                    : 'bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 hover:opacity-95 text-white'
+                                }`}
+                                title={msg.approvedForWall ? 'Remove from Appreciation Wall' : 'Approve and publish to public Appreciation Wall'}
+                              >
+                                <Heart className={`w-3 h-3 ${msg.approvedForWall ? 'fill-rose-500 text-rose-500' : 'fill-white text-white'}`} />
+                                <span>{msg.approvedForWall ? '⭐ Posted on Wall (Unpost)' : 'Post to Appreciation Wall'}</span>
                               </button>
                             )}
 
