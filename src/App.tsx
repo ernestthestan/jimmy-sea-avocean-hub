@@ -127,6 +127,8 @@ import { ProjectsHub } from './components/ProjectsHub';
 import type { CareerProject } from './types/projects';
 import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
 import { AppreciationWall } from './components/AppreciationWall';
+import { OfficialHashtagPicker } from './components/OfficialHashtagPicker';
+import { HashtagsDisplayCard } from './components/HashtagsDisplayCard';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -4050,10 +4052,10 @@ export default function App() {
     return (
       <div
         key={ev.id}
-        className="bg-white/95 dark:bg-slate-900/95 rounded-[32px] p-5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between gap-5 flex-1 h-full min-h-full animate-in fade-in duration-200"
+        className="bg-white/95 dark:bg-slate-900/95 rounded-[24px] sm:rounded-[32px] p-3.5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between gap-4 sm:gap-5 flex-1 h-full min-h-full animate-in fade-in duration-200"
       >
         {/* Top Action Row */}
-        <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-slate-200/80 dark:border-slate-800">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/70 px-3 py-1 rounded-full border border-purple-200 dark:border-purple-800">
               {formatEventFullDateRange(ev.date, ev.endDate)}
@@ -4105,11 +4107,11 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-end sm:self-auto">
             {/* Set Reminder Button */}
             <button
               onClick={() => openReminderModal(ev)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#1A3668] dark:text-white border border-slate-200/80 dark:border-slate-700"
+              className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#1A3668] dark:text-white border border-slate-200/80 dark:border-slate-700"
             >
               <Bell className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               <span>{hasReminder ? 'Reminder Active' : 'Set Reminder'}</span>
@@ -4153,9 +4155,9 @@ export default function App() {
         </div>
 
         {/* Main 2-Column Content Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 flex-1 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-12 landscape:grid-cols-12 xl:grid-cols-12 gap-4 sm:gap-5 flex-1 items-stretch">
           {/* Left Sub-Column: Media Poster, Venue & Google Maps, Streaming */}
-          <div className="xl:col-span-5 flex flex-col justify-between gap-4 h-full">
+          <div className="md:col-span-5 landscape:col-span-5 xl:col-span-5 flex flex-col justify-between gap-4 h-full">
             <div className="flex flex-col gap-4">
               {/* Poster Media (Single or Multiple Photos with gallery carousel and thumbnail strip) */}
               {allPosters.length > 0 && (() => {
@@ -4174,8 +4176,8 @@ export default function App() {
                       })}
                       className={`w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none ${
                         isFit
-                          ? 'h-[380px] sm:h-[430px] md:h-[460px] bg-slate-950 flex items-center justify-center'
-                          : 'max-h-[380px] sm:max-h-[430px] bg-white dark:bg-slate-800'
+                          ? 'h-[250px] sm:h-[380px] md:h-[430px] landscape:h-[230px] md:landscape:h-[400px] bg-slate-950 flex items-center justify-center'
+                          : 'max-h-[270px] sm:max-h-[380px] md:max-h-[430px] landscape:max-h-[240px] md:landscape:max-h-[400px] bg-white dark:bg-slate-800'
                       }`}
                       title="Click to view full photo"
                     >
@@ -4193,7 +4195,7 @@ export default function App() {
                         className={`w-full transition-transform duration-300 ${
                           isFit
                             ? 'h-full object-contain relative z-10 group-hover:scale-[1.01]'
-                            : 'max-h-[380px] sm:max-h-[430px] object-cover group-hover:scale-[1.02]'
+                            : 'max-h-[290px] sm:max-h-[430px] object-cover group-hover:scale-[1.02]'
                         }`}
                       />
 
@@ -4405,7 +4407,7 @@ export default function App() {
           </div>
 
           {/* Right Sub-Column: Header Info, Timing, Description, Hashtags */}
-          <div className="xl:col-span-7 flex flex-col justify-between gap-4 h-full">
+          <div className="md:col-span-7 landscape:col-span-7 xl:col-span-7 flex flex-col justify-between gap-4 h-full">
             <div className="flex flex-col gap-4">
               {/* Title & Members Card */}
               <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[26px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80">
@@ -4772,81 +4774,13 @@ export default function App() {
               )}
 
               {/* Hashtags */}
-              {ev.hashtags && (() => {
-                const tagList = ev.hashtags.split(/[\s,]+/).filter(Boolean);
-                return (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2">
-                        <span className="block text-xs font-bold text-[#475569] dark:text-slate-400">
-                          Hashtags
-                        </span>
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300">
-                          {tagList.length} {tagList.length === 1 ? 'tag' : 'tags'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyHashtags(ev.hashtags || '')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/50 border border-slate-200 dark:border-slate-600 text-xs font-bold text-[#1A3668] dark:text-white shrink-0 transition-all cursor-pointer shadow-2xs hover:border-purple-300"
-                        title="Copy all hashtags to clipboard"
-                      >
-                        {copiedHashtags ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-emerald-600 dark:text-emerald-400">Copied All!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                            <span>Copy All</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[22px] p-3.5 sm:p-4 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
-                      <div className="flex flex-wrap gap-2 items-center">
-                        {tagList.map((tag, tIdx) => {
-                          const cleanTag = tag.startsWith('#') ? tag : `#${tag}`;
-                          const isCopied = copiedIndividualTag === cleanTag;
-                          return (
-                            <button
-                              key={tIdx}
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(cleanTag);
-                                setCopiedIndividualTag(cleanTag);
-                                showToast(`Copied ${cleanTag}!`);
-                                setTimeout(() => setCopiedIndividualTag(null), 2000);
-                              }}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer shadow-2xs group ${
-                                isCopied
-                                  ? 'bg-emerald-500 text-white border-emerald-500 scale-102 shadow-xs'
-                                  : 'bg-white dark:bg-slate-700/90 text-[#1A3668] dark:text-slate-100 hover:text-purple-700 dark:hover:text-purple-300 border-slate-200 dark:border-slate-600 hover:border-purple-300 dark:hover:border-purple-500 hover:bg-purple-50/70 dark:hover:bg-purple-950/40 active:scale-97'
-                              }`}
-                              title={`Click to copy ${cleanTag}`}
-                            >
-                              {isCopied ? (
-                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                              ) : (
-                                <Hash className="w-3 h-3 text-purple-500 dark:text-purple-400 opacity-70 group-hover:opacity-100" />
-                              )}
-                              <span>{cleanTag.replace(/^#/, '')}</span>
-                              <Copy className="w-2.5 h-2.5 opacity-0 group-hover:opacity-70 transition-opacity ml-0.5" />
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400 font-semibold px-1">
-                        <span>Click any hashtag to copy it individually</span>
-                        <span className="text-[10px] opacity-75">Ready for Twitter/X & IG</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              {ev.hashtags && (
+                <HashtagsDisplayCard
+                  hashtags={ev.hashtags}
+                  showToast={showToast}
+                  accentColor={currentAccent.colorHex}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -4856,7 +4790,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen w-full flex flex-col items-center pb-28 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 select-none sm:select-auto relative transition-colors duration-300 ${
+      className={`min-h-screen w-full flex flex-col items-center pb-[max(7rem,calc(5.5rem+env(safe-area-inset-bottom)))] sm:pb-32 landscape:pb-20 md:landscape:pb-28 px-2.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 landscape:pt-3.5 select-none sm:select-auto relative transition-colors duration-300 ${
         isDarkMode ? 'dark text-[#F8FAFC]' : 'text-[#1A3668]'
       }`}
       style={{
@@ -4906,17 +4840,17 @@ export default function App() {
       )}
 
       {/* TOP TOOLBAR: BALANCED TWO-TIER RESPONSIVE LAYOUT FOR LAPTOP & MOBILE */}
-      <div className={`${containerWidthClass} flex flex-col gap-2.5 mb-4`}>
+      <div className={`${containerWidthClass} flex flex-col gap-2 sm:gap-2.5 mb-3 sm:mb-4`}>
         {/* ROW 1: Engagement & Stats on Left, User Display Preferences & Logins on Right */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-2.5 w-full">
           {/* Left Side: "Leave a message" (viewers), Inbox (admins/owner), Stats & Role Badge */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {/* Leave a Message button: visible to everyone */}
             <button
               onClick={() => {
                 openLeaveMessageModal();
               }}
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 sm:px-3.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95 shrink-0"
               title={
                 activeTab === 'projects'
                   ? 'Suggest a series, movie, MV, or endorsement project for Jimmy & Sea'
@@ -4946,7 +4880,7 @@ export default function App() {
             {/* Wanna say thanks? button: quick direct way to send love & appreciation */}
             <button
               onClick={() => openLeaveMessageModal('thanks')}
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-rose-50/90 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 shadow-2xs border border-rose-200/80 dark:border-rose-800 cursor-pointer transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 sm:px-3.5 rounded-full bg-rose-50/90 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 shadow-2xs border border-rose-200/80 dark:border-rose-800 cursor-pointer transition-all active:scale-95 shrink-0"
               title="Wanna say thanks? Leave a heartfelt note of appreciation for Jimmy, Sea, or the admins"
             >
               <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
@@ -4957,7 +4891,7 @@ export default function App() {
             {canEditEvents && (
               <button
                 onClick={() => setInboxModalOpen(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 shadow-xs border border-amber-200 dark:border-amber-800 cursor-pointer transition-all active:scale-95"
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 shadow-xs border border-amber-200 dark:border-amber-800 cursor-pointer transition-all active:scale-95 shrink-0"
                 title="Fan Messages Inbox (Admins & Owner)"
               >
                 <Inbox className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
@@ -4973,7 +4907,7 @@ export default function App() {
             {/* Today's Visits Stats (Admin & Owner Only) */}
             {canEditEvents && (
               <div
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none"
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs select-none shrink-0"
                 title={`${visitorStats.todayVisits.toLocaleString()} visits today (Resets at 12:00 Midnight Philippine Time) · ${visitorStats.totalVisits.toLocaleString()} all-time`}
               >
                 <Users className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
@@ -4983,13 +4917,13 @@ export default function App() {
 
             {/* Role Status Pills */}
             {isOwner && (
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-xs">
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-xs shrink-0">
                 <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
                 <span>Owner Mode</span>
               </div>
             )}
             {isAdmin && (
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-xs">
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-xs shrink-0">
                 <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Admin (Events Only)</span>
               </div>
@@ -4997,7 +4931,7 @@ export default function App() {
           </div>
 
           {/* Right Controls: Accent Selector, 12H/24H, Dark Mode, Cloud Sync, Reminders, and Visitor Logins */}
-          <div className="flex items-center gap-2 flex-wrap ml-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap ml-0 sm:ml-auto">
             {/* Accent Color Switcher: Purple, Blue, Green (Saved to user's device only) */}
             <div
               className="inline-flex items-center p-1 rounded-full bg-white/90 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 shadow-xs gap-1"
@@ -5220,12 +5154,12 @@ export default function App() {
           const currentHeight = settings.bannerHeight || 'medium';
           const heightClass =
             currentHeight === 'compact'
-              ? 'h-44 sm:h-56 md:h-64 lg:h-72 xl:h-80'
+              ? 'h-40 sm:h-52 md:h-64 lg:h-72 xl:h-80 landscape:max-h-[160px] md:landscape:max-h-none'
               : currentHeight === 'tall'
-              ? 'h-64 sm:h-84 md:h-[420px] lg:h-[480px] xl:h-[540px] 2xl:h-[620px]'
+              ? 'h-60 sm:h-80 md:h-[400px] lg:h-[480px] xl:h-[540px] 2xl:h-[620px] landscape:max-h-[210px] md:landscape:max-h-none'
               : currentHeight === 'auto'
-              ? 'h-56 sm:h-72 md:h-84 lg:h-96 xl:h-[440px] 2xl:h-[500px]'
-              : 'h-52 sm:h-68 md:h-80 lg:h-96 xl:h-[420px] 2xl:h-[480px]'; // medium default
+              ? 'h-52 sm:h-68 md:h-84 lg:h-96 xl:h-[440px] 2xl:h-[500px] landscape:max-h-[180px] md:landscape:max-h-none'
+              : 'h-48 sm:h-64 md:h-80 lg:h-96 xl:h-[420px] 2xl:h-[480px] landscape:max-h-[175px] md:landscape:max-h-none'; // medium default
 
           const activePhoto =
             activeBannerPhotos.length > 0
@@ -5374,10 +5308,10 @@ export default function App() {
       {/* ============================================================== */}
       {/* 2. SEPARATED HUB HEADER CARD WITH INTEGRATED MEMBER FILTERS     */}
       {/* ============================================================== */}
-      <div className={`${containerWidthClass} mb-6`}>
-        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] p-5 sm:p-6 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-4">
+      <div className={`${containerWidthClass} mb-4 sm:mb-6`}>
+        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[24px] sm:rounded-[28px] p-4 sm:p-6 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-3.5 sm:gap-4">
           {/* Top Row: Title, Badges, Greeting & Owner Quick Actions */}
-          <div className={`flex flex-col md:flex-row gap-4 ${
+          <div className={`flex flex-col md:flex-row gap-3 sm:gap-4 ${
             (settings.headerAlignment || 'left') === 'center'
               ? 'items-center justify-between'
               : (settings.headerAlignment || 'left') === 'right'
@@ -5442,9 +5376,9 @@ export default function App() {
 
           {/* Integrated Member Filters Row - Moved into Jimmy Sea Avocean Career Projects when on projects tab */}
           {activeTab !== 'projects' && (
-            <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1">
+            <div className="mt-0.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1 shrink-0">
                   <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   <span>Filter:</span>
                 </div>
@@ -5452,7 +5386,7 @@ export default function App() {
                 {/* All Members Toggle (Clean without count number) */}
                 <button
                   onClick={() => setActiveMemberIds(settings.members.map((m) => m.id))}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border shrink-0 ${
                     activeMemberIds.length === settings.members.length
                       ? 'bg-[#1A3668] text-white border-[#1A3668] dark:bg-purple-600 dark:border-purple-600 shadow-xs'
                       : 'bg-slate-100 dark:bg-slate-800 text-[#526586] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -5483,14 +5417,14 @@ export default function App() {
                           ? '#334155'
                           : '#E2E8F0'
                       }}
-                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border-[1.5px] text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border-[1.5px] text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0 ${
                         isActive
                           ? 'opacity-100 scale-100 shadow-xs ring-1 ring-purple-300/30'
                           : 'opacity-40 hover:opacity-80'
                       }`}
                     >
                       <MemberCircleIcon member={member} size="sm" />
-                      <span className="text-[#1A3668] dark:text-white font-bold">
+                      <span className="text-[#1A3668] dark:text-white font-bold whitespace-nowrap">
                         {member.name}
                       </span>
                     </button>
@@ -5530,23 +5464,23 @@ export default function App() {
       {/* 3. WIDE RESPONSIVE DASHBOARD LAYOUT                            */}
       {/* ============================================================== */}
       {activeTab === 'calendar' ? (
-        <div className={`${containerWidthClass} flex flex-col lg:flex-row lg:items-start items-start justify-center gap-6 xl:gap-8`}>
+        <div className={`${containerWidthClass} flex flex-col lg:flex-row md:landscape:flex-row lg:items-start items-start justify-center gap-5 lg:gap-6 xl:gap-8`}>
           {/* LEFT COLUMN: Calendar Card (Self-start & Natural Height, Never Stretched!) */}
-          <div className="w-full lg:w-[480px] xl:w-[540px] 2xl:w-[600px] shrink-0 flex flex-col gap-5 self-start order-1">
+          <div className="w-full lg:w-[480px] md:landscape:w-[460px] xl:w-[540px] 2xl:w-[600px] shrink-0 flex flex-col gap-5 self-start order-1">
             {/* Calendar Header with Navigation */}
-            <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[32px] p-6 sm:p-8 md:p-9 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
-              <div className="flex items-center justify-between mb-6">
+            <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] sm:rounded-[32px] p-3.5 sm:p-8 md:p-9 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs sm:text-sm font-extrabold text-[#607494] dark:text-slate-400 uppercase tracking-widest">
+                      <span className="text-[11px] sm:text-sm font-extrabold text-[#607494] dark:text-slate-400 uppercase tracking-widest">
                         Calendar View
                       </span>
                       <span className="text-[10px] font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/70 px-2 py-0.5 rounded-full border border-sky-200/80 dark:border-sky-800" title="Dates & times are shown based on your device local time">
                         📍 {userLocalTimezone}
                       </span>
                     </div>
-                    <h2 className="text-2xl sm:text-3xl md:text-[32px] font-black text-[#1A3668] dark:text-white leading-tight">
+                    <h2 className="text-xl sm:text-3xl md:text-[32px] font-black text-[#1A3668] dark:text-white leading-tight">
                       {MONTHS[currentMonthDate.getMonth()]}
                       {currentMonthDate.getFullYear() !== 2026
                         ? ` '${String(currentMonthDate.getFullYear()).slice(-2)}`
@@ -5556,25 +5490,25 @@ export default function App() {
                 </div>
 
                 {/* Month Navigation */}
-                <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="flex items-center gap-2 sm:gap-2.5 self-end sm:self-auto">
                   <button
                     onClick={handlePrevMonth}
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs flex items-center justify-center text-[#1A3668] dark:text-white cursor-pointer"
+                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs flex items-center justify-center text-[#1A3668] dark:text-white cursor-pointer"
                     aria-label="Previous Month"
                   >
-                    <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+                    <ChevronLeft className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
                   </button>
                   <button
                     onClick={handleNextMonth}
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs flex items-center justify-center text-[#1A3668] dark:text-white cursor-pointer"
+                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs flex items-center justify-center text-[#1A3668] dark:text-white cursor-pointer"
                     aria-label="Next Month"
                   >
-                    <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+                    <ChevronRight className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
                   </button>
                   <button
                     onClick={handleJumpToToday}
                     title={`Jump to Today (${todayDateStr} · ${userLocalTimezone})`}
-                    className="h-10 sm:h-11 px-4 sm:px-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs text-xs sm:text-sm font-black text-[#1A3668] dark:text-white cursor-pointer inline-flex items-center gap-2"
+                    className="h-9 sm:h-11 px-3 sm:px-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs text-xs sm:text-sm font-black text-[#1A3668] dark:text-white cursor-pointer inline-flex items-center gap-1.5 sm:gap-2"
                   >
                     <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
                     <span>Today</span>
@@ -5583,21 +5517,21 @@ export default function App() {
               </div>
 
               {/* Weekdays Grid */}
-              <div className="grid grid-cols-7 mb-4 text-center text-xs sm:text-sm md:text-[15px] font-black text-[#526586] dark:text-slate-400">
+              <div className="grid grid-cols-7 mb-2 sm:mb-4 text-center text-[11px] sm:text-sm md:text-[15px] font-black text-[#526586] dark:text-slate-400">
                 {WEEKDAYS.map((d) => (
-                  <div key={d} className="py-2 uppercase tracking-wider">
+                  <div key={d} className="py-1 sm:py-2 uppercase tracking-wider">
                     {d}
                   </div>
                 ))}
               </div>
 
               {/* Days Grid */}
-              <div className="flex flex-col gap-3 sm:gap-4 md:gap-4.5">
+              <div className="flex flex-col gap-2 sm:gap-4 md:gap-4.5">
                 {displayedWeeks.map((week, wIdx) => (
                   <div key={wIdx} className="grid grid-cols-7 items-start">
                     {week.map((cell, cIdx) => {
                       if (!cell) {
-                        return <div key={`empty-${cIdx}`} className="h-[68px] sm:h-[78px] md:h-[86px]" />;
+                        return <div key={`empty-${cIdx}`} className="h-[56px] sm:h-[78px] md:h-[86px]" />;
                       }
 
                       const isSelected = cell.dateStr === selectedDateStr;
@@ -5617,7 +5551,7 @@ export default function App() {
                             setSelectedDateStr(cell.dateStr);
                             setSelectedDayActiveEventId(null);
                           }}
-                          className={`flex flex-col items-center justify-start py-1 px-0.5 sm:px-1 group cursor-pointer focus:outline-none min-h-[68px] sm:min-h-[78px] md:min-h-[86px] rounded-2xl transition-all relative ${
+                          className={`flex flex-col items-center justify-start py-0.5 sm:py-1 px-0.5 sm:px-1 group cursor-pointer focus:outline-none min-h-[56px] sm:min-h-[78px] md:min-h-[86px] rounded-xl sm:rounded-2xl transition-all relative ${
                             isToday
                               ? 'bg-[#E0F2FE] dark:bg-sky-950/70 border-2 border-sky-300 dark:border-sky-600 shadow-xs'
                               : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border-2 border-transparent'
@@ -5625,17 +5559,17 @@ export default function App() {
                         >
                           {/* Today Micro Label */}
                           {isToday && (
-                            <span className="text-[8px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-300 -mt-0.5 mb-0.5">
+                            <span className="text-[7.5px] sm:text-[8px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-300 -mt-0.5 mb-0.5">
                               TODAY
                             </span>
                           )}
 
-                          {/* Day Number Badge: Purple if Selected, Blue if Today (when another date is selected), Default otherwise */}
+                          {/* Day Number Badge */}
                           <div
                             style={isSelected ? { backgroundColor: currentAccent.colorHex } : {}}
-                            className={`w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center text-sm sm:text-base md:text-lg transition-all ${
+                            className={`w-8 h-8 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center text-xs sm:text-base md:text-lg transition-all ${
                               isSelected
-                                ? 'text-white font-black shadow-lg scale-105 ring-3 ring-purple-400/40'
+                                ? 'text-white font-black shadow-lg scale-105 ring-2 sm:ring-3 ring-purple-400/40'
                                 : isToday
                                   ? 'bg-sky-500 dark:bg-sky-600 text-white font-black shadow-xs ring-2 ring-sky-300 dark:ring-sky-500'
                                   : 'text-[#1A3668] dark:text-slate-300 font-extrabold group-hover:bg-slate-100 dark:group-hover:bg-slate-800'
@@ -5645,14 +5579,14 @@ export default function App() {
                           </div>
 
                           {dayMemberIds.length > 0 && (
-                            <div className="flex items-center justify-center -space-x-1 sm:-space-x-1.5 mt-1 sm:mt-1.5">
+                            <div className="flex items-center justify-center -space-x-1 sm:-space-x-1.5 mt-0.5 sm:mt-1.5">
                               {dayMemberIds.slice(0, 3).map((mId) => {
                                 const m = getMemberById(mId);
                                 return (
                                   <span
                                     key={mId}
                                     style={{ backgroundColor: m.circleBg }}
-                                    className="w-6 h-6 sm:w-7 sm:h-7 md:w-7.5 md:h-7.5 rounded-full text-xs sm:text-sm md:text-base flex items-center justify-center text-white ring-2 ring-white dark:ring-slate-900 shadow-xs select-none transition-transform group-hover:scale-110"
+                                    className="w-5 h-5 sm:w-7 sm:h-7 md:w-7.5 md:h-7.5 rounded-full text-[10px] sm:text-sm md:text-base flex items-center justify-center text-white ring-1.5 sm:ring-2 ring-white dark:ring-slate-900 shadow-xs select-none transition-transform group-hover:scale-110"
                                     title={m.name}
                                   >
                                     <span className="leading-none">{m.emoji}</span>
@@ -5664,7 +5598,7 @@ export default function App() {
 
                           {hasMultiDay && (
                             <span
-                              className="w-6 sm:w-7 h-1.5 sm:h-2 rounded-full bg-purple-500/90 dark:bg-purple-400 mt-1"
+                              className="w-4 sm:w-7 h-1 sm:h-2 rounded-full bg-purple-500/90 dark:bg-purple-400 mt-1"
                               title="Multi-day event spans this date"
                             />
                           )}
@@ -6042,7 +5976,188 @@ export default function App() {
       {/* Bubble 2: Projects (Shows, Movies, MVs, Brands) - Between!     */}
       {/* Bubble 3: Fan Hub (Fan Clubs / Food Support)                   */}
       {/* ============================================================== */}
-      <div className="fixed bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 max-w-[calc(100vw-16px)] justify-center flex-wrap sm:flex-nowrap pointer-events-none">
+      {/* ============================================================== */}
+      {/* 1. MOBILE ERGONOMIC FIXED BOTTOM BAR (< 640px)                 */}
+      {/* 44px+ touch targets, pb-safe, sub-view toggles, no screen occl */}
+      {/* ============================================================== */}
+      <nav
+        aria-label="Mobile Navigation"
+        className="fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-slate-800 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.4)] pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-1 px-2 block sm:hidden select-none"
+      >
+        <div className="grid grid-cols-4 items-center justify-around max-w-md mx-auto">
+          {/* TAB 1: Schedule (Calendar & List) */}
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab === 'calendar') {
+                  setActiveTab('list');
+                } else {
+                  setActiveTab('calendar');
+                }
+              }}
+              className={`min-h-[44px] min-w-[44px] w-full flex flex-col items-center justify-center rounded-2xl transition-all cursor-pointer ${
+                activeTab === 'calendar' || activeTab === 'list'
+                  ? 'text-purple-600 dark:text-purple-400 font-extrabold'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 font-semibold'
+              }`}
+            >
+              <div className="relative">
+                {activeTab === 'list' ? (
+                  <ListIcon className="w-5 h-5 stroke-[2.4]" />
+                ) : (
+                  <CalendarIcon className="w-5 h-5 stroke-[2.4]" />
+                )}
+                {(activeTab === 'calendar' || activeTab === 'list') && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-purple-600 dark:bg-purple-400" />
+                )}
+              </div>
+              <span className="text-[10px] mt-1 tracking-tight leading-none">
+                {activeTab === 'list' ? 'List' : 'Schedule'}
+              </span>
+            </button>
+          </div>
+
+          {/* TAB 2: Projects */}
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setActiveTab('projects')}
+              className={`min-h-[44px] min-w-[44px] w-full flex flex-col items-center justify-center rounded-2xl transition-all cursor-pointer ${
+                activeTab === 'projects'
+                  ? 'text-purple-600 dark:text-purple-400 font-extrabold'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 font-semibold'
+              }`}
+            >
+              <div className="relative">
+                <Film className="w-5 h-5 stroke-[2.4]" />
+                {activeTab === 'projects' && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-purple-600 dark:bg-purple-400" />
+                )}
+              </div>
+              <span className="text-[10px] mt-1 tracking-tight leading-none">
+                Projects
+              </span>
+            </button>
+          </div>
+
+          {/* TAB 3: Fan Hub */}
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('fanhub');
+              }}
+              className={`min-h-[44px] min-w-[44px] w-full flex flex-col items-center justify-center rounded-2xl transition-all cursor-pointer ${
+                activeTab === 'fanhub'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-extrabold'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 font-semibold'
+              }`}
+            >
+              <div className="relative">
+                <Globe className="w-5 h-5 stroke-[2.4]" />
+                {activeTab === 'fanhub' && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                )}
+              </div>
+              <span className="text-[10px] mt-1 tracking-tight leading-none">
+                Fan Hub
+              </span>
+            </button>
+          </div>
+
+          {/* TAB 4: Appreciation Wall */}
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setActiveTab('appreciation')}
+              className={`min-h-[44px] min-w-[44px] w-full flex flex-col items-center justify-center rounded-2xl transition-all cursor-pointer ${
+                activeTab === 'appreciation'
+                  ? 'text-rose-600 dark:text-rose-400 font-extrabold'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 font-semibold'
+              }`}
+            >
+              <div className="relative">
+                <Heart className={`w-5 h-5 stroke-[2.4] ${activeTab === 'appreciation' ? 'fill-rose-500 text-rose-500' : ''}`} />
+                {approvedThanksCount > 0 && (
+                  <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {approvedThanksCount}
+                  </span>
+                )}
+                {activeTab === 'appreciation' && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-rose-500" />
+                )}
+              </div>
+              <span className="text-[10px] mt-1 tracking-tight leading-none">
+                Wall
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Schedule Sub-View Mini Toggle when on Schedule tab on mobile */}
+        {(activeTab === 'calendar' || activeTab === 'list') && (
+          <div className="flex items-center justify-center gap-1.5 pt-1 mt-0.5 border-t border-slate-100 dark:border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => setActiveTab('calendar')}
+              className={`px-3 py-0.5 rounded-full text-[10.5px] font-bold transition-all cursor-pointer ${
+                activeTab === 'calendar'
+                  ? 'bg-purple-600 text-white shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              📅 Month View
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
+            <button
+              type="button"
+              onClick={() => setActiveTab('list')}
+              className={`px-3 py-0.5 rounded-full text-[10.5px] font-bold transition-all cursor-pointer ${
+                activeTab === 'list'
+                  ? 'bg-purple-600 text-white shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              📋 List View
+            </button>
+          </div>
+        )}
+
+        {/* Fan Hub Sub-View Mini Toggle when on Fan Hub tab on mobile */}
+        {activeTab === 'fanhub' && (
+          <div className="flex items-center justify-center gap-1.5 pt-1 mt-0.5 border-t border-slate-100 dark:border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => setFanHubSubTab('directory')}
+              className={`px-3 py-0.5 rounded-full text-[10.5px] font-bold transition-all cursor-pointer ${
+                fanHubSubTab === 'directory'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              🌍 Directory
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
+            <button
+              type="button"
+              onClick={() => setFanHubSubTab('foodsupport')}
+              className={`px-3 py-0.5 rounded-full text-[10.5px] font-bold transition-all cursor-pointer ${
+                fanHubSubTab === 'foodsupport'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              🍱 Food Support
+            </button>
+          </div>
+        )}
+      </nav>
+
+      {/* ============================================================== */}
+      {/* 2. DESKTOP & TABLET FLOATING DOCK (>= 640px)                    */}
+      {/* ============================================================== */}
+      <div className="hidden sm:flex fixed bottom-3 sm:bottom-4 md:bottom-5 landscape:bottom-2 md:landscape:bottom-4 left-1/2 -translate-x-1/2 z-40 items-center gap-1.5 sm:gap-2.5 md:gap-3 max-w-[calc(100vw-16px)] justify-center flex-nowrap pointer-events-none scale-[0.88] sm:scale-95 md:scale-[0.88] lg:scale-100 landscape:scale-[0.80] md:landscape:scale-95 lg:landscape:scale-100 origin-bottom">
         {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
         <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
           <div
@@ -6610,7 +6725,7 @@ export default function App() {
       {/* ============================================================== */}
       {eventModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className={`bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full ${isExtendedDescEditor ? 'max-w-2xl' : 'max-w-lg'} p-5 sm:p-6 transition-all duration-200 animate-in fade-in zoom-in-95 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800`}>
+          <div className={`bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full ${isExtendedDescEditor ? 'max-w-3xl lg:max-w-4xl' : 'max-w-2xl lg:max-w-3xl'} p-5 sm:p-7 transition-all duration-200 animate-in fade-in zoom-in-95 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-[#1A3668] dark:text-white">
                 {editingEvent ? 'Edit Schedule Event' : 'Add Schedule Event'}
@@ -7804,104 +7919,11 @@ export default function App() {
               </div>
 
               {/* Official Hashtags with Quick Add Pills */}
-              <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <label className="block text-xs font-bold text-[#1A3668] dark:text-white">
-                      Official Hashtags
-                    </label>
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      (Click pills to toggle or type custom tags)
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleAddAllRequestedTags}
-                      className="text-[10.5px] font-bold px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/70 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer shadow-2xs"
-                      title="Add all popular fan hashtags at once"
-                    >
-                      + Add All JimmySea Tags
-                    </button>
-                    {formHashtags.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => setFormHashtags('')}
-                        className="text-[10.5px] font-bold text-rose-500 hover:text-rose-700 underline cursor-pointer px-1"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quick Add Hashtag Pills */}
-                <div className="space-y-1.5 pt-0.5">
-                  <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-400">
-                    <span>Quick add usually used tags:</span>
-                    <span className="hidden sm:inline text-[10px] text-purple-600 dark:text-purple-400">
-                      🥑 Jimmy: #jimmyyjp #Tiny · 🌊 Sea: #sea_tawinan #ChaoTalay #ชาวทะเล · 💚 #AVOCEAN
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {POPULAR_HASHTAGS.map((item) => {
-                      const isSelected = hasHashtag(formHashtags, item.tag);
-
-                      const activeClasses =
-                        item.category === 'jimmy'
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-2xs scale-102 ring-1 ring-purple-400/40'
-                          : item.category === 'sea'
-                          ? 'bg-sky-600 text-white border-sky-600 shadow-2xs scale-102 ring-1 ring-sky-400/40'
-                          : item.category === 'avocean'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs scale-102 ring-1 ring-emerald-400/40'
-                          : 'bg-[#1A3668] text-white border-[#1A3668] shadow-2xs scale-102';
-
-                      const inactiveClasses =
-                        item.category === 'jimmy'
-                          ? 'bg-purple-50/80 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200/80 dark:border-purple-800/80 hover:bg-purple-100 dark:hover:bg-purple-900/50'
-                          : item.category === 'sea'
-                          ? 'bg-sky-50/80 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200/80 dark:border-sky-800/80 hover:bg-sky-100 dark:hover:bg-sky-900/50'
-                          : item.category === 'avocean'
-                          ? 'bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
-                          : 'bg-white dark:bg-slate-700 text-[#1A3668] dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600';
-
-                      return (
-                        <button
-                          key={item.tag}
-                          type="button"
-                          onClick={() => handleToggleHashtag(item.tag)}
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer ${
-                            isSelected ? activeClasses : inactiveClasses
-                          }`}
-                          title={`${item.desc} — click to ${isSelected ? 'remove' : 'add'}`}
-                        >
-                          {isSelected ? (
-                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                          ) : (
-                            <span className="text-[11px] font-bold opacity-70">+</span>
-                          )}
-                          <span>{item.tag}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="relative pt-1">
-                  <textarea
-                    rows={2}
-                    value={formHashtags}
-                    onChange={(e) => setFormHashtags(e.target.value)}
-                    placeholder="e.g. #jimmyyjp #Tiny #sea_tawinan #ChaoTalay #ชาวทะเล #AVOCEAN"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-400 resize-y leading-relaxed"
-                  />
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 pt-1 font-medium">
-                    <span>Space or comma-separated hashtags</span>
-                    <span>{formHashtags.split(/[\s,]+/).filter(Boolean).length} tags added</span>
-                  </div>
-                </div>
-              </div>
+              <OfficialHashtagPicker
+                value={formHashtags}
+                onChange={setFormHashtags}
+                onShowToast={showToast}
+              />
 
               {/* Link */}
               <div>

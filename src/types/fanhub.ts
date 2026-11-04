@@ -41,6 +41,8 @@ export interface FanClub {
   avatarUrl?: string; // Official display photo / profile picture URL
   isOfficialOrVerified?: boolean;
   socials: SocialLink[];
+  hashtags?: string;
+  tags?: string[];
   updatedAt?: string;
 }
 
@@ -86,6 +88,8 @@ export interface FoodSupportProject {
   proofMedia: ProofMedia[];
   deliveryNotes?: string;
   translatedDeliveryNotes?: string; // Translated version for international fans (e.g. English)
+  hashtags?: string;
+  tags?: string[];
   createdAt: string;
   updatedAt?: string;
 }

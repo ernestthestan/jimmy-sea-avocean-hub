@@ -58,8 +58,8 @@ import {
   getTranslatedSupportText,
   autoTranslateFoodSupportDraft
 } from '../utils/translation';
-
-
+import { OfficialHashtagPicker } from './OfficialHashtagPicker';
+import { HashtagsDisplayCard } from './HashtagsDisplayCard';
 
 interface FanHubProps {
   fanClubs: FanClub[];
@@ -997,6 +997,17 @@ export const FanHub: React.FC<FanHubProps> = ({
                     </div>
 
 
+                    {/* Official Hashtags Section */}
+                    {club.hashtags && (
+                      <div className="px-5 pt-3">
+                        <HashtagsDisplayCard
+                          hashtags={club.hashtags}
+                          showToast={showToast}
+                          accentColor={currentAccent.colorHex}
+                        />
+                      </div>
+                    )}
+
                     {/* Social Platforms Row */}
                     <div className="p-5 pt-3 border-t border-slate-100 dark:border-slate-800 mt-3">
                       <span className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">
@@ -1468,6 +1479,17 @@ export const FanHub: React.FC<FanHubProps> = ({
                     </div>
 
 
+                    {/* Official Hashtags Section */}
+                    {proj.hashtags && (
+                      <div className="pt-2">
+                        <HashtagsDisplayCard
+                          hashtags={proj.hashtags}
+                          showToast={showToast}
+                          accentColor={currentAccent.colorHex}
+                        />
+                      </div>
+                    )}
+
                     {/* Action Buttons Row */}
                     <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2">
@@ -1557,7 +1579,7 @@ export const FanHub: React.FC<FanHubProps> = ({
       {/* ============================================================== */}
       {isClubModalOpen && editingClub && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-lg p-5 sm:p-6 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div className="flex items-center gap-2">
                 <Globe className="w-5 h-5 text-purple-600" />
@@ -1876,6 +1898,15 @@ export const FanHub: React.FC<FanHubProps> = ({
                 </div>
               </div>
 
+              {/* Official Hashtags with Quick Add Pills */}
+              <OfficialHashtagPicker
+                value={editingClub.hashtags || ''}
+                onChange={(val) => setEditingClub({ ...editingClub, hashtags: val })}
+                onShowToast={showToast}
+                title="Official Fan Club Hashtags"
+                placeholder="e.g. #jimmyyjp #sea_tawinan #JimmySea #AVOCEAN"
+              />
+
               {/* Verified Checkbox */}
               <label className="flex items-center gap-2 pt-1 cursor-pointer">
                 <input
@@ -1915,7 +1946,7 @@ export const FanHub: React.FC<FanHubProps> = ({
       {/* ============================================================== */}
       {isProjectModalOpen && editingProject && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-xl p-5 sm:p-6 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div className="flex items-center gap-2">
                 <Truck className="w-5 h-5 text-purple-600" />
@@ -2346,6 +2377,14 @@ export const FanHub: React.FC<FanHubProps> = ({
                 </div>
               </div>
 
+              {/* Official Hashtags with Quick Add Pills */}
+              <OfficialHashtagPicker
+                value={editingProject.hashtags || ''}
+                onChange={(val) => setEditingProject({ ...editingProject, hashtags: val })}
+                onShowToast={showToast}
+                title="Official Food Support Hashtags"
+                placeholder="e.g. #JimmySea #AVOCEAN #jimmyyjp #sea_tawinan"
+              />
 
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button

@@ -53,6 +53,8 @@ import { INITIAL_ACTOR_PROFILES } from '../data/initialActorProfiles';
 import { subscribeToActorProfiles, saveActorProfilesToFirestore } from '../lib/firestoreSync';
 import { TRANSLATION_LANGUAGES, translateText } from '../lib/translateService';
 import { compressImageFile } from '../lib/imageCompression';
+import { OfficialHashtagPicker } from './OfficialHashtagPicker';
+import { HashtagsDisplayCard } from './HashtagsDisplayCard';
 
 export const PROJECT_WATCH_PLATFORMS = [
   { value: 'Trailer', label: 'Official Trailer', icon: '🎬' },
@@ -1952,7 +1954,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           return (
             <div className="space-y-5">
               {/* Top Row: Jimmy (Left) & Sea (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 xl:gap-6 items-stretch">
+              <div className="grid grid-cols-1 md:grid-cols-2 landscape:grid-cols-2 gap-4 sm:gap-5 xl:gap-6 items-stretch">
                 <div>{renderProfileBanner('jimmy')}</div>
                 <div>{renderProfileBanner('sea')}</div>
               </div>
@@ -2024,8 +2026,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
         {/* Member Filters Row: All Member / Jimmy / Sea / Avocean */}
         <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#607494] dark:text-slate-400 mr-1 shrink-0">
               <Filter className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               <span>Filter:</span>
             </div>
@@ -2047,7 +2049,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             <button
               type="button"
               onClick={() => handleToggleMember('jimmy')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border shrink-0 whitespace-nowrap ${
                 isJimmyActive && !isAllMembersActive
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-400/40'
                   : isJimmyActive
@@ -2063,7 +2065,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             <button
               type="button"
               onClick={() => handleToggleMember('sea')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border shrink-0 whitespace-nowrap ${
                 isSeaActive && !isAllMembersActive
                   ? 'bg-sky-600 text-white border-sky-600 shadow-xs ring-2 ring-sky-400/40'
                   : isSeaActive
@@ -2079,7 +2081,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             <button
               type="button"
               onClick={() => handleToggleMember('avocean')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border shrink-0 whitespace-nowrap ${
                 isAvoceanActive && !isAllMembersActive
                   ? 'bg-teal-600 text-white border-teal-600 shadow-xs ring-2 ring-teal-400/40'
                   : isAvoceanActive
@@ -2118,11 +2120,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       {/* ============================================================== */}
       {/* 3. MAIN LAYOUT: LEFT STICKY CATEGORIES + RIGHT PROJECTS GRID   */}
       {/* ============================================================== */}
-      <div className="flex flex-col lg:flex-row items-start gap-6">
+      <div className="flex flex-col lg:flex-row md:landscape:flex-row items-start gap-5 lg:gap-6">
         {/* ============================================================== */}
         {/* LEFT SIDEBAR: STICKY CATEGORY NAVIGATION (Visible when scrolling!) */}
         {/* ============================================================== */}
-        <aside className="w-full lg:w-64 shrink-0 lg:sticky lg:top-20 z-20 self-start">
+        <aside className="w-full lg:w-64 md:landscape:w-60 shrink-0 lg:sticky md:landscape:sticky lg:top-20 md:landscape:top-20 z-20 self-start">
           <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-3 shadow-xs border border-slate-200/80 dark:border-slate-800 backdrop-blur-md space-y-2">
             <div className="flex items-center justify-between px-3 py-1">
               <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -2133,8 +2135,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
               </span>
             </div>
 
-            {/* Vertical menu on desktop, horizontal scroll on mobile */}
-            <nav className="flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0 scrollbar-none">
+            {/* Category Navigation: Clean grid on mobile/tablet, vertical list on desktop & landscape */}
+            <nav className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:flex lg:flex-col md:landscape:flex md:landscape:flex-col gap-1.5 w-full">
               {PROJECT_CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat.id;
                 const count = categoryCounts[cat.id] ?? 0;
@@ -2143,21 +2145,21 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
                     style={isSelected ? { backgroundColor: currentAccent.colorHex } : {}}
-                    className={`inline-flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer text-left w-full ${
+                    className={`inline-flex items-center justify-between gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-left ${
                       isSelected
                         ? 'text-white shadow-xs'
-                        : 'bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
-                    }`}
+                        : 'bg-slate-100/80 lg:bg-transparent md:landscape:bg-transparent dark:bg-slate-800/80 lg:dark:bg-transparent md:landscape:dark:bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                    } w-full`}
                   >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="text-base shrink-0">{cat.emoji}</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+                      <span className="text-sm sm:text-base shrink-0">{cat.emoji}</span>
                       <span className="truncate">{cat.label}</span>
                     </div>
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${
                         isSelected
                           ? 'bg-white/20 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                          : 'bg-white lg:bg-slate-100 md:landscape:bg-slate-100 dark:bg-slate-700 lg:dark:bg-slate-800 md:landscape:dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                       }`}
                     >
                       {count}
@@ -2169,10 +2171,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
             {/* Release Status Quick Filter in Sidebar */}
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 px-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 block mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 block mb-1.5">
                 Release Status
               </span>
-              <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0 scrollbar-none">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:flex-col md:landscape:flex md:landscape:flex-col gap-1.5 w-full">
                 {[
                   { id: 'all', label: 'All Projects', emoji: '✨', count: filteredProjects.length },
                   { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
@@ -2185,13 +2187,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       key={st.id}
                       type="button"
                       onClick={() => setSelectedStatus(st.id as any)}
-                      className={`inline-flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer text-left w-full ${
+                      className={`inline-flex items-center justify-between gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-left ${
                         isSel
                           ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
-                          : 'bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
-                      }`}
+                          : 'bg-slate-100/80 lg:bg-transparent dark:bg-slate-800/80 lg:dark:bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                      } w-full`}
                     >
-                      <div className="flex items-center gap-2 truncate">
+                      <div className="flex items-center gap-1.5 truncate">
                         <span>{st.emoji}</span>
                         <span className="truncate">{st.label}</span>
                       </div>
@@ -2199,7 +2201,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${
                           isSel
                             ? 'bg-white/20 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                            : 'bg-white lg:bg-slate-100 dark:bg-slate-700 lg:dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                         }`}
                       >
                         {st.count}
@@ -2263,10 +2265,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             )}
           </div>
 
-          {/* Status Navigation Tabs (Upcoming, Airing, Past Projects) */}
-          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 pl-1">
+          {/* Status Navigation Tabs (Upcoming, Airing, Past Projects): Wraps naturally without sliders */}
+          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 pl-1 shrink-0">
                 Status:
               </span>
               <button
@@ -2352,7 +2354,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           </div>
 
           {/* Projects View Controls: Poster Display Ratio & Global Font Size */}
-          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs px-4 py-2.5 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs px-3 sm:px-4 py-2.5 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
             {/* Poster Aspect Mode (Whole Photo vs Auto-Fit vs Landscape) */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-[#526586] dark:text-slate-400 flex items-center gap-1.5">
@@ -2939,17 +2941,14 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           </p>
                         </div>
 
-                        {/* Hashtags */}
+                        {/* Hashtags with Copy All and Individual Click-to-Copy Pills */}
                         {proj.tags && proj.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {proj.tags.map((tag, tIdx) => (
-                              <span
-                                key={tIdx}
-                                className={`rounded-md font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ${typo.tags}`}
-                              >
-                                {tag}
-                              </span>
-                            ))}
+                          <div className="pt-2">
+                            <HashtagsDisplayCard
+                              hashtags={proj.tags}
+                              showToast={showToast}
+                              accentColor={currentAccent.colorHex}
+                            />
                           </div>
                         )}
                       </div>
@@ -3270,7 +3269,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl p-6 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 cursor-default"
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 cursor-default"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
@@ -4327,19 +4326,14 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               </div>
 
-              {/* Tags */}
-              <div>
-                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                  Hashtags / Tags (Space separated)
-                </label>
-                <input
-                  type="text"
-                  value={formTags}
-                  onChange={(e) => setFormTags(e.target.value)}
-                  placeholder="#LastTwilightSeries #GMMTV #JimmySea"
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                />
-              </div>
+              {/* Official Hashtags with Quick Add Pills */}
+              <OfficialHashtagPicker
+                value={formTags}
+                onChange={setFormTags}
+                onShowToast={showToast}
+                title="Official Project Hashtags"
+                placeholder="e.g. #LastTwilightSeries #GMMTV #JimmySea #AVOCEAN"
+              />
 
               {/* Form Action Buttons */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">

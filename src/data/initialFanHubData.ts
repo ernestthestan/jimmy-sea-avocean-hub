@@ -24,6 +24,7 @@ export const INITIAL_FOOD_SUPPORT_PROJECTS: FoodSupportProject[] = [
     announcementUrl: 'https://x.com/Avocean_Official',
     deliveryNotes: 'กำลังประสานงานจุดจอดรถหน้าตึก GMM และแพ็กเกจของขวัญพิเศษประจำปี 2026',
     translatedDeliveryNotes: 'Currently coordinating parking access at GMMTV building and preparing the special 2026 annual celebratory gift packs for the team.',
+    hashtags: '#JimmySea #AVOCEAN #jimmyyjp #sea_tawinan',
     proofMedia: [],
     createdAt: '2026-10-25T08:00:00.000Z'
   },
@@ -47,6 +48,7 @@ export const INITIAL_FOOD_SUPPORT_PROJECTS: FoodSupportProject[] = [
     announcementUrl: 'https://x.com/JimmySeaTH/status/1852000000000000000',
     deliveryNotes: 'ออกแบบสติ๊กเกอร์คัพสลีฟและป้ายแบ็กดร็อปเรียบร้อยแล้ว อยู่ระหว่างการผลิต',
     translatedDeliveryNotes: 'Cup sleeve stickers and photo backdrop banners are designed and now undergoing final printing for event day.',
+    hashtags: '#MEDIHEALxJimmySea #JimmySea #AVOCEAN #จิมมี่ซี',
     proofMedia: [],
     createdAt: '2026-10-28T10:00:00.000Z'
   },
@@ -70,6 +72,7 @@ export const INITIAL_FOOD_SUPPORT_PROJECTS: FoodSupportProject[] = [
     announcementUrl: 'https://x.com/JimmySeaPH',
     deliveryNotes: 'Goal 100% reached! Barista crew scheduled and artist snack boxes ordered.',
     translatedDeliveryNotes: 'Goal 100% reached! Barista crew scheduled and artist snack boxes ordered.',
+    hashtags: '#GMMTV2026 #JimmySea #AVOCEAN #GMMTV',
     proofMedia: [
       {
         id: 'media-gmmtv-1',
