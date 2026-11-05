@@ -498,6 +498,8 @@ export const FanHub: React.FC<FanHubProps> = ({
     switch (category) {
       case 'cup_sleeve':
         return '☕ Cup Sleeve Cafe';
+      case 'donation_drive':
+        return '💸 Donation Drive';
       case 'watch_party':
         return '🍿 Watch Party';
       case 'gathering':
@@ -523,7 +525,7 @@ export const FanHub: React.FC<FanHubProps> = ({
     const end = (event.endDate || event.date || '').replace(/-/g, '');
     const dates = start ? `${start}/${end || start}` : '';
     const details = encodeURIComponent(
-      `${event.description || ''}\n\nOrganized by Fan Club: ${clubName}\n${event.link ? `More Info & RSVP: ${event.link}` : ''}`
+      `${event.description || ''}\n\nOrganized by Fan Club: ${clubName}\n${event.link ? `More Info & RSVP: ${event.link}\n` : ''}${event.donationUrl ? `Donation Drive Link: ${event.donationUrl}` : ''}`
     );
     const location = encodeURIComponent(event.location || '');
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
@@ -1451,17 +1453,33 @@ export const FanHub: React.FC<FanHubProps> = ({
                                     <span>Add to Calendar</span>
                                   </a>
 
-                                  {ev.link && (
-                                    <a
-                                      href={ev.link}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all"
-                                    >
-                                      <span>Event Info / RSVP</span>
-                                      <ExternalLink className="w-3 h-3" />
-                                    </a>
-                                  )}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {ev.donationUrl && (
+                                      <a
+                                        href={ev.donationUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-2xs transition-all"
+                                        title="Open donation / support drive form or link"
+                                      >
+                                        <Heart className="w-3 h-3 text-rose-200 fill-rose-200" />
+                                        <span>Donation Link</span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+
+                                    {ev.link && (
+                                      <a
+                                        href={ev.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all"
+                                      >
+                                        <span>Event Info / RSVP</span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -2489,6 +2507,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                         locationUrl: '',
                         description: '',
                         link: '',
+                        donationUrl: '',
                         posterUrl: ''
                       };
                       setEditingClub({
@@ -2586,6 +2605,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                               className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
                             >
                               <option value="cup_sleeve">☕ Cup Sleeve / Cafe</option>
+                              <option value="donation_drive">💸 Donation Drive</option>
                               <option value="watch_party">🍿 Watch Party</option>
                               <option value="gathering">🎉 Fan Gathering</option>
                               <option value="concert_support">🎫 Concert Support</option>
@@ -2906,6 +2926,25 @@ export const FanHub: React.FC<FanHubProps> = ({
                                 setEditingClub({ ...editingClub, events: next });
                               }}
                               placeholder="https://x.com/... (thread or RSVP link)"
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Donation / Support Drive Link */}
+                          <div className="sm:col-span-6">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                              <Heart className="w-3 h-3 text-rose-500" />
+                              <span>Donation / Support Link (Optional)</span>
+                            </label>
+                            <input
+                              type="url"
+                              value={evItem.donationUrl || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], donationUrl: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="https://forms.gle/... (donation or drive link)"
                               className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                             />
                           </div>

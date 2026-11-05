@@ -39,6 +39,7 @@ export interface SocialLink {
 
 export type FanClubEventCategory =
   | 'cup_sleeve'
+  | 'donation_drive'
   | 'watch_party'
   | 'gathering'
   | 'concert_support'
@@ -61,6 +62,7 @@ export interface FanClubEvent {
   locationUrl?: string; // Google Maps URL
   description?: string; // Project/event details (giveaways, photobooths, cup sleeves, etc.)
   link?: string; // Official announcement / RSVP link
+  donationUrl?: string; // Optional donation / support drive link
   posterUrl?: string; // Event poster image URL (primary)
   photos?: string[]; // Multiple photos / media URLs
   photoAspect?: FanClubPhotoAspect; // Aspect ratio adjustment: poster (3:4), card (16:9), square (1:1)
