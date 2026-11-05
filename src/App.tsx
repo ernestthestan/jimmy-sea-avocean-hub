@@ -20,6 +20,7 @@ import {
   Sparkles,
   Search,
   Image as ImageIcon,
+  Images,
   RotateCcw,
   Globe,
   Share2,
@@ -98,6 +99,8 @@ import {
   subscribeToCareerProjects,
   saveCareerProjectToFirestore,
   deleteCareerProjectFromFirestore,
+  subscribeToActorProfiles,
+  saveActorProfilesToFirestore,
   onQuotaExceededChange,
   ensureDefaultAdminAccounts,
   authenticateUserAccount,
@@ -124,7 +127,8 @@ import { FanHub } from './components/FanHub';
 import type { FanClub, FoodSupportProject } from './types/fanhub';
 import { INITIAL_FAN_CLUBS, INITIAL_FOOD_SUPPORT_PROJECTS } from './data/initialFanHubData';
 import { ProjectsHub } from './components/ProjectsHub';
-import type { CareerProject } from './types/projects';
+import type { CareerProject, ActorProfile } from './types/projects';
+import { INITIAL_ACTOR_PROFILES } from './data/initialActorProfiles';
 import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
 import { AppreciationWall } from './components/AppreciationWall';
 import { OfficialHashtagPicker } from './components/OfficialHashtagPicker';
@@ -1439,6 +1443,7 @@ export default function App() {
       const CONTENT_KEYS_TO_CLEAR = [
         'avocean_career_projects_v1',
         'avocean_projects_initialized',
+        'avocean_actor_profiles_v1',
         'avocean_schedule_events_v2',
         'avocean_schedule_events_v1',
         STORAGE_EVENTS_KEY,
@@ -1448,7 +1453,6 @@ export default function App() {
         'avocean_fan_clubs_v3',
         'avocean_fanhub_initialized',
         'avocean_food_projects_v3',
-        'avocean_actor_profiles_v1',
         'avocean_fan_messages_v1',
         'avocean_inbox_initialized',
         'avocean_audit_logs_v1'
@@ -1652,6 +1656,22 @@ export default function App() {
     showToast('Project removed.');
   };
 
+  // --- Actor Profiles State (Jimmy, Avocean, Sea) - Kept in memory across tab switches ---
+  const [actorProfiles, setActorProfiles] = useState<Record<'jimmy' | 'avocean' | 'sea', ActorProfile>>(INITIAL_ACTOR_PROFILES);
+
+  // Continuous background listener for Actor Profiles (never unmounts)
+  useEffect(() => {
+    const unsub = subscribeToActorProfiles(INITIAL_ACTOR_PROFILES, (updated) => {
+      setActorProfiles(updated);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSaveActorProfiles = async (nextProfiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>) => {
+    setActorProfiles(nextProfiles);
+    await saveActorProfilesToFirestore(nextProfiles);
+  };
+
 
   // Automatically update today's date string when midnight passes in user's timezone
   useEffect(() => {
@@ -1758,6 +1778,9 @@ export default function App() {
     currentIndex?: number;
   } | null>(null);
 
+  // Main Top Banner Gallery View Modal State
+  const [bannerGalleryViewOpen, setBannerGalleryViewOpen] = useState<boolean>(false);
+
   // Active photo index for events with multiple posters/photos (eventId -> photoIndex)
   const [activePhotoIndexByEvent, setActivePhotoIndexByEvent] = useState<Record<string, number>>({});
 
@@ -1803,6 +1826,10 @@ export default function App() {
           setEnlargedPhoto(null);
           return;
         }
+        if (bannerGalleryViewOpen) {
+          setBannerGalleryViewOpen(false);
+          return;
+        }
       } else if (enlargedPhoto && e.key === 'ArrowRight' && enlargedPhoto.photos && enlargedPhoto.photos.length > 1) {
         const nextIdx = ((enlargedPhoto.currentIndex ?? 0) + 1) % enlargedPhoto.photos.length;
         setEnlargedPhoto({
@@ -1821,7 +1848,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enlargedPhoto, descriptionModalEvent, inboxModalOpen, leaveMessageModalOpen]);
+  }, [enlargedPhoto, descriptionModalEvent, inboxModalOpen, leaveMessageModalOpen, bannerGalleryViewOpen]);
 
   // --- Personal Accent Color Choice (Purple, Blue, Green) ---
   const [accentColor, setAccentColor] = useState<AccentChoice>(() => {
@@ -5192,7 +5219,12 @@ export default function App() {
             <div
               onClick={() => {
                 if (activePhoto) {
-                  setEnlargedPhoto({ url: activePhoto, title: settings.bannerTitle || 'Official Hub Banner' });
+                  setEnlargedPhoto({
+                    url: activePhoto,
+                    title: `${settings.bannerTitle || 'Main Hub Banner'} — Photo ${(currentBannerIndex % (activeBannerPhotos.length || 1)) + 1} of ${activeBannerPhotos.length || 1}`,
+                    photos: activeBannerPhotos.length > 0 ? activeBannerPhotos : [activePhoto],
+                    currentIndex: currentBannerIndex % (activeBannerPhotos.length || 1)
+                  });
                 }
               }}
               className={`relative w-full ${heightClass} rounded-[28px] overflow-hidden shadow-sm border-2 border-white/80 dark:border-slate-800 bg-slate-200 dark:bg-slate-800 group ${
@@ -5243,6 +5275,16 @@ export default function App() {
                       Official Banner Photo Slot
                     </span>
                   </div>
+                </div>
+              )}
+
+              {/* Hover Cue to Enlarge */}
+              {activePhoto && (
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors pointer-events-none flex items-center justify-center">
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity px-3.5 py-1.5 rounded-full bg-black/75 text-white text-xs font-bold backdrop-blur-xs flex items-center gap-1.5 shadow-lg">
+                    <Maximize2 className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Click to Enlarge</span>
+                  </span>
                 </div>
               )}
 
@@ -5301,9 +5343,29 @@ export default function App() {
                 </>
               )}
 
-              {/* Adjust Photo Slot & Manage Photos Button: Visible to BOTH Admin & Owner */}
-              {canEditEvents && (
-                <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+              {/* Top Banner Control Buttons: Gallery View (All Users) + Adjust Banner (Admins) */}
+              <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+                {/* GALLERY BUTTON: Visible to all fans and visitors */}
+                {activeBannerPhotos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBannerGalleryViewOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-black/65 hover:bg-black/90 text-white text-xs font-extrabold shadow-md backdrop-blur-md cursor-pointer border border-white/30 transition-all hover:scale-105 active:scale-95 group/btn"
+                    title={`View Banner Photos Gallery (${activeBannerPhotos.length} ${activeBannerPhotos.length === 1 ? 'photo' : 'photos'})`}
+                  >
+                    <Images className="w-3.5 h-3.5 text-purple-300 group-hover/btn:text-purple-200" />
+                    <span>Gallery</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-mono leading-none font-bold">
+                      {activeBannerPhotos.length}
+                    </span>
+                  </button>
+                )}
+
+                {/* Adjust Photo Slot & Manage Photos Button: Visible to BOTH Admin & Owner */}
+                {canEditEvents && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -5314,12 +5376,12 @@ export default function App() {
                     title="Adjust Photo Sizing, Fit & Add/Remove Banner Photos (Admin & Owner)"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>
+                    <span className="hidden sm:inline">
                       Adjust Banner {activeBannerPhotos.length > 1 ? `(${activeBannerPhotos.length})` : ''}
                     </span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           );
         })()}
@@ -5935,6 +5997,8 @@ export default function App() {
         /* ============================================================== */
         <ProjectsHub
           projects={careerProjects}
+          actorProfiles={actorProfiles}
+          onSaveActorProfiles={handleSaveActorProfiles}
           canEdit={canEditEvents}
           isOwner={isOwner}
           currentAccent={currentAccent}
@@ -11262,13 +11326,175 @@ export default function App() {
       )}
 
       {/* ============================================================== */}
+      {/* BANNER PHOTOS GALLERY MODAL (GRID OVERVIEW OF BANNER PHOTOS)   */}
+      {/* ============================================================== */}
+      {bannerGalleryViewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+          onClick={() => setBannerGalleryViewOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-4xl p-5 sm:p-7 max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-150 flex flex-col justify-between"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div>
+              <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-slate-800 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 text-white flex items-center justify-center shadow-md">
+                    <Images className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-extrabold text-[#1A3668] dark:text-white leading-tight">
+                        Main Banner Gallery
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        {activeBannerPhotos.length} {activeBannerPhotos.length === 1 ? 'Artwork' : 'Artworks'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Official header artwork and rotating promotional banners. Click any image to enlarge in high resolution.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBannerGalleryViewOpen(false)}
+                  className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Close gallery"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Photos Grid */}
+              <div className="py-5">
+                {activeBannerPhotos.length === 0 ? (
+                  <div className="text-center py-12 px-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700">
+                    <ImageIcon className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                    <h4 className="text-sm font-bold text-[#1A3668] dark:text-white mb-1">
+                      No Banner Photos Configured
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      The top banner is currently using a default gradient preset.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-4">
+                    {activeBannerPhotos.map((photo, idx) => {
+                      const isActive = idx === currentBannerIndex % activeBannerPhotos.length;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setEnlargedPhoto({
+                              url: photo,
+                              title: `${settings.bannerTitle || 'Main Hub Banner'} — Photo ${idx + 1} of ${activeBannerPhotos.length}`,
+                              photos: activeBannerPhotos,
+                              currentIndex: idx
+                            });
+                          }}
+                          className={`group relative rounded-2xl overflow-hidden border-2 transition-all cursor-pointer bg-slate-950 shadow-xs hover:shadow-lg hover:-translate-y-0.5 ${
+                            isActive
+                              ? 'border-purple-500 ring-2 ring-purple-400/40'
+                              : 'border-slate-200 dark:border-slate-700 hover:border-purple-400'
+                          }`}
+                        >
+                          {/* Photo Thumbnail */}
+                          <div className="w-full aspect-[16/9] relative overflow-hidden bg-slate-900 flex items-center justify-center">
+                            <img
+                              src={photo}
+                              alt={`Banner photo ${idx + 1}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                            />
+
+                            {/* Hover Overlay with Enlarge badge */}
+                            <div className="absolute inset-0 bg-black/30 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 text-slate-900 text-xs font-bold shadow-lg backdrop-blur-xs scale-90 group-hover:scale-100 transition-transform">
+                                <Maximize2 className="w-3.5 h-3.5 text-purple-600" />
+                                <span>Click to Enlarge</span>
+                              </span>
+                            </div>
+
+                            {/* Top Badges */}
+                            <div className="absolute top-2 left-2 flex items-center gap-1">
+                              <span className="px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-mono font-bold backdrop-blur-xs">
+                                #{idx + 1}
+                              </span>
+                              {isActive && (
+                                <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-[10px] font-bold backdrop-blur-xs flex items-center gap-1 shadow-xs">
+                                  <span>Active Now</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Footer */}
+                          <div className="p-2.5 bg-white dark:bg-slate-800/90 flex items-center justify-between text-xs font-semibold text-[#1A3668] dark:text-slate-200">
+                            <span className="truncate">Banner Artwork {idx + 1}</span>
+                            <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold group-hover:underline flex items-center gap-1">
+                              <span>Enlarge</span>
+                              <Maximize2 className="w-2.5 h-2.5" />
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs">
+              <span className="text-slate-400 dark:text-slate-500 font-medium">
+                💡 Tip: When enlarged, press <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded font-mono">←</kbd> / <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded font-mono">→</kbd> or use arrow buttons to flip through photos.
+              </span>
+
+              <div className="flex items-center gap-2">
+                {activeBannerPhotos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEnlargedPhoto({
+                        url: activeBannerPhotos[currentBannerIndex % activeBannerPhotos.length],
+                        title: `${settings.bannerTitle || 'Main Hub Banner'} — Photo ${(currentBannerIndex % activeBannerPhotos.length) + 1} of ${activeBannerPhotos.length}`,
+                        photos: activeBannerPhotos,
+                        currentIndex: currentBannerIndex % activeBannerPhotos.length
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>View Slideshow Fullscreen</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBannerGalleryViewOpen(false)}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
       {/* PHOTO LIGHTBOX MODAL (Full Resolution Event Photo Popup)      */}
       {/* ============================================================== */}
       {enlargedPhoto && (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-5 animate-in fade-in duration-200 select-none"
+          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-5 animate-in fade-in duration-200 select-none"
           onClick={() => setEnlargedPhoto(null)}
         >
           {/* Top Bar: Title, Multi-photo counter, Open Original & Close */}

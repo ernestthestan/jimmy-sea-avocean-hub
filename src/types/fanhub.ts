@@ -69,6 +69,9 @@ export interface FanClubEvent {
   photoSize?: FanClubPhotoSize; // Display size adjustment: small, medium, large
 }
 
+export type FanClubBannerHeight = 'compact' | 'standard' | 'large' | 'tall';
+export type FanClubAvatarSize = 'small' | 'standard' | 'large' | 'xl';
+
 export interface FanClub {
   id: string;
   name: string;
@@ -82,6 +85,8 @@ export interface FanClub {
   handle?: string; // e.g. "@JimmySea_OFC", "@AvoceanOfficial"
   bannerUrl?: string; // Official header banner image URL
   avatarUrl?: string; // Official display photo / profile picture URL
+  bannerHeight?: FanClubBannerHeight; // Visual sizing: compact (120px), standard (165px), large (210px), tall (260px)
+  avatarSize?: FanClubAvatarSize; // Visual sizing: small (76px), standard (96px), large (112px), xl (128px)
   isOfficialOrVerified?: boolean;
   socials: SocialLink[];
   hashtags?: string;

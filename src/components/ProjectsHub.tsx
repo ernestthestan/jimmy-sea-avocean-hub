@@ -103,6 +103,8 @@ export function detectProjectWatchPlatform(url: string): { platform: string; lab
 
 interface ProjectsHubProps {
   projects: CareerProject[];
+  actorProfiles?: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>;
+  onSaveActorProfiles?: (profiles: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>) => Promise<void> | void;
   canEdit: boolean;
   isOwner: boolean;
   currentAccent: {
@@ -123,6 +125,8 @@ interface ProjectsHubProps {
 
 export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   projects,
+  actorProfiles: propActorProfiles,
+  onSaveActorProfiles,
   canEdit,
   isOwner,
   currentAccent,
@@ -206,22 +210,35 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     }
   }, [preferredTranslationLang]);
 
-  // Actor Profiles State (Jimmy, Avocean, Sea)
-  const [actorProfiles, setActorProfiles] = useState<Record<'jimmy' | 'avocean' | 'sea', ActorProfile>>(() => {
-    try {
-      const saved = localStorage.getItem('avocean_actor_profiles_v1');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_ACTOR_PROFILES;
-  });
+  // Actor Profiles State (Jimmy, Avocean, Sea) - Cloud-driven from Firestore
+  const [localActorProfiles, setLocalActorProfiles] = useState<Record<'jimmy' | 'avocean' | 'sea', ActorProfile>>(
+    () => propActorProfiles || INITIAL_ACTOR_PROFILES
+  );
 
-  // Subscribe to live Firestore changes for Actor Profiles
+  const actorProfiles = propActorProfiles || localActorProfiles;
+
+  const setActorProfiles = (action: React.SetStateAction<Record<'jimmy' | 'avocean' | 'sea', ActorProfile>>) => {
+    setLocalActorProfiles((prev) => {
+      const current = propActorProfiles || prev;
+      return typeof action === 'function' ? action(current) : action;
+    });
+  };
+
+  // Sync if propActorProfiles changes
   useEffect(() => {
+    if (propActorProfiles) {
+      setLocalActorProfiles(propActorProfiles);
+    }
+  }, [propActorProfiles]);
+
+  // Subscribe to live Firestore changes if not already provided by prop
+  useEffect(() => {
+    if (propActorProfiles) return;
     const unsub = subscribeToActorProfiles(INITIAL_ACTOR_PROFILES, (updated) => {
-      setActorProfiles(updated);
+      setLocalActorProfiles(updated);
     });
     return () => unsub();
-  }, []);
+  }, [propActorProfiles]);
 
   // Quick Font Zoom per card (compact | medium | large)
   const [cardZoom, setCardZoom] = useState<Record<string, 'compact' | 'medium' | 'large'>>({
@@ -673,7 +690,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       };
 
       setActorProfiles(nextProfiles);
-      await saveActorProfilesToFirestore(nextProfiles);
+      if (onSaveActorProfiles) {
+        await onSaveActorProfiles(nextProfiles);
+      } else {
+        await saveActorProfilesToFirestore(nextProfiles);
+      }
       showToast(`Saved ${updated.name}'s profile successfully!`);
       setEditingActorProfile(null);
     } catch {
@@ -1514,9 +1535,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             };
 
             const getActorAccent = () => {
-              if (key === 'jimmy') return { border: 'border-purple-200 dark:border-purple-900/60', badge: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300', emoji: '🥑', ring: 'ring-purple-200 dark:ring-purple-900/50' };
-              if (key === 'sea') return { border: 'border-sky-200 dark:border-sky-900/60', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300', emoji: '🌊', ring: 'ring-sky-200 dark:ring-sky-900/50' };
-              return { border: 'border-emerald-200 dark:border-emerald-900/60', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300', emoji: '🥑💚', ring: 'ring-emerald-200 dark:ring-emerald-900/50' };
+              if (key === 'jimmy') return { border: 'border-purple-200 dark:border-purple-900/60', badge: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300', emoji: '🥑', ring: 'ring-purple-200 dark:ring-purple-900/50', bg: 'from-purple-500/20 via-purple-500/10 to-indigo-500/20' };
+              if (key === 'sea') return { border: 'border-sky-200 dark:border-sky-900/60', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300', emoji: '🌊', ring: 'ring-sky-200 dark:ring-sky-900/50', bg: 'from-sky-500/20 via-sky-500/10 to-blue-500/20' };
+              return { border: 'border-emerald-200 dark:border-emerald-900/60', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300', emoji: '🥑💚', ring: 'ring-emerald-200 dark:ring-emerald-900/50', bg: 'from-emerald-500/20 via-teal-500/10 to-green-500/20' };
             };
 
             const accent = getActorAccent();
@@ -1590,24 +1611,39 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       const currentAvatarIdx = (activeAvatarIndex[key] ?? 0) % (allAvatarPhotos.length || 1);
                       const activeAvatarPhoto = allAvatarPhotos[currentAvatarIdx] || profile.avatarUrl;
 
+                      const emojiFallback = key === 'jimmy' ? '🥑' : key === 'sea' ? '🌊' : '🥑🌊';
+
                       return (
                         <div className="flex flex-col items-center gap-1.5 shrink-0">
                           <div
-                            className="relative group/avatar cursor-pointer shrink-0 select-none overflow-hidden rounded-3xl"
-                            onClick={() => setLightboxImageUrl({
-                              url: activeAvatarPhoto,
-                              title: `${profile.name}${allAvatarPhotos.length > 1 ? ` (${currentAvatarIdx + 1}/${allAvatarPhotos.length})` : ''}`
-                            })}
+                            className={`relative group/avatar ${activeAvatarPhoto ? 'cursor-pointer' : ''} shrink-0 select-none overflow-hidden rounded-3xl`}
+                            onClick={() => {
+                              if (activeAvatarPhoto) {
+                                setLightboxImageUrl({
+                                  url: activeAvatarPhoto,
+                                  title: `${profile.name}${allAvatarPhotos.length > 1 ? ` (${currentAvatarIdx + 1}/${allAvatarPhotos.length})` : ''}`
+                                });
+                              }
+                            }}
                           >
-                            <img
-                              src={activeAvatarPhoto}
-                              alt={`${profile.name} - Photo ${currentAvatarIdx + 1}`}
-                              style={{
-                                objectPosition: profile.avatarPosition || 'center 12%',
-                                objectFit: profile.avatarFit || 'cover'
-                              }}
-                              className={`w-28 h-28 sm:w-36 sm:h-36 rounded-3xl object-cover shadow-md ring-4 ${accent.ring} bg-slate-100 dark:bg-slate-800 transition-transform duration-300 group-hover/avatar:scale-105`}
-                            />
+                            {activeAvatarPhoto ? (
+                              <img
+                                src={activeAvatarPhoto}
+                                alt={`${profile.name} - Photo ${currentAvatarIdx + 1}`}
+                                style={{
+                                  objectPosition: profile.avatarPosition || 'center 12%',
+                                  objectFit: profile.avatarFit || 'cover'
+                                }}
+                                className={`w-28 h-28 sm:w-36 sm:h-36 rounded-3xl object-cover shadow-md ring-4 ${accent.ring} bg-slate-100 dark:bg-slate-800 transition-transform duration-300 group-hover/avatar:scale-105`}
+                              />
+                            ) : (
+                              <div
+                                className={`w-28 h-28 sm:w-36 sm:h-36 rounded-3xl flex flex-col items-center justify-center p-2 text-center shadow-md ring-4 ${accent.ring} bg-gradient-to-br ${accent.bg} transition-transform duration-300 group-hover/avatar:scale-105`}
+                              >
+                                <span className="text-3xl sm:text-4xl select-none mb-1">{emojiFallback}</span>
+                                <span className="text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-200 line-clamp-1">{profile.nickname || profile.name}</span>
+                              </div>
+                            )}
 
                             {/* Multi-Photo Counter Badge */}
                             {allAvatarPhotos.length > 1 && (
@@ -4691,15 +4727,21 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   <div className="flex flex-col sm:flex-row items-center gap-4">
                     {/* Live Framing Preview Box */}
                     <div className="relative shrink-0">
-                      <img
-                        src={actorFormAvatarPhotos[0] || actorFormAvatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800'}
-                        alt="Framing preview"
-                        style={{
-                          objectPosition: `center ${actorFormAvatarOffsetY}%`,
-                          objectFit: actorFormAvatarFit
-                        }}
-                        className="w-24 h-24 rounded-2xl object-cover border-2 border-purple-500 shadow-md ring-2 ring-purple-200 dark:ring-purple-900 bg-slate-100 dark:bg-slate-800 transition-all"
-                      />
+                      {(actorFormAvatarPhotos[0] || actorFormAvatarUrl) ? (
+                        <img
+                          src={actorFormAvatarPhotos[0] || actorFormAvatarUrl}
+                          alt="Framing preview"
+                          style={{
+                            objectPosition: `center ${actorFormAvatarOffsetY}%`,
+                            objectFit: actorFormAvatarFit
+                          }}
+                          className="w-24 h-24 rounded-2xl object-cover border-2 border-purple-500 shadow-md ring-2 ring-purple-200 dark:ring-purple-900 bg-slate-100 dark:bg-slate-800 transition-all"
+                        />
+                      ) : (
+                        <div className="w-24 h-24 rounded-2xl flex flex-col items-center justify-center border-2 border-purple-500 shadow-md ring-2 ring-purple-200 dark:ring-purple-900 bg-slate-100 dark:bg-slate-800 text-3xl">
+                          🥑🌊
+                        </div>
+                      )}
                       <span className="absolute bottom-1 inset-x-1 text-[9px] font-black uppercase text-center bg-black/70 text-white rounded-md py-0.5 backdrop-blur-xs">
                         Live Preview
                       </span>

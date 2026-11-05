@@ -44,6 +44,8 @@ import {
 } from 'lucide-react';
 import type {
   FanClub,
+  FanClubBannerHeight,
+  FanClubAvatarSize,
   FanClubEvent,
   FanClubEventCategory,
   FanClubPhotoAspect,
@@ -624,6 +626,49 @@ export const FanHub: React.FC<FanHubProps> = ({
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
   };
 
+  // Visual sizing helpers for Fan Club Banner & Profile Photo
+  const getClubBannerHeightClass = (h?: FanClubBannerHeight) => {
+    switch (h) {
+      case 'compact':
+        return 'h-28 sm:h-32';
+      case 'large':
+        return 'h-48 sm:h-56 md:h-60';
+      case 'tall':
+        return 'h-60 sm:h-72 md:h-80';
+      case 'standard':
+      default:
+        return 'h-36 sm:h-44 md:h-48';
+    }
+  };
+
+  const getClubAvatarSizeClass = (s?: FanClubAvatarSize) => {
+    switch (s) {
+      case 'small':
+        return 'w-16 h-16 sm:w-20 sm:h-20';
+      case 'large':
+        return 'w-24 h-24 sm:w-28 sm:h-28';
+      case 'xl':
+        return 'w-28 h-28 sm:w-32 sm:h-32';
+      case 'standard':
+      default:
+        return 'w-20 h-20 sm:w-24 sm:h-24';
+    }
+  };
+
+  const getClubAvatarMarginClass = (s?: FanClubAvatarSize) => {
+    switch (s) {
+      case 'small':
+        return '-mt-8 sm:-mt-10';
+      case 'large':
+        return '-mt-12 sm:-mt-14';
+      case 'xl':
+        return '-mt-14 sm:-mt-16';
+      case 'standard':
+      default:
+        return '-mt-10 sm:-mt-12';
+    }
+  };
+
 
   // Distinct countries for directory filter
   const availableCountries = Array.from(
@@ -910,6 +955,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                       description: '',
                       handle: '',
                       isOfficialOrVerified: false,
+                      bannerHeight: 'standard',
+                      avatarSize: 'standard',
                       socials: [{ platform: 'x', url: '' }],
                       events: []
                     });
@@ -948,6 +995,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                       flagEmoji: '🇹🇭',
                       description: '',
                       handle: '',
+                      bannerHeight: 'standard',
+                      avatarSize: 'standard',
                       isOfficialOrVerified: true,
                       socials: [{ platform: 'x', label: 'X (Twitter)', url: '' }],
                       events: []
@@ -1003,82 +1052,140 @@ export const FanHub: React.FC<FanHubProps> = ({
                     ? 'bg-gradient-to-r from-sky-600 to-blue-700'
                     : 'bg-gradient-to-r from-purple-800 to-indigo-700';
 
+                const clubVisuals = [
+                  club.bannerUrl
+                    ? {
+                        url: club.bannerUrl,
+                        caption: `${club.name} — Official Banner`,
+                        title: `${club.name} Official Banner`
+                      }
+                    : null,
+                  club.avatarUrl
+                    ? {
+                        url: club.avatarUrl,
+                        caption: `${club.name} — Official Profile Photo`,
+                        title: `${club.name} Profile Photo`
+                      }
+                    : null
+                ].filter(Boolean) as { url: string; caption: string; title: string }[];
+
+                const bannerHeightClass = getClubBannerHeightClass(club.bannerHeight);
+                const avatarSizeClass = getClubAvatarSizeClass(club.avatarSize);
+                const avatarMarginClass = getClubAvatarMarginClass(club.avatarSize);
+
                 return (
                   <div
                     key={club.id}
                     className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] shadow-sm border border-slate-200/80 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-600/60 transition-all flex flex-col justify-between overflow-hidden group"
                   >
                     <div>
-                      {/* OFFICIAL HEADER BANNER */}
-                      <div className="relative h-36 sm:h-44 md:h-48 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
-                        {club.bannerUrl ? (
-                          <img
-                            src={club.bannerUrl}
-                            alt={`${club.name} banner`}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = 'none';
+                      {/* OFFICIAL HEADER BANNER (Clickable to open in Lightbox) */}
+                          <div
+                            onClick={() => {
+                              if (club.bannerUrl) {
+                                openLightboxGallery(clubVisuals, 0);
+                              }
                             }}
-                          />
-                        ) : (
-                          <div className={`w-full h-full ${fallbackBannerClass} flex items-center justify-end pr-4 opacity-90`}>
-                            <Sparkles className="w-12 h-12 text-white/20" />
-                          </div>
-                        )}
-
-                        {/* Top Gradient Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent pointer-events-none" />
-
-                        {/* Top-Right Admin Buttons on Banner */}
-                        {canEdit && (
-                          <div className="absolute top-3 right-3 z-10 flex items-center gap-0.5 bg-black/55 backdrop-blur-md rounded-full p-1 border border-white/25 shadow-sm">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingClub(club);
-                                setIsClubModalOpen(true);
-                              }}
-                              className="p-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/20 cursor-pointer transition-colors"
-                              title="Edit fan club"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            {isOwner && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (window.confirm(`Delete "${club.name}" from fan club directory?`)) {
-                                    onDeleteFanClub(club.id);
-                                  }
+                            className={`relative ${bannerHeightClass} w-full overflow-hidden bg-slate-100 dark:bg-slate-800 ${
+                              club.bannerUrl ? 'cursor-pointer group/banner' : ''
+                            }`}
+                            title={club.bannerUrl ? 'Click to view full banner' : club.name}
+                          >
+                            {club.bannerUrl ? (
+                              <img
+                                src={club.bannerUrl}
+                                alt={`${club.name} banner`}
+                                className="w-full h-full object-cover group-hover/banner:scale-105 transition-transform duration-300"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
                                 }}
-                                className="p-1.5 rounded-full text-rose-300 hover:text-rose-100 hover:bg-rose-500/30 cursor-pointer transition-colors"
-                                title="Delete fan club"
+                              />
+                            ) : (
+                              <div className={`w-full h-full ${fallbackBannerClass} flex items-center justify-end pr-4 opacity-90`}>
+                                <Sparkles className="w-12 h-12 text-white/20" />
+                              </div>
+                            )}
+
+                            {/* View Banner Hover Indicator */}
+                            {club.bannerUrl && (
+                              <div className="absolute inset-0 bg-black/0 group-hover/banner:bg-black/25 transition-colors flex items-center justify-center pointer-events-none z-10">
+                                <span className="opacity-0 group-hover/banner:opacity-100 transition-opacity px-3 py-1 rounded-full bg-black/75 text-white text-xs font-bold backdrop-blur-xs flex items-center gap-1.5 shadow-lg">
+                                  <Maximize2 className="w-3.5 h-3.5" />
+                                  <span>View Banner</span>
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Top Gradient Overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent pointer-events-none" />
+
+                            {/* Top-Right Admin Buttons on Banner */}
+                            {canEdit && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-3 right-3 z-20 flex items-center gap-0.5 bg-black/55 backdrop-blur-md rounded-full p-1 border border-white/25 shadow-sm"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingClub(club);
+                                    setIsClubModalOpen(true);
+                                  }}
+                                  className="p-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/20 cursor-pointer transition-colors"
+                                  title="Edit fan club"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                {isOwner && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm(`Delete "${club.name}" from fan club directory?`)) {
+                                        onDeleteFanClub(club.id);
+                                      }
+                                    }}
+                                    className="p-1.5 rounded-full text-rose-300 hover:text-rose-100 hover:bg-rose-500/30 cursor-pointer transition-colors"
+                                    title="Delete fan club"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
 
-                      {/* AVATAR + PILLS ROW (Pills beside avatar in yellow circled area) */}
-                      <div className="px-6 -mt-10 sm:-mt-12 flex items-end gap-3 relative z-10 mb-2.5 flex-wrap">
-                        <div className="relative shrink-0">
-                          {club.avatarUrl ? (
-                            <img
-                              src={club.avatarUrl}
-                              alt={`${club.name} profile`}
-                              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white dark:border-slate-900 shadow-lg object-cover bg-white dark:bg-slate-800"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = 'none';
+                          {/* AVATAR + PILLS ROW (Avatar is clickable to open in Lightbox) */}
+                          <div className={`px-6 ${avatarMarginClass} flex items-end gap-3 relative z-10 mb-2.5 flex-wrap`}>
+                            <div
+                              onClick={() => {
+                                if (club.avatarUrl) {
+                                  const avatarIdx = clubVisuals.findIndex((v) => v.url === club.avatarUrl);
+                                  openLightboxGallery(clubVisuals, avatarIdx >= 0 ? avatarIdx : 0);
+                                }
                               }}
-                            />
-                          ) : (
-                            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white dark:border-slate-900 shadow-lg bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black">
-                              {club.flagEmoji || '🥑'}
+                              className={`relative shrink-0 ${club.avatarUrl ? 'cursor-pointer group/avatar' : ''}`}
+                              title={club.avatarUrl ? 'Click to view full profile photo' : club.name}
+                            >
+                              {club.avatarUrl ? (
+                                <>
+                                  <img
+                                    src={club.avatarUrl}
+                                    alt={`${club.name} profile`}
+                                    className={`${avatarSizeClass} rounded-full border-4 border-white dark:border-slate-900 shadow-lg object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200`}
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                  <div className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover/avatar:opacity-100">
+                                    <Maximize2 className="w-4 h-4 text-white drop-shadow-md" />
+                                  </div>
+                                </>
+                              ) : (
+                                <div className={`${avatarSizeClass} rounded-full border-4 border-white dark:border-slate-900 shadow-lg bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black`}>
+                                  {club.flagEmoji || '🥑'}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
 
                         {/* Pills positioned beside avatar in yellow circled area */}
                         <div className="flex items-center gap-1.5 flex-wrap pb-1.5">
@@ -2273,9 +2380,14 @@ export const FanHub: React.FC<FanHubProps> = ({
 
               {/* Official Banner & Display Photo (Avatar) */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-3">
-                <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Official Visuals (Banner & Profile Photo)
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Official Visuals (Banner & Profile Photo)
+                  </span>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    Adjustable Sizing & Clickable Full-view
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -2323,6 +2435,77 @@ export const FanHub: React.FC<FanHubProps> = ({
                           onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
                         />
                       )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Visual Sizing Adjustments: Banner Height & Profile Photo Size */}
+                <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <ImageIcon className="w-3 h-3 text-purple-600" />
+                        <span>Banner Height / Sizing</span>
+                      </span>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold capitalize">
+                        {editingClub.bannerHeight || 'standard'}
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-4 gap-1 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                      {[
+                        { id: 'compact', label: 'Compact', desc: '120px' },
+                        { id: 'standard', label: 'Standard', desc: '165px' },
+                        { id: 'large', label: 'Large', desc: '210px' },
+                        { id: 'tall', label: 'Tall / Hero', desc: '260px' }
+                      ].map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setEditingClub({ ...editingClub, bannerHeight: opt.id as any })}
+                          className={`py-1.5 px-0.5 rounded-lg text-center transition-all cursor-pointer ${
+                            (editingClub.bannerHeight || 'standard') === opt.id
+                              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black shadow-xs'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold'
+                          }`}
+                        >
+                          <div className="text-[11px] leading-tight truncate">{opt.label}</div>
+                          <div className="text-[9px] opacity-75">{opt.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3 text-sky-600" />
+                        <span>Profile Photo / Avatar Size</span>
+                      </span>
+                      <span className="text-[10px] text-sky-600 dark:text-sky-400 font-extrabold capitalize">
+                        {editingClub.avatarSize || 'standard'}
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-4 gap-1 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                      {[
+                        { id: 'small', label: 'Small', desc: '76px' },
+                        { id: 'standard', label: 'Standard', desc: '96px' },
+                        { id: 'large', label: 'Large', desc: '112px' },
+                        { id: 'xl', label: 'Extra Lg', desc: '128px' }
+                      ].map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setEditingClub({ ...editingClub, avatarSize: opt.id as any })}
+                          className={`py-1.5 px-0.5 rounded-lg text-center transition-all cursor-pointer ${
+                            (editingClub.avatarSize || 'standard') === opt.id
+                              ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-black shadow-xs'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold'
+                          }`}
+                        >
+                          <div className="text-[11px] leading-tight truncate">{opt.label}</div>
+                          <div className="text-[9px] opacity-75">{opt.desc}</div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
