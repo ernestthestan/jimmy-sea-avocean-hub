@@ -5154,12 +5154,12 @@ export default function App() {
           const currentHeight = settings.bannerHeight || 'medium';
           const heightClass =
             currentHeight === 'compact'
-              ? 'h-36 sm:h-48 md:h-56 lg:h-72 xl:h-80 2xl:h-88 landscape:max-h-[120px] md:landscape:max-h-[150px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'
+              ? 'h-40 sm:h-52 md:h-64 lg:h-72 xl:h-80 2xl:h-88'
               : currentHeight === 'tall'
-              ? 'h-52 sm:h-68 md:h-84 lg:h-[440px] xl:h-[500px] 2xl:h-[560px] landscape:max-h-[160px] md:landscape:max-h-[200px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'
+              ? 'h-60 sm:h-80 md:h-[380px] lg:h-[460px] xl:h-[520px] 2xl:h-[580px]'
               : currentHeight === 'auto'
-              ? 'h-44 sm:h-56 md:h-68 lg:h-84 xl:h-[400px] 2xl:h-[440px] landscape:max-h-[145px] md:landscape:max-h-[180px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'
-              : 'h-40 sm:h-52 md:h-64 lg:h-84 xl:h-[380px] 2xl:h-[420px] landscape:max-h-[140px] md:landscape:max-h-[170px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'; // medium default
+              ? 'h-52 sm:h-68 md:h-80 lg:h-[380px] xl:h-[440px] 2xl:h-[480px]'
+              : 'h-48 sm:h-64 md:h-76 lg:h-[360px] xl:h-[400px] 2xl:h-[440px]'; // medium default
 
           const activePhoto =
             activeBannerPhotos.length > 0
