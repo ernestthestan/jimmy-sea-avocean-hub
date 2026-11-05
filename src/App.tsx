@@ -2582,7 +2582,7 @@ export default function App() {
     }
     // 'auto' default: automatically adapts to screen width with comfortable gutters!
     // On 1080p, 1440p, 2K/4K displays, comfortably expands up to 1880px / 2100px so content is not squished.
-    return 'w-full max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto';
+    return 'w-full max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-2 sm:px-4 md:px-6 xl:px-6 2xl:px-8 mx-auto';
   }, [settings.containerWidth]);
 
   // Dynamically update the browser tab icon (favicon) when websiteIcon changes
@@ -4157,7 +4157,7 @@ export default function App() {
         {/* Main 2-Column Content Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 landscape:grid-cols-12 xl:grid-cols-12 gap-4 sm:gap-5 flex-1 items-stretch">
           {/* Left Sub-Column: Media Poster, Venue & Google Maps, Streaming */}
-          <div className="md:col-span-5 landscape:col-span-5 xl:col-span-5 flex flex-col justify-between gap-4 h-full">
+          <div className="md:col-span-5 landscape:col-span-5 xl:col-span-4 2xl:col-span-5 flex flex-col justify-between gap-4 h-full">
             <div className="flex flex-col gap-4">
               {/* Poster Media (Single or Multiple Photos with gallery carousel and thumbnail strip) */}
               {allPosters.length > 0 && (() => {
@@ -4407,7 +4407,7 @@ export default function App() {
           </div>
 
           {/* Right Sub-Column: Header Info, Timing, Description, Hashtags */}
-          <div className="md:col-span-7 landscape:col-span-7 xl:col-span-7 flex flex-col justify-between gap-4 h-full">
+          <div className="md:col-span-7 landscape:col-span-7 xl:col-span-8 2xl:col-span-7 flex flex-col justify-between gap-4 h-full">
             <div className="flex flex-col gap-4">
               {/* Title & Members Card */}
               <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[26px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80">
@@ -4444,41 +4444,41 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Date & Time Card */}
-              <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-4 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3.5">
-                <div className="flex items-center gap-3.5 min-w-0">
+              {/* Date & Time Card - Fully visible without truncation on desktop and laptops */}
+              <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-3.5 sm:p-4 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
                   <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-400 flex items-center justify-center shrink-0">
                     <CalendarIcon className="w-5 h-5 stroke-[2.2]" />
                   </div>
-                  <div className="flex flex-col truncate">
-                    <span className="text-sm font-bold text-[#1A3668] dark:text-white truncate">
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm sm:text-base font-bold text-[#1A3668] dark:text-white leading-snug whitespace-normal">
                       {formatEventFullDateRange(ev.date, ev.endDate)}
                     </span>
-                    <span className="text-xs font-semibold text-[#475569] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <div className="text-xs font-semibold text-[#475569] dark:text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                       {getEventDaysCount(ev.date, ev.endDate) > 1 && (
-                        <span className="text-amber-700 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-md text-[11px]">
+                        <span className="text-amber-700 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-md text-[11px] shrink-0">
                           {getEventDaysCount(ev.date, ev.endDate)}-Day Event
                         </span>
                       )}
                       {ev.isAllDay ? (
-                        <span className="text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded-md text-[11px]">
+                        <span className="text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded-md text-[11px] shrink-0">
                           ☀️ All-Day Event Schedule
                         </span>
                       ) : (
-                        <span>{ev.endTime ? 'Time: ' : 'Starts '}{formatEventTime(ev, is12Hour) || 'TBA'}</span>
+                        <span className="whitespace-nowrap shrink-0">{ev.endTime ? 'Time: ' : 'Starts '}{formatEventTime(ev, is12Hour) || 'TBA'}</span>
                       )}
                       {!ev.isAllDay && getEventTimeDurationLabel(ev.time, ev.endTime) && (
-                        <span className="text-[11px] font-bold text-purple-600 dark:text-purple-300">
+                        <span className="text-[11px] font-bold text-purple-600 dark:text-purple-300 whitespace-nowrap shrink-0">
                           ({getEventTimeDurationLabel(ev.time, ev.endTime)})
                         </span>
                       )}
-                    </span>
+                    </div>
                   </div>
                 </div>
 
                 <button
                   onClick={() => openReminderModal(ev)}
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer shrink-0 ${
+                  className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer shrink-0 ${
                     hasReminder
                       ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40'
                       : 'bg-[#7C3AED] hover:bg-[#6D28D9] text-white border border-purple-500/30'
@@ -5465,7 +5465,7 @@ export default function App() {
       {/* 3. WIDE RESPONSIVE DASHBOARD LAYOUT (50-50 SPLIT ON DESKTOP)   */}
       {/* ============================================================== */}
       {activeTab === 'calendar' ? (
-        <div className={`${containerWidthClass} grid grid-cols-1 xl:grid-cols-2 items-start justify-center gap-6 xl:gap-8`}>
+        <div className={`${containerWidthClass} grid grid-cols-1 xl:grid-cols-2 items-start justify-center gap-6 xl:gap-6 2xl:gap-8`}>
           {/* LEFT COLUMN: Calendar Card (Exactly 50% on desktop, full width on tablet/mobile) */}
           <div className="w-full min-w-0 flex flex-col gap-5 self-start order-1">
             {/* Calendar Header with Navigation */}
@@ -6159,7 +6159,7 @@ export default function App() {
       {/* 2. DESKTOP & TABLET FLOATING DOCK (>= 640px)                    */}
       {/* ============================================================== */}
       <div className="hidden sm:flex fixed bottom-2 sm:bottom-3 md:bottom-4 lg:bottom-5 landscape:bottom-1.5 md:landscape:bottom-2.5 left-0 right-0 z-40 justify-center pointer-events-none px-2">
-        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 lg:gap-2.5 xl:gap-3 flex-nowrap shrink-0 pointer-events-none scale-[0.75] sm:scale-[0.78] md:scale-[0.84] lg:scale-95 xl:scale-100 landscape:scale-[0.68] sm:landscape:scale-[0.72] md:landscape:scale-[0.78] lg:landscape:scale-90 xl:landscape:scale-100 origin-bottom">
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 lg:gap-2.5 xl:gap-3 flex-nowrap shrink-0 pointer-events-none scale-[0.75] sm:scale-[0.78] md:scale-[0.84] lg:scale-90 xl:scale-95 2xl:scale-100 landscape:scale-[0.68] sm:landscape:scale-[0.72] md:landscape:scale-[0.78] lg:landscape:scale-85 xl:landscape:scale-95 2xl:landscape:scale-100 origin-bottom">
           {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
           <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
             <div
