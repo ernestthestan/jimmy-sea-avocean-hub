@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   Search,
@@ -78,6 +78,281 @@ import {
 import { OfficialHashtagPicker } from './OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './HashtagsDisplayCard';
 
+interface CountryOptionItem {
+  code: string;
+  name: string;
+  flag: string;
+  count?: number;
+}
+
+interface CountryMultiSelectPickerProps {
+  selectedCodes: string[];
+  onChange: (codes: string[]) => void;
+  options: CountryOptionItem[];
+  placeholder?: string;
+  buttonClassName?: string;
+}
+
+const CountryMultiSelectPicker: React.FC<CountryMultiSelectPickerProps> = ({
+  selectedCodes,
+  onChange,
+  options,
+  placeholder = '🌍 All Countries',
+  buttonClassName
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Escape key closes
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  const isAllSelected = selectedCodes.length === 0 || selectedCodes.includes('all');
+
+  const handleToggleAll = () => {
+    onChange([]);
+  };
+
+  const handleToggleCountry = (code: string) => {
+    let next: string[];
+    if (isAllSelected) {
+      next = [code];
+    } else if (selectedCodes.includes(code)) {
+      next = selectedCodes.filter((c) => c !== code);
+    } else {
+      next = [...selectedCodes, code];
+    }
+    onChange(next);
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange([]);
+    setSearchQuery('');
+  };
+
+  const filteredOptions = options.filter((opt) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return opt.name.toLowerCase().includes(q) || opt.code.toLowerCase().includes(q);
+  });
+
+  const getButtonLabel = () => {
+    if (isAllSelected) {
+      return (
+        <span className="flex items-center gap-1.5 truncate">
+          <span className="text-sm">🌍</span>
+          <span>All Countries</span>
+        </span>
+      );
+    }
+    if (selectedCodes.length === 1) {
+      const match = options.find((o) => o.code === selectedCodes[0]);
+      return (
+        <span className="flex items-center gap-1.5 truncate">
+          <span className="text-sm">{match?.flag || '🌐'}</span>
+          <span className="truncate">{match?.name || selectedCodes[0]}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="flex items-center gap-1.5 truncate">
+        <span className="text-sm">🌐</span>
+        <span className="font-extrabold">{selectedCodes.length} Countries</span>
+      </span>
+    );
+  };
+
+  return (
+    <div className="relative shrink-0" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-label="Filter by Country"
+        className={
+          buttonClassName ||
+          `inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+            !isAllSelected
+              ? 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700 shadow-xs'
+              : 'bg-slate-100 dark:bg-slate-800 text-[#1A3668] dark:text-white border-slate-200 dark:border-slate-700 hover:bg-slate-200/70'
+          }`
+        }
+      >
+        <div className="min-w-0 max-w-[150px] sm:max-w-[200px] truncate">
+          {getButtonLabel()}
+        </div>
+
+        {!isAllSelected && (
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-purple-600 text-white leading-none">
+            {selectedCodes.length}
+          </span>
+        )}
+
+        {!isAllSelected && (
+          <span
+            onClick={handleClear}
+            title="Reset to All Countries"
+            className="p-0.5 rounded-full hover:bg-purple-200/60 dark:hover:bg-purple-800 text-purple-600 dark:text-purple-300 transition-colors"
+          >
+            <X className="w-3 h-3" />
+          </span>
+        )}
+
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-purple-600 dark:text-purple-400' : 'text-slate-400'
+          }`}
+        />
+      </button>
+
+      {/* Floating Popover Menu with Checkboxes */}
+      {isOpen && (
+        <div
+          className="absolute left-0 sm:right-auto top-full mt-1.5 z-50 w-72 sm:w-80 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 p-2.5 animate-in fade-in zoom-in-95 duration-150"
+        >
+          {/* Search Box inside dropdown */}
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search country..."
+              className="w-full pl-8 pr-7 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-[#1A3668] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-purple-400"
+              autoFocus
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* ALL COUNTRIES OPTION WITH TICK BOX */}
+          <div className="mb-1.5 pb-1.5 border-b border-slate-100 dark:border-slate-800">
+            <label
+              className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl cursor-pointer text-xs font-bold transition-colors select-none ${
+                isAllSelected
+                  ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300'
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={handleToggleAll}
+                  className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600"
+                />
+                <span className="text-sm">🌍</span>
+                <span>All Countries</span>
+              </div>
+              {isAllSelected && (
+                <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-purple-200 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
+                  Active
+                </span>
+              )}
+            </label>
+          </div>
+
+          {/* COUNTRIES LIST WITH TICK BOXES */}
+          <div className="max-h-56 overflow-y-auto space-y-0.5 pr-1">
+            {filteredOptions.length === 0 ? (
+              <div className="text-center py-4 text-xs text-slate-400">
+                No matching countries found
+              </div>
+            ) : (
+              filteredOptions.map((country) => {
+                const isChecked = selectedCodes.includes(country.code);
+                return (
+                  <label
+                    key={country.code}
+                    className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl cursor-pointer text-xs font-semibold transition-colors select-none ${
+                      isChecked
+                        ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-bold'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleCountry(country.code)}
+                        className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600"
+                      />
+                      <span className="text-sm shrink-0">{country.flag}</span>
+                      <span className="truncate">{country.name}</span>
+                    </div>
+
+                    {typeof country.count === 'number' && country.count > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold">
+                        {country.count}
+                      </span>
+                    )}
+                  </label>
+                );
+              })
+            )}
+          </div>
+
+          {/* POPUP FOOTER */}
+          <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] px-1">
+            <span className="text-slate-400 font-medium">
+              {isAllSelected ? 'Showing all countries' : `${selectedCodes.length} selected`}
+            </span>
+            <div className="flex items-center gap-2">
+              {!isAllSelected && (
+                <button
+                  type="button"
+                  onClick={handleToggleAll}
+                  className="font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                >
+                  Reset to All
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-200 cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface FanHubProps {
   fanClubs: FanClub[];
   foodProjects: FoodSupportProject[];
@@ -136,14 +411,14 @@ export const FanHub: React.FC<FanHubProps> = ({
 
 
 
-  // Directory filter states
+  // Directory filter states (multi-select country codes; empty or ['all'] means all countries)
   const [directorySearch, setDirectorySearch] = useState<string>('');
-  const [directoryCountryFilter, setDirectoryCountryFilter] = useState<string>('all');
+  const [directoryCountryFilter, setDirectoryCountryFilter] = useState<string[]>([]);
 
-  // Food support filter states
+  // Food support filter states (multi-select country codes; empty or ['all'] means all countries)
   const [supportSearch, setSupportSearch] = useState<string>('');
   const [supportStatusFilter, setSupportStatusFilter] = useState<'all' | ProjectStatus>('all');
-  const [supportCountryFilter, setSupportCountryFilter] = useState<string>('all');
+  const [supportCountryFilter, setSupportCountryFilter] = useState<string[]>([]);
 
   // Selected target language per club card (default 'en')
   const [selectedClubLang, setSelectedClubLang] = useState<Record<string, string>>({});
@@ -670,22 +945,97 @@ export const FanHub: React.FC<FanHubProps> = ({
   };
 
 
-  // Distinct countries for directory filter
-  const availableCountries = Array.from(
-    new Set(
-      fanClubs.map((c) =>
-        JSON.stringify({ code: c.countryCode, name: c.countryName, flag: c.flagEmoji })
-      )
-    )
-  ).map((str) => JSON.parse(str));
+  // Multi-select country options for Directory with counts (pins Worldwide/Inter and Other/Custom Region at top 2)
+  const directoryCountryOptions: CountryOptionItem[] = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; flag: string; count: number }>();
+    fanClubs.forEach((club) => {
+      const code = club.countryCode || 'GLOBAL';
+      const name = club.countryName || 'Global';
+      const flag = (code === 'GLOBAL' || code === 'OTHER') ? '🌐' : (club.flagEmoji || '🌍');
+      const existing = map.get(code);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(code, { code, name, flag, count: 1 });
+      }
+    });
 
-  // Filtered fan clubs (filtered by top member filter, country, upcoming events toggle, and search)
+    // Also include standard popular countries so users can browse any country
+    POPULAR_FAN_COUNTRIES.forEach((c) => {
+      if (!map.has(c.code)) {
+        map.set(c.code, { code: c.code, name: c.name, flag: c.flag, count: 0 });
+      } else if (c.code === 'OTHER' || c.code === 'GLOBAL') {
+        const item = map.get(c.code)!;
+        item.flag = '🌐';
+      }
+    });
+
+    // Pinned top 2 options: Worldwide / Inter, then Other / Custom Region
+    const topPinned = ['GLOBAL', 'OTHER'];
+    return Array.from(map.values()).sort((a, b) => {
+      const aPinned = topPinned.indexOf(a.code);
+      const bPinned = topPinned.indexOf(b.code);
+      if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
+      if (aPinned !== -1) return -1;
+      if (bPinned !== -1) return 1;
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name);
+    });
+  }, [fanClubs]);
+
+  // Multi-select country options for Food Support with counts (pins Worldwide/Inter and Other/Custom Region at top 2)
+  const supportCountryOptions: CountryOptionItem[] = useMemo(() => {
+    const matchesCountry = (proj: FoodSupportProject, c: typeof POPULAR_FAN_COUNTRIES[0]) => {
+      if (proj.countryCode === c.code) return true;
+      const lower = c.name.toLowerCase();
+      if (proj.countryName?.toLowerCase().includes(lower)) return true;
+      if (proj.location?.toLowerCase().includes(lower)) return true;
+      if (proj.title.toLowerCase().includes(lower)) return true;
+      if (c.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) return true;
+      if (c.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) return true;
+      if (c.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) return true;
+      if (c.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) return true;
+      if (c.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) return true;
+      if (c.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom'))) return true;
+      return false;
+    };
+
+    const topPinned = ['GLOBAL', 'OTHER'];
+    return POPULAR_FAN_COUNTRIES.map((c) => {
+      const count = foodProjects.filter((p) => matchesCountry(p, c)).length;
+      return {
+        code: c.code,
+        name: c.name,
+        flag: c.flag,
+        count
+      };
+    }).sort((a, b) => {
+      const aPinned = topPinned.indexOf(a.code);
+      const bPinned = topPinned.indexOf(b.code);
+      if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
+      if (aPinned !== -1) return -1;
+      if (bPinned !== -1) return 1;
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name);
+    });
+  }, [foodProjects]);
+
+  // Filtered fan clubs (filtered by top member filter, multi-country selection, upcoming events toggle, and search)
   const filteredFanClubs = fanClubs.filter((club) => {
     if (!matchesActiveMembers(club.actor)) {
       return false;
     }
-    if (directoryCountryFilter !== 'all' && club.countryCode !== directoryCountryFilter) {
-      return false;
+    const hasCountryFilter = directoryCountryFilter.length > 0 && !directoryCountryFilter.includes('all');
+    if (hasCountryFilter) {
+      const matches = directoryCountryFilter.some((code) => {
+        if (club.countryCode === code) return true;
+        if (code === 'GLOBAL' && (club.countryCode === 'GLOBAL' || club.countryName?.toLowerCase().includes('global') || club.countryName?.toLowerCase().includes('worldwide'))) return true;
+        if (code === 'OTHER' && (club.countryCode === 'OTHER' || club.countryName?.toLowerCase().includes('other') || club.countryName?.toLowerCase().includes('custom'))) return true;
+        return false;
+      });
+      if (!matches) {
+        return false;
+      }
     }
     if (directoryEventFilter === 'has_events' && (!club.events || club.events.length === 0)) {
       return false;
@@ -708,7 +1058,7 @@ export const FanHub: React.FC<FanHubProps> = ({
     return true;
   });
 
-  // Filtered food support projects (filtered by top member filter, status, country, and search)
+  // Filtered food support projects (filtered by top member filter, status, multi-country selection, and search)
   const filteredProjects = foodProjects.filter((proj) => {
     if (!matchesActiveMembers(proj.actor)) {
       return false;
@@ -716,20 +1066,26 @@ export const FanHub: React.FC<FanHubProps> = ({
     if (supportStatusFilter !== 'all' && proj.status !== supportStatusFilter) {
       return false;
     }
-    if (supportCountryFilter !== 'all') {
-      const selected = POPULAR_FAN_COUNTRIES.find((c) => c.code === supportCountryFilter);
-      const matchesCode = proj.countryCode === supportCountryFilter;
-      const matchesName = selected && (
-        proj.countryName?.toLowerCase().includes(selected.name.toLowerCase()) ||
-        proj.location?.toLowerCase().includes(selected.name.toLowerCase()) ||
-        proj.title.toLowerCase().includes(selected.name.toLowerCase()) ||
-        (selected.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) ||
-        (selected.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) ||
-        (selected.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) ||
-        (selected.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) ||
-        (selected.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD'))
-      );
-      if (!matchesCode && !matchesName) {
+    const hasCountryFilter = supportCountryFilter.length > 0 && !supportCountryFilter.includes('all');
+    if (hasCountryFilter) {
+      const matchesAnySelected = supportCountryFilter.some((code) => {
+        if (proj.countryCode === code) return true;
+        const selected = POPULAR_FAN_COUNTRIES.find((c) => c.code === code);
+        if (!selected) return false;
+        const lower = selected.name.toLowerCase();
+        return (
+          proj.countryName?.toLowerCase().includes(lower) ||
+          proj.location?.toLowerCase().includes(lower) ||
+          proj.title.toLowerCase().includes(lower) ||
+          (selected.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) ||
+          (selected.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) ||
+          (selected.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) ||
+          (selected.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) ||
+          (selected.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) ||
+          (selected.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom')))
+        );
+      });
+      if (!matchesAnySelected) {
         return false;
       }
     }
@@ -864,7 +1220,7 @@ export const FanHub: React.FC<FanHubProps> = ({
           <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
             <span className="text-[11px] font-bold text-slate-400 block">Countries & Regions</span>
             <span className="text-lg font-extrabold text-[#1A3668] dark:text-white">
-              {availableCountries.length} Worldwide
+              {directoryCountryOptions.filter((c) => (c.count || 0) > 0).length} Worldwide
             </span>
           </div>
           <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
@@ -912,20 +1268,13 @@ export const FanHub: React.FC<FanHubProps> = ({
 
             {/* Filter & Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Country Select */}
-              <select
-                value={directoryCountryFilter}
-                onChange={(e) => setDirectoryCountryFilter(e.target.value)}
-                aria-label="Filter by Country"
-                className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-[#1A3668] dark:text-white border border-slate-200 dark:border-slate-700 focus:outline-none cursor-pointer"
-              >
-                <option value="all">🌍 All Countries</option>
-                {availableCountries.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.flag} {c.name}
-                  </option>
-                ))}
-              </select>
+              {/* Multi-Select Country Picker with checkboxes */}
+              <CountryMultiSelectPicker
+                selectedCodes={directoryCountryFilter}
+                onChange={setDirectoryCountryFilter}
+                options={directoryCountryOptions}
+                placeholder="🌍 All Countries"
+              />
 
               {/* Event Filter Select */}
               <select
@@ -1024,7 +1373,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                 type="button"
                 onClick={() => {
                   setDirectorySearch('');
-                  setDirectoryCountryFilter('all');
+                  setDirectoryCountryFilter([]);
                 }}
                 className="px-4 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
               >
@@ -1688,23 +2037,13 @@ export const FanHub: React.FC<FanHubProps> = ({
                 )}
               </div>
 
-              {/* Country Picker Dropdown beside Search */}
-              <div className="relative shrink-0">
-                <select
-                  value={supportCountryFilter}
-                  onChange={(e) => setSupportCountryFilter(e.target.value)}
-                  aria-label="Filter Food Support by Country"
-                  className="px-3 py-2 pr-7 rounded-xl text-xs font-bold bg-slate-50 dark:bg-slate-800 text-[#1A3668] dark:text-white border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-purple-400 cursor-pointer appearance-none shadow-2xs"
-                >
-                  <option value="all">🌍 All Countries</option>
-                  {POPULAR_FAN_COUNTRIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.flag} {c.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              {/* Multi-Select Country Picker with checkboxes beside Search */}
+              <CountryMultiSelectPicker
+                selectedCodes={supportCountryFilter}
+                onChange={setSupportCountryFilter}
+                options={supportCountryOptions}
+                placeholder="🌍 All Countries"
+              />
             </div>
 
             {/* Filter Pills */}
@@ -1775,8 +2114,21 @@ export const FanHub: React.FC<FanHubProps> = ({
                 No Food Support projects found
               </h3>
               <p className="text-xs text-slate-400 max-w-sm">
-                Try selecting "All Projects" or creating a new support project.
+                Try resetting filters or creating a new support project.
               </p>
+              {(supportSearch || supportCountryFilter.length > 0 || supportStatusFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSupportSearch('');
+                    setSupportCountryFilter([]);
+                    setSupportStatusFilter('all');
+                  }}
+                  className="px-4 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5">
@@ -2327,7 +2679,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                 <select
                   onChange={(e) => {
                     const found = POPULAR_FAN_COUNTRIES.find((c) => c.code === e.target.value);
-                    if (found && found.code !== 'OTHER') {
+                    if (found) {
                       setEditingClub({
                         ...editingClub,
                         countryCode: found.code,

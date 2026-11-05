@@ -6,6 +6,7 @@ export interface CountryOption {
 
 export const POPULAR_FAN_COUNTRIES: CountryOption[] = [
   { code: 'GLOBAL', name: 'Worldwide / Inter', flag: '🌐' },
+  { code: 'OTHER', name: 'Other / Custom Region', flag: '🌐' },
   { code: 'TH', name: 'Thailand', flag: '🇹🇭' },
   { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
   { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
@@ -27,6 +28,5 @@ export const POPULAR_FAN_COUNTRIES: CountryOption[] = [
   { code: 'DE', name: 'Germany', flag: '🇩🇪' },
   { code: 'IT', name: 'Italy', flag: '🇮🇹' },
   { code: 'AU', name: 'Australia', flag: '🇦🇺' },
-  { code: 'IN', name: 'India', flag: '🇮🇳' },
-  { code: 'OTHER', name: 'Other / Custom Region', flag: '🚩' }
+  { code: 'IN', name: 'India', flag: '🇮🇳' }
 ];
