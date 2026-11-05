@@ -38,7 +38,9 @@ import {
   Maximize2,
   GripVertical,
   Mail,
-  ChevronUp
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import type {
   FanClub,
@@ -166,6 +168,23 @@ export const FanHub: React.FC<FanHubProps> = ({
     // Check if already in cache and not forcing refresh
     if (!forceRefresh && clubTranslations[club.id]?.[currentLang]) {
       setActiveClubTranslation((prev) => ({ ...prev, [club.id]: true }));
+      if (club.events && club.events.length > 0) {
+        const langObj = TRANSLATION_LANGUAGES.find((l) => l.code === currentLang);
+        club.events.forEach(async (ev, evIdx) => {
+          if (!ev.description) return;
+          const evKey = ev.id || `${club.id}-ev-${evIdx}`;
+          if (eventTranslations[evKey]?.[currentLang]) return;
+          try {
+            const evTrans = await translateText(ev.description, currentLang, langObj?.name);
+            setEventTranslations((prev) => ({
+              ...prev,
+              [evKey]: { ...(prev[evKey] || {}), [currentLang]: evTrans }
+            }));
+          } catch {
+            // ignore
+          }
+        });
+      }
       return;
     }
 
@@ -179,6 +198,23 @@ export const FanHub: React.FC<FanHubProps> = ({
         [club.id]: { ...(prev[club.id] || {}), [currentLang]: translated }
       }));
       setActiveClubTranslation((prev) => ({ ...prev, [club.id]: true }));
+
+      // Also translate any club events to the same language
+      if (club.events && club.events.length > 0) {
+        club.events.forEach(async (ev, evIdx) => {
+          if (!ev.description) return;
+          const evKey = ev.id || `${club.id}-ev-${evIdx}`;
+          try {
+            const evTrans = await translateText(ev.description, currentLang, langObj?.name);
+            setEventTranslations((prev) => ({
+              ...prev,
+              [evKey]: { ...(prev[evKey] || {}), [currentLang]: evTrans }
+            }));
+          } catch {
+            // ignore
+          }
+        });
+      }
     } catch (err: any) {
       const fallback = getTranslatedBio(club.description, club.translatedDescription);
       setClubTranslations((prev) => ({
@@ -385,8 +421,65 @@ export const FanHub: React.FC<FanHubProps> = ({
     return false;
   };
 
-  // Media Lightbox
-  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; caption?: string; title?: string } | null>(null);
+  // Media Lightbox Gallery with arrows & index navigation
+  const [lightboxGallery, setLightboxGallery] = useState<{
+    items: { url: string; caption?: string; title?: string }[];
+    currentIndex: number;
+  } | null>(null);
+
+  // Backward compatible helper
+  const setLightboxMedia = (media: { url: string; caption?: string; title?: string } | null) => {
+    if (!media) {
+      setLightboxGallery(null);
+    } else {
+      setLightboxGallery({
+        items: [media],
+        currentIndex: 0
+      });
+    }
+  };
+
+  const openLightboxGallery = (
+    items: { url: string; caption?: string; title?: string }[],
+    initialIndex = 0
+  ) => {
+    if (!items || items.length === 0) return;
+    const safeIdx = Math.max(0, Math.min(initialIndex, items.length - 1));
+    setLightboxGallery({
+      items,
+      currentIndex: safeIdx
+    });
+  };
+
+  // Keyboard navigation for Lightbox (ArrowLeft, ArrowRight, Escape)
+  useEffect(() => {
+    if (!lightboxGallery) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        setLightboxGallery((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentIndex: (prev.currentIndex - 1 + prev.items.length) % prev.items.length
+              }
+            : null
+        );
+      } else if (e.key === 'ArrowRight') {
+        setLightboxGallery((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentIndex: (prev.currentIndex + 1) % prev.items.length
+              }
+            : null
+        );
+      } else if (e.key === 'Escape') {
+        setLightboxGallery(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxGallery]);
 
   // Helper to copy handle
   const handleCopyText = (text: string, label: string) => {
@@ -1243,10 +1336,10 @@ export const FanHub: React.FC<FanHubProps> = ({
                                       <div className="pt-1">
                                         <div
                                           onClick={() =>
-                                            setLightboxMedia({
-                                              url: allEvPhotos[0],
-                                              caption: `${club.name} — ${ev.title}`
-                                            })
+                                            openLightboxGallery(
+                                              [{ url: allEvPhotos[0], caption: `${club.name} — ${ev.title}` }],
+                                              0
+                                            )
                                           }
                                           className={`relative w-full ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs flex items-center justify-center`}
                                         >
@@ -1274,17 +1367,48 @@ export const FanHub: React.FC<FanHubProps> = ({
                                           <ImageIcon className="w-3.5 h-3.5 text-purple-600" />
                                           <span>Event Gallery ({allEvPhotos.length} photos)</span>
                                         </span>
-                                        <span className="text-[10px] text-slate-400">Click photo to view</span>
+                                        {/* Media scroll arrow buttons for laptops & desktop */}
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const el = document.getElementById(`ev-gallery-${club.id}-${ev.id || evIdx}`);
+                                              if (el) el.scrollBy({ left: -180, behavior: 'smooth' });
+                                            }}
+                                            className="p-1 rounded-md bg-purple-100/80 hover:bg-purple-200 dark:bg-purple-950 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 transition-colors cursor-pointer shadow-2xs"
+                                            title="Scroll photos left"
+                                          >
+                                            <ChevronLeft className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const el = document.getElementById(`ev-gallery-${club.id}-${ev.id || evIdx}`);
+                                              if (el) el.scrollBy({ left: 180, behavior: 'smooth' });
+                                            }}
+                                            className="p-1 rounded-md bg-purple-100/80 hover:bg-purple-200 dark:bg-purple-950 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 transition-colors cursor-pointer shadow-2xs"
+                                            title="Scroll photos right"
+                                          >
+                                            <ChevronRight className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
                                       </div>
-                                      <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+                                      <div
+                                        id={`ev-gallery-${club.id}-${ev.id || evIdx}`}
+                                        className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin scroll-smooth"
+                                      >
                                         {allEvPhotos.map((photoUrl, pIdx) => (
                                           <div
                                             key={pIdx}
                                             onClick={() =>
-                                              setLightboxMedia({
-                                                url: photoUrl,
-                                                caption: `${club.name} — ${ev.title} (${pIdx + 1} of ${allEvPhotos.length})`
-                                              })
+                                              openLightboxGallery(
+                                                allEvPhotos.map((url, idx) => ({
+                                                  url,
+                                                  caption: `${club.name} — ${ev.title} (${idx + 1} of ${allEvPhotos.length})`,
+                                                  title: ev.title
+                                                })),
+                                                pIdx
+                                              )
                                             }
                                             className={`relative shrink-0 ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs`}
                                             style={{
@@ -1317,19 +1441,19 @@ export const FanHub: React.FC<FanHubProps> = ({
                                   );
                                 })()}
 
-                                {/* EVENT DESCRIPTION & ON-THE-FLY TRANSLATION */}
+                                {/* EVENT DESCRIPTION (Follows single club translation when active) */}
                                 {(() => {
                                   const eventKey = ev.id || `${club.id}-ev-${evIdx}`;
-                                  const isEvTrans = Boolean(activeEventTranslation[eventKey]);
-                                  const evTargetLang = selectedEventLang[eventKey] || 'en';
-                                  const targetEvLangObj =
-                                    TRANSLATION_LANGUAGES.find((l) => l.code === evTargetLang) ||
+                                  const clubLang = selectedClubLang[club.id] || 'en';
+                                  const isClubTrans = Boolean(activeClubTranslation[club.id]);
+                                  const targetClubLangObj =
+                                    TRANSLATION_LANGUAGES.find((l) => l.code === clubLang) ||
                                     TRANSLATION_LANGUAGES[0];
-                                  const translatedEvText = eventTranslations[eventKey]?.[evTargetLang];
+                                  const translatedEvText = eventTranslations[eventKey]?.[clubLang];
 
                                   return (
                                     <div className="space-y-1.5 pt-0.5">
-                                      {isEvTrans && translatedEvText ? (
+                                      {isClubTrans && translatedEvText ? (
                                         <div className="p-3 rounded-xl bg-purple-50/90 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/80">
                                           <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-purple-700 dark:text-purple-300 mb-1">
                                             <span className="flex items-center gap-1">
@@ -1337,7 +1461,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                               <span>Event Details Translation</span>
                                             </span>
                                             <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
-                                              {targetEvLangObj.flag} {targetEvLangObj.name}
+                                              {targetClubLangObj.flag} {targetClubLangObj.name}
                                             </span>
                                           </div>
                                           <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
@@ -1349,94 +1473,6 @@ export const FanHub: React.FC<FanHubProps> = ({
                                           {ev.description}
                                         </p>
                                       ) : null}
-
-                                      {/* Translation Toolbar for Event */}
-                                      {ev.description && (
-                                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-purple-100 dark:border-slate-800 flex-wrap">
-                                          <div className="flex items-center gap-1.5 flex-wrap">
-                                            <div className="relative inline-flex items-center">
-                                              <select
-                                                value={evTargetLang}
-                                                onChange={(e) => {
-                                                  const newLang = e.target.value;
-                                                  setSelectedEventLang((prev) => ({ ...prev, [eventKey]: newLang }));
-                                                  if (activeEventTranslation[eventKey]) {
-                                                    handleTranslateEventDesc(eventKey, ev.description || '', newLang, true);
-                                                  }
-                                                }}
-                                                className="text-[11px] font-bold pl-2 pr-5 py-0.5 rounded-lg bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400 appearance-none"
-                                                title="Choose translation language for this event"
-                                              >
-                                                {TRANSLATION_LANGUAGES.map((lang) => (
-                                                  <option key={lang.code} value={lang.code}>
-                                                    {lang.flag} {lang.name}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                              <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1 pointer-events-none" />
-                                            </div>
-
-                                            {translatedEvText ? (
-                                              <div className="inline-flex items-center gap-1">
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    handleTranslateEventDesc(eventKey, ev.description || '', evTargetLang)
-                                                  }
-                                                  disabled={isTranslatingEvent[eventKey]}
-                                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
-                                                  title={isEvTrans ? 'View original description' : `Show ${targetEvLangObj?.name} translation`}
-                                                >
-                                                  <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                                                  <span>{isEvTrans ? 'Show Original' : 'Show Translation'}</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    handleTranslateEventDesc(eventKey, ev.description || '', evTargetLang, true)
-                                                  }
-                                                  disabled={isTranslatingEvent[eventKey]}
-                                                  className="p-0.5 rounded-lg bg-white/95 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer disabled:opacity-50"
-                                                  title="Re-translate / Refresh translation"
-                                                >
-                                                  <RotateCcw
-                                                    className={`w-3 h-3 ${isTranslatingEvent[eventKey] ? 'animate-spin text-purple-600' : ''}`}
-                                                  />
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleTranslateEventDesc(eventKey, ev.description || '', evTargetLang, true)
-                                                }
-                                                disabled={isTranslatingEvent[eventKey]}
-                                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all cursor-pointer disabled:opacity-50"
-                                                title={`Translate event description to ${targetEvLangObj?.name}`}
-                                              >
-                                                {isTranslatingEvent[eventKey] ? (
-                                                  <>
-                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                    <span>Translating...</span>
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <Languages className="w-3 h-3" />
-                                                    <span>Translate Event</span>
-                                                  </>
-                                                )}
-                                              </button>
-                                            )}
-                                          </div>
-
-                                          {isEvTrans && (
-                                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
-                                              <span>{targetEvLangObj.flag}</span>
-                                              <span>{targetEvLangObj.name}</span>
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
                                     </div>
                                   );
                                 })()}
@@ -3673,34 +3709,127 @@ export const FanHub: React.FC<FanHubProps> = ({
       )}
 
       {/* ============================================================== */}
-      {/* MEDIA LIGHTBOX (PROOF PHOTOS & VIDEO CLIPS)                    */}
+      {/* MEDIA LIGHTBOX (PHOTOS & EVENT GRAPHICS WITH NAV ARROWS)       */}
       {/* ============================================================== */}
-      {lightboxMedia && (
+      {lightboxGallery && lightboxGallery.items.length > 0 && (
         <div
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150"
-          onClick={() => setLightboxMedia(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150 select-none"
+          onClick={() => setLightboxGallery(null)}
         >
-          <div
-            className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
+          {/* Top Bar: Counter & Close Button */}
+          <div className="absolute top-4 inset-x-4 sm:inset-x-8 flex items-center justify-between z-30 pointer-events-none">
+            {lightboxGallery.items.length > 1 ? (
+              <div className="pointer-events-auto px-3.5 py-1.5 rounded-full bg-black/70 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg">
+                Photo {lightboxGallery.currentIndex + 1} of {lightboxGallery.items.length}
+              </div>
+            ) : (
+              <div />
+            )}
+
             <button
               type="button"
-              onClick={() => setLightboxMedia(null)}
-              className="absolute -top-10 right-0 text-white hover:text-slate-300 p-1 cursor-pointer"
+              onClick={() => setLightboxGallery(null)}
+              className="pointer-events-auto p-2 rounded-full bg-black/70 hover:bg-black/90 text-white hover:text-rose-400 border border-white/20 transition-all cursor-pointer shadow-lg"
+              title="Close viewer (Esc)"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
-            <div className="rounded-2xl overflow-hidden bg-slate-900 border border-white/20 shadow-2xl max-h-[80vh] flex items-center justify-center">
+          </div>
+
+          {/* Left Arrow Button */}
+          {lightboxGallery.items.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxGallery((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        currentIndex:
+                          (prev.currentIndex - 1 + prev.items.length) % prev.items.length
+                      }
+                    : null
+                );
+              }}
+              className="absolute left-2 sm:left-6 z-30 p-2.5 sm:p-3.5 rounded-full bg-black/65 hover:bg-black/95 text-white hover:text-purple-300 border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer transform hover:scale-110 active:scale-95"
+              title="Previous photo (← Arrow Left)"
+            >
+              <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
+          )}
+
+          {/* Right Arrow Button */}
+          {lightboxGallery.items.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxGallery((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        currentIndex: (prev.currentIndex + 1) % prev.items.length
+                      }
+                    : null
+                );
+              }}
+              className="absolute right-2 sm:right-6 z-30 p-2.5 sm:p-3.5 rounded-full bg-black/65 hover:bg-black/95 text-white hover:text-purple-300 border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer transform hover:scale-110 active:scale-95"
+              title="Next photo (→ Arrow Right)"
+            >
+              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
+          )}
+
+          {/* Main Photo Container */}
+          <div
+            className="relative max-w-4xl w-full max-h-[85vh] flex flex-col items-center justify-center z-20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rounded-2xl overflow-hidden bg-slate-950 border border-white/15 shadow-2xl max-h-[72vh] flex items-center justify-center p-1 sm:p-2">
               <img
-                src={lightboxMedia.url}
-                alt={lightboxMedia.caption || 'Proof'}
-                className="max-h-[75vh] w-auto object-contain rounded-2xl"
+                src={lightboxGallery.items[lightboxGallery.currentIndex].url}
+                alt={lightboxGallery.items[lightboxGallery.currentIndex].caption || 'Media graphic'}
+                className="max-h-[68vh] w-auto max-w-full object-contain rounded-xl transition-all duration-200"
               />
             </div>
-            {lightboxMedia.caption && (
-              <div className="mt-3 text-center px-4 py-2 rounded-full bg-black/60 text-white text-xs font-semibold backdrop-blur-md">
-                {lightboxMedia.caption}
+
+            {/* Caption */}
+            {lightboxGallery.items[lightboxGallery.currentIndex].caption && (
+              <div className="mt-3 text-center px-4 py-2 rounded-full bg-black/70 text-white text-xs font-semibold backdrop-blur-md border border-white/15 max-w-xl truncate shadow-lg">
+                {lightboxGallery.items[lightboxGallery.currentIndex].caption}
+              </div>
+            )}
+
+            {/* Bottom Thumbnails Strip for Quick Navigation */}
+            {lightboxGallery.items.length > 1 && (
+              <div className="mt-3 flex items-center gap-2 overflow-x-auto max-w-full px-2 py-1 scrollbar-thin">
+                {lightboxGallery.items.map((item, tIdx) => {
+                  const isActive = tIdx === lightboxGallery.currentIndex;
+                  return (
+                    <button
+                      key={tIdx}
+                      type="button"
+                      onClick={() =>
+                        setLightboxGallery((prev) =>
+                          prev ? { ...prev, currentIndex: tIdx } : null
+                        )
+                      }
+                      className={`relative w-11 h-11 sm:w-13 sm:h-13 rounded-lg overflow-hidden border shrink-0 transition-all cursor-pointer ${
+                        isActive
+                          ? 'ring-2 ring-purple-400 border-white scale-105'
+                          : 'border-white/20 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img
+                        src={item.url}
+                        alt={`Thumbnail ${tIdx + 1}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                      />
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
