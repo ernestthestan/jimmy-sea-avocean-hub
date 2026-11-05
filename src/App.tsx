@@ -10315,7 +10315,7 @@ export default function App() {
                         value={msgContent}
                         onChange={(e) => setMsgContent(e.target.value)}
                         placeholder="Describe your fan club, year established, activities, contact admins..."
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[85px]"
                       />
                     </div>
 

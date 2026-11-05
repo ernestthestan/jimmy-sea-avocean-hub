@@ -19,7 +19,17 @@ export type ClubCategory =
   | 'jimmy_avocean'
   | 'sea_avocean';
 
-export type SocialPlatform = 'x' | 'instagram' | 'tiktok' | 'facebook' | 'line' | 'discord' | 'youtube' | 'weibo' | 'web';
+export type SocialPlatform =
+  | 'x'
+  | 'instagram'
+  | 'tiktok'
+  | 'facebook'
+  | 'line'
+  | 'discord'
+  | 'youtube'
+  | 'weibo'
+  | 'web'
+  | 'email';
 
 export interface SocialLink {
   platform: SocialPlatform;
@@ -37,6 +47,9 @@ export type FanClubEventCategory =
   | 'birthday'
   | 'other';
 
+export type FanClubPhotoAspect = 'poster' | 'card' | 'square';
+export type FanClubPhotoSize = 'small' | 'medium' | 'large';
+
 export interface FanClubEvent {
   id: string;
   title: string;
@@ -48,7 +61,10 @@ export interface FanClubEvent {
   locationUrl?: string; // Google Maps URL
   description?: string; // Project/event details (giveaways, photobooths, cup sleeves, etc.)
   link?: string; // Official announcement / RSVP link
-  posterUrl?: string; // Event poster image URL
+  posterUrl?: string; // Event poster image URL (primary)
+  photos?: string[]; // Multiple photos / media URLs
+  photoAspect?: FanClubPhotoAspect; // Aspect ratio adjustment: poster (3:4), card (16:9), square (1:1)
+  photoSize?: FanClubPhotoSize; // Display size adjustment: small, medium, large
 }
 
 export interface FanClub {
@@ -57,6 +73,7 @@ export interface FanClub {
   actor: ClubCategory;
   countryCode: string; // e.g. "GLOBAL", "TH", "PH", "VN", "JP", "CN", "LATAM"
   countryName: string; // e.g. "Thailand", "Philippines", "Global / Inter"
+  city?: string; // Optional city / chapter e.g. "Manila", "Bangkok"
   flagEmoji: string; // e.g. "🇹🇭", "🇵🇭", "🌐"
   description: string;
   translatedDescription?: string; // Translated version for international fans (e.g. English)
@@ -100,6 +117,9 @@ export interface FoodSupportProject {
   eventName?: string;
   eventDate?: string;
   location?: string;
+  countryCode?: string; // e.g. "TH", "PH", "JP", "VN", "GLOBAL"
+  countryName?: string; // e.g. "Thailand", "Philippines", "Global / International"
+  flagEmoji?: string; // e.g. "🇹🇭", "🇵🇭", "🌐"
   organizerName: string;
   organizerContactUrl?: string;
   description: string;

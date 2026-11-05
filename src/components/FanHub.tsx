@@ -35,12 +35,17 @@ import {
   RotateCcw,
   PartyPopper,
   CalendarPlus,
-  Maximize2
+  Maximize2,
+  GripVertical,
+  Mail,
+  ChevronUp
 } from 'lucide-react';
 import type {
   FanClub,
   FanClubEvent,
   FanClubEventCategory,
+  FanClubPhotoAspect,
+  FanClubPhotoSize,
   FoodSupportProject,
   FanClubActor,
   ProjectStatus,
@@ -131,6 +136,7 @@ export const FanHub: React.FC<FanHubProps> = ({
   // Food support filter states
   const [supportSearch, setSupportSearch] = useState<string>('');
   const [supportStatusFilter, setSupportStatusFilter] = useState<'all' | ProjectStatus>('all');
+  const [supportCountryFilter, setSupportCountryFilter] = useState<string>('all');
 
   // Selected target language per club card (default 'en')
   const [selectedClubLang, setSelectedClubLang] = useState<Record<string, string>>({});
@@ -182,6 +188,51 @@ export const FanHub: React.FC<FanHubProps> = ({
       setActiveClubTranslation((prev) => ({ ...prev, [club.id]: true }));
     } finally {
       setIsTranslatingClub((prev) => ({ ...prev, [club.id]: false }));
+    }
+  };
+
+  // Event description translation states:
+  const [selectedEventLang, setSelectedEventLang] = useState<Record<string, string>>({});
+  const [eventTranslations, setEventTranslations] = useState<Record<string, Record<string, string>>>({});
+  const [isTranslatingEvent, setIsTranslatingEvent] = useState<Record<string, boolean>>({});
+  const [activeEventTranslation, setActiveEventTranslation] = useState<Record<string, boolean>>({});
+
+  const handleTranslateEventDesc = async (
+    eventKey: string,
+    description: string,
+    targetLang: string,
+    forceRefresh = false
+  ) => {
+    if (!description || !description.trim()) return;
+    const currentLang = targetLang || selectedEventLang[eventKey] || 'en';
+
+    if (!forceRefresh && activeEventTranslation[eventKey] && (selectedEventLang[eventKey] || 'en') === currentLang) {
+      setActiveEventTranslation((prev) => ({ ...prev, [eventKey]: false }));
+      return;
+    }
+
+    if (!forceRefresh && eventTranslations[eventKey]?.[currentLang]) {
+      setActiveEventTranslation((prev) => ({ ...prev, [eventKey]: true }));
+      return;
+    }
+
+    try {
+      setIsTranslatingEvent((prev) => ({ ...prev, [eventKey]: true }));
+      const langObj = TRANSLATION_LANGUAGES.find((l) => l.code === currentLang);
+      const translated = await translateText(description, currentLang, langObj?.name);
+      setEventTranslations((prev) => ({
+        ...prev,
+        [eventKey]: {
+          ...(prev[eventKey] || {}),
+          [currentLang]: translated
+        }
+      }));
+      setActiveEventTranslation((prev) => ({ ...prev, [eventKey]: true }));
+    } catch (err) {
+      console.error('Failed to translate event description:', err);
+      showToast('Translation service unavailable. Please try again.');
+    } finally {
+      setIsTranslatingEvent((prev) => ({ ...prev, [eventKey]: false }));
     }
   };
 
@@ -269,6 +320,14 @@ export const FanHub: React.FC<FanHubProps> = ({
   const [editingClub, setEditingClub] = useState<FanClub | null>(null);
   const [isClubModalOpen, setIsClubModalOpen] = useState<boolean>(false);
   const [directoryEventFilter, setDirectoryEventFilter] = useState<'all' | 'has_events'>('all');
+
+  // Social link drag-and-drop state
+  const [draggedSocialIdx, setDraggedSocialIdx] = useState<number | null>(null);
+  const [dragOverSocialIdx, setDragOverSocialIdx] = useState<number | null>(null);
+
+  // Batch photos paste input state per event
+  const [batchPhotosInput, setBatchPhotosInput] = useState<Record<string, string>>({});
+  const [showBatchPhotos, setShowBatchPhotos] = useState<Record<string, boolean>>({});
 
   const [editingProject, setEditingProject] = useState<FoodSupportProject | null>(null);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState<boolean>(false);
@@ -509,7 +568,7 @@ export const FanHub: React.FC<FanHubProps> = ({
     return true;
   });
 
-  // Filtered food support projects (filtered by top member filter, status, and search)
+  // Filtered food support projects (filtered by top member filter, status, country, and search)
   const filteredProjects = foodProjects.filter((proj) => {
     if (!matchesActiveMembers(proj.actor)) {
       return false;
@@ -517,13 +576,32 @@ export const FanHub: React.FC<FanHubProps> = ({
     if (supportStatusFilter !== 'all' && proj.status !== supportStatusFilter) {
       return false;
     }
+    if (supportCountryFilter !== 'all') {
+      const selected = POPULAR_FAN_COUNTRIES.find((c) => c.code === supportCountryFilter);
+      const matchesCode = proj.countryCode === supportCountryFilter;
+      const matchesName = selected && (
+        proj.countryName?.toLowerCase().includes(selected.name.toLowerCase()) ||
+        proj.location?.toLowerCase().includes(selected.name.toLowerCase()) ||
+        proj.title.toLowerCase().includes(selected.name.toLowerCase()) ||
+        (selected.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) ||
+        (selected.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) ||
+        (selected.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) ||
+        (selected.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) ||
+        (selected.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD'))
+      );
+      if (!matchesCode && !matchesName) {
+        return false;
+      }
+    }
     if (supportSearch.trim()) {
       const q = supportSearch.toLowerCase();
       const matchTitle = proj.title.toLowerCase().includes(q);
       const matchEvent = proj.eventName?.toLowerCase().includes(q);
       const matchOrg = proj.organizerName.toLowerCase().includes(q);
       const matchDesc = proj.description.toLowerCase().includes(q);
-      return matchTitle || matchEvent || matchOrg || matchDesc;
+      const matchLoc = proj.location?.toLowerCase().includes(q);
+      const matchCountry = proj.countryName?.toLowerCase().includes(q);
+      return matchTitle || matchEvent || matchOrg || matchDesc || matchLoc || matchCountry;
     }
     return true;
   });
@@ -535,24 +613,31 @@ export const FanHub: React.FC<FanHubProps> = ({
       instagram: '📷',
       tiktok: '🎵',
       facebook: '📘',
+      email: '✉️',
       line: '💬',
       discord: '👾',
       youtube: '▶️',
       weibo: '🔴',
       web: '🌐'
     };
+    const isEmail = platform === 'email';
+    const href = isEmail && !url.startsWith('mailto:') ? `mailto:${url}` : url;
     return (
       <a
         key={url + platform}
-        href={url}
-        target="_blank"
+        href={href}
+        target={isEmail ? '_self' : '_blank'}
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-xs font-bold text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-purple-300 dark:hover:border-purple-600 transition-all shadow-2xs group cursor-pointer"
-        title={label || `Visit ${platform.toUpperCase()}`}
+        title={label || (isEmail ? `Send email to ${url}` : `Visit ${platform.toUpperCase()}`)}
       >
         <span>{icons[platform] || '🔗'}</span>
-        <span className="capitalize">{label || platform}</span>
-        <ExternalLink className="w-2.5 h-2.5 opacity-50 group-hover:opacity-100 transition-opacity" />
+        <span className="capitalize">{label || (isEmail ? 'Official Email' : platform)}</span>
+        {isEmail ? (
+          <Mail className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity text-purple-600 dark:text-purple-400" />
+        ) : (
+          <ExternalLink className="w-2.5 h-2.5 opacity-50 group-hover:opacity-100 transition-opacity" />
+        )}
       </a>
     );
   };
@@ -803,7 +888,7 @@ export const FanHub: React.FC<FanHubProps> = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
               {filteredFanClubs.map((club) => {
                 // Fallback banner gradient based on category
 
@@ -826,11 +911,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                 return (
                   <div
                     key={club.id}
-                    className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] shadow-sm border border-slate-200/80 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-600/60 transition-all flex flex-col justify-between overflow-hidden group"
+                    className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] shadow-sm border border-slate-200/80 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-600/60 transition-all flex flex-col justify-between overflow-hidden group"
                   >
                     <div>
                       {/* OFFICIAL HEADER BANNER */}
-                      <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      <div className="relative h-36 sm:h-44 md:h-48 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
                         {club.bannerUrl ? (
                           <img
                             src={club.bannerUrl}
@@ -849,99 +934,103 @@ export const FanHub: React.FC<FanHubProps> = ({
                         {/* Top Gradient Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent pointer-events-none" />
 
-                        {/* Top Row inside Banner: Country badge & Category badge */}
-                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 z-10">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white bg-black/45 backdrop-blur-md border border-white/20 shadow-xs">
-                            <span className="text-sm leading-none">{club.flagEmoji}</span>
-                            <span className="truncate max-w-[110px] sm:max-w-[130px]">{club.countryName}</span>
-                          </span>
-
-                          <div className="flex items-center gap-1.5">
-                            {renderCategoryBadge(club.actor)}
-
-                            {/* Admin Buttons */}
-                            {canEdit && (
-                              <div className="flex items-center gap-0.5 bg-black/45 backdrop-blur-md rounded-full p-0.5 border border-white/20">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingClub(club);
-                                    setIsClubModalOpen(true);
-                                  }}
-                                  className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/20 cursor-pointer transition-colors"
-                                  title="Edit fan club"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </button>
-                                {isOwner && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (window.confirm(`Delete "${club.name}" from fan club directory?`)) {
-                                        onDeleteFanClub(club.id);
-                                      }
-                                    }}
-                                    className="p-1 rounded-full text-rose-300 hover:text-rose-100 hover:bg-rose-500/30 cursor-pointer transition-colors"
-                                    title="Delete fan club"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                )}
-                              </div>
+                        {/* Top-Right Admin Buttons on Banner */}
+                        {canEdit && (
+                          <div className="absolute top-3 right-3 z-10 flex items-center gap-0.5 bg-black/55 backdrop-blur-md rounded-full p-1 border border-white/25 shadow-sm">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingClub(club);
+                                setIsClubModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/20 cursor-pointer transition-colors"
+                              title="Edit fan club"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            {isOwner && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm(`Delete "${club.name}" from fan club directory?`)) {
+                                    onDeleteFanClub(club.id);
+                                  }
+                                }}
+                                className="p-1.5 rounded-full text-rose-300 hover:text-rose-100 hover:bg-rose-500/30 cursor-pointer transition-colors"
+                                title="Delete fan club"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             )}
                           </div>
-                        </div>
+                        )}
                       </div>
 
-                      {/* AVATAR DISPLAY PHOTO (Overlapping Banner) */}
-                      <div className="px-5 -mt-8 flex items-end justify-between relative z-10 mb-2">
-                        <div className="relative">
+                      {/* AVATAR + PILLS ROW (Pills beside avatar in yellow circled area) */}
+                      <div className="px-6 -mt-10 sm:-mt-12 flex items-end gap-3 relative z-10 mb-2.5 flex-wrap">
+                        <div className="relative shrink-0">
                           {club.avatarUrl ? (
                             <img
                               src={club.avatarUrl}
                               alt={`${club.name} profile`}
-                              className="w-16 h-16 rounded-full border-3 border-white dark:border-slate-900 shadow-md object-cover bg-white dark:bg-slate-800"
+                              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white dark:border-slate-900 shadow-lg object-cover bg-white dark:bg-slate-800"
                               onError={(e) => {
                                 (e.target as HTMLElement).style.display = 'none';
                               }}
                             />
                           ) : (
-                            <div className="w-16 h-16 rounded-full border-3 border-white dark:border-slate-900 shadow-md bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-xl font-black">
+                            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white dark:border-slate-900 shadow-lg bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black">
                               {club.flagEmoji || '🥑'}
                             </div>
                           )}
                         </div>
 
-                        {club.handle && (
-                          <button
-                            type="button"
-                            onClick={() => handleCopyText(club.handle || '', club.name)}
-                            className="inline-flex items-center gap-1 text-[11.5px] font-mono font-semibold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer bg-purple-50 dark:bg-purple-950/50 px-2.5 py-1 rounded-full border border-purple-200/60 dark:border-purple-800/60"
-                            title="Click to copy handle"
-                          >
-                            <span>{club.handle}</span>
-                            {copiedHandle === club.handle ? (
-                              <Check className="w-3 h-3 text-emerald-500" />
-                            ) : (
-                              <Copy className="w-2.5 h-2.5 opacity-50" />
+                        {/* Pills positioned beside avatar in yellow circled area */}
+                        <div className="flex items-center gap-1.5 flex-wrap pb-1.5">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+                            <span className="text-base leading-none">{club.flagEmoji}</span>
+                            <span>{club.countryName}</span>
+                            {club.city && (
+                              <span className="text-slate-400 dark:text-slate-500 font-normal">
+                                • {club.city}
+                              </span>
                             )}
-                          </button>
-                        )}
+                          </span>
+
+                          {renderCategoryBadge(club.actor)}
+                        </div>
                       </div>
 
                       {/* CLUB INFO & DESCRIPTION */}
-                      <div className="px-5 pt-1 space-y-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <h3 className="text-base font-extrabold text-[#1A3668] dark:text-white leading-tight">
+                      <div className="px-6 pt-1 space-y-2.5">
+                        {/* Official Name + Verified Check + Primary Handle Beside */}
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h3 className="text-lg sm:text-xl font-extrabold text-[#1A3668] dark:text-white leading-tight">
                             {club.name}
                           </h3>
                           {club.isOfficialOrVerified && (
                             <span
-                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-sky-500 text-white text-[10px] font-black shrink-0 shadow-2xs"
+                              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-500 text-white text-[11px] font-black shrink-0 shadow-2xs"
                               title="Official / Verified Fanclub"
                             >
                               ✓
                             </span>
+                          )}
+
+                          {club.handle && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText(club.handle || '', club.name)}
+                              className="inline-flex items-center gap-1 text-xs sm:text-[12.5px] font-mono font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-100/70 dark:hover:bg-purple-900/40 cursor-pointer bg-purple-50 dark:bg-purple-950/50 px-3 py-1 rounded-full border border-purple-200/60 dark:border-purple-800/60 transition-colors"
+                              title="Click to copy handle"
+                            >
+                              <span>{club.handle}</span>
+                              {copiedHandle === club.handle ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              ) : (
+                                <Copy className="w-3 h-3 opacity-50 shrink-0" />
+                              )}
+                            </button>
                           )}
                         </div>
 
@@ -958,22 +1047,22 @@ export const FanHub: React.FC<FanHubProps> = ({
                           return (
                             <div className="space-y-2 pt-0.5">
                               {isClubTrans && translatedBioText ? (
-                                <div className="p-3 rounded-2xl bg-purple-50/90 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/80">
-                                  <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-purple-700 dark:text-purple-300 mb-1">
-                                    <span className="flex items-center gap-1">
-                                      <Languages className="w-3 h-3 text-purple-600" />
+                                <div className="p-3.5 sm:p-4 rounded-2xl bg-purple-50/90 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/80">
+                                  <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-purple-700 dark:text-purple-300 mb-1.5">
+                                    <span className="flex items-center gap-1.5">
+                                      <Languages className="w-3.5 h-3.5 text-purple-600" />
                                       <span>Bio Translation</span>
                                     </span>
-                                    <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                                    <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400">
                                       {targetClubLangObj.flag} {targetClubLangObj.name}
                                     </span>
                                   </div>
-                                  <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
+                                  <p className="text-[13px] sm:text-sm text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
                                     {translatedBioText}
                                   </p>
                                 </div>
                               ) : (
-                                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
+                                <p className="text-[13px] sm:text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
                                   {club.description}
                                 </p>
                               )}
@@ -991,7 +1080,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                           handleTranslateClubBio(club, newLang, true);
                                         }
                                       }}
-                                      className="text-[11px] font-bold pl-2.5 pr-6 py-1 rounded-lg bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400 appearance-none"
+                                      className="text-xs font-bold pl-2.5 pr-6 py-1 rounded-lg bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400 appearance-none"
                                       title="Choose target language for fan club bio"
                                     >
                                       {TRANSLATION_LANGUAGES.map((lang) => (
@@ -1009,7 +1098,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                         type="button"
                                         onClick={() => handleTranslateClubBio(club, clubTargetLang)}
                                         disabled={isTranslatingClub[club.id]}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
                                         title={isClubTrans ? "View original bio" : `Show ${targetClubLangObj?.name} translation`}
                                       >
                                         <Languages className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
@@ -1049,7 +1138,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                 </div>
 
                                 {isClubTrans && (
-                                  <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                                  <span className="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
                                     <span>{targetClubLangObj.flag}</span>
                                     <span>{targetClubLangObj.name}</span>
                                   </span>
@@ -1063,7 +1152,7 @@ export const FanHub: React.FC<FanHubProps> = ({
 
                     {/* UPCOMING FAN CLUB EVENTS */}
                     {club.events && club.events.length > 0 && (
-                      <div className="px-5 pt-3">
+                      <div className="px-6 pt-3.5">
                         <div className="rounded-2xl p-3 sm:p-3.5 bg-gradient-to-br from-purple-50/90 via-indigo-50/30 to-sky-50/70 dark:from-purple-950/40 dark:via-slate-800 dark:to-sky-950/30 border border-purple-200/90 dark:border-purple-800/80 shadow-2xs space-y-2.5">
                           <div className="flex items-center justify-between gap-1.5 flex-wrap">
                             <span className="inline-flex items-center gap-1.5 text-xs font-black text-purple-700 dark:text-purple-300">
@@ -1125,39 +1214,230 @@ export const FanHub: React.FC<FanHubProps> = ({
                                   )}
                                 </div>
 
-                                {ev.posterUrl && (
-                                  <div className="pt-0.5">
-                                    <div
-                                      onClick={() =>
-                                        setLightboxMedia({
-                                          url: ev.posterUrl!,
-                                          caption: `${club.name} — ${ev.title}`
-                                        })
-                                      }
-                                      className="relative h-24 sm:h-28 w-full rounded-lg overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950"
-                                      title="Click to view event poster"
-                                    >
-                                      <img
-                                        src={ev.posterUrl}
-                                        alt={ev.title}
-                                        className="w-full h-full object-cover group-hover/poster:scale-105 transition-transform duration-300"
-                                        onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-                                      />
-                                      <div className="absolute inset-0 bg-black/20 group-hover/poster:bg-black/40 flex items-center justify-center transition-colors">
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/70 text-white text-[10.5px] font-bold backdrop-blur-xs">
-                                          <Maximize2 className="w-3 h-3" />
-                                          <span>View Poster</span>
+                                {/* EVENT PHOTOS / MEDIA GALLERY (Multiple Photos with Size & Aspect Adjustments) */}
+                                {(() => {
+                                  const allEvPhotos = Array.from(
+                                    new Set([ev.posterUrl, ...(ev.photos || [])].filter(Boolean))
+                                  ) as string[];
+
+                                  if (allEvPhotos.length === 0) return null;
+
+                                  const aspectStyle =
+                                    ev.photoAspect === 'card'
+                                      ? 'aspect-[16/9]'
+                                      : ev.photoAspect === 'square'
+                                      ? 'aspect-square'
+                                      : 'aspect-[3/4]';
+
+                                  const sizeClass =
+                                    ev.photoSize === 'small'
+                                      ? 'h-24 sm:h-28'
+                                      : ev.photoSize === 'large'
+                                      ? 'h-44 sm:h-56'
+                                      : 'h-32 sm:h-38';
+
+                                  if (allEvPhotos.length === 1) {
+                                    return (
+                                      <div className="pt-1">
+                                        <div
+                                          onClick={() =>
+                                            setLightboxMedia({
+                                              url: allEvPhotos[0],
+                                              caption: `${club.name} — ${ev.title}`
+                                            })
+                                          }
+                                          className={`relative w-full ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs flex items-center justify-center`}
+                                        >
+                                          <img
+                                            src={allEvPhotos[0]}
+                                            alt={ev.title}
+                                            className={`w-full h-full object-cover group-hover/poster:scale-105 transition-transform duration-300 ${aspectStyle}`}
+                                            onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                          />
+                                          <div className="absolute inset-0 bg-black/20 group-hover/poster:bg-black/45 flex items-center justify-center transition-colors">
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 text-white text-[11px] font-bold backdrop-blur-xs">
+                                              <Maximize2 className="w-3 h-3" />
+                                              <span>View Graphic</span>
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="pt-1 space-y-1.5">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                        <span className="flex items-center gap-1 text-purple-700 dark:text-purple-300 font-bold">
+                                          <ImageIcon className="w-3.5 h-3.5 text-purple-600" />
+                                          <span>Event Gallery ({allEvPhotos.length} photos)</span>
                                         </span>
+                                        <span className="text-[10px] text-slate-400">Click photo to view</span>
+                                      </div>
+                                      <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+                                        {allEvPhotos.map((photoUrl, pIdx) => (
+                                          <div
+                                            key={pIdx}
+                                            onClick={() =>
+                                              setLightboxMedia({
+                                                url: photoUrl,
+                                                caption: `${club.name} — ${ev.title} (${pIdx + 1} of ${allEvPhotos.length})`
+                                              })
+                                            }
+                                            className={`relative shrink-0 ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs`}
+                                            style={{
+                                              aspectRatio:
+                                                ev.photoAspect === 'card'
+                                                  ? '16/9'
+                                                  : ev.photoAspect === 'square'
+                                                  ? '1/1'
+                                                  : '3/4'
+                                            }}
+                                          >
+                                            <img
+                                              src={photoUrl}
+                                              alt={`${ev.title} photo ${pIdx + 1}`}
+                                              className="w-full h-full object-cover group-hover/poster:scale-105 transition-transform duration-300"
+                                              onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                            />
+                                            <div className="absolute inset-0 bg-black/15 group-hover/poster:bg-black/40 flex items-center justify-center transition-colors">
+                                              <span className="p-1 rounded-full bg-black/70 text-white text-[10px] opacity-0 group-hover/poster:opacity-100 transition-opacity">
+                                                <Maximize2 className="w-3 h-3" />
+                                              </span>
+                                            </div>
+                                            <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-black">
+                                              {pIdx + 1}/{allEvPhotos.length}
+                                            </span>
+                                          </div>
+                                        ))}
                                       </div>
                                     </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
 
-                                {ev.description && (
-                                  <p className="text-[11.5px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line pt-0.5">
-                                    {ev.description}
-                                  </p>
-                                )}
+                                {/* EVENT DESCRIPTION & ON-THE-FLY TRANSLATION */}
+                                {(() => {
+                                  const eventKey = ev.id || `${club.id}-ev-${evIdx}`;
+                                  const isEvTrans = Boolean(activeEventTranslation[eventKey]);
+                                  const evTargetLang = selectedEventLang[eventKey] || 'en';
+                                  const targetEvLangObj =
+                                    TRANSLATION_LANGUAGES.find((l) => l.code === evTargetLang) ||
+                                    TRANSLATION_LANGUAGES[0];
+                                  const translatedEvText = eventTranslations[eventKey]?.[evTargetLang];
+
+                                  return (
+                                    <div className="space-y-1.5 pt-0.5">
+                                      {isEvTrans && translatedEvText ? (
+                                        <div className="p-3 rounded-xl bg-purple-50/90 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/80">
+                                          <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-purple-700 dark:text-purple-300 mb-1">
+                                            <span className="flex items-center gap-1">
+                                              <Languages className="w-3 h-3 text-purple-600" />
+                                              <span>Event Details Translation</span>
+                                            </span>
+                                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                                              {targetEvLangObj.flag} {targetEvLangObj.name}
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
+                                            {translatedEvText}
+                                          </p>
+                                        </div>
+                                      ) : ev.description ? (
+                                        <p className="text-xs sm:text-[12.5px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
+                                          {ev.description}
+                                        </p>
+                                      ) : null}
+
+                                      {/* Translation Toolbar for Event */}
+                                      {ev.description && (
+                                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-purple-100 dark:border-slate-800 flex-wrap">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <div className="relative inline-flex items-center">
+                                              <select
+                                                value={evTargetLang}
+                                                onChange={(e) => {
+                                                  const newLang = e.target.value;
+                                                  setSelectedEventLang((prev) => ({ ...prev, [eventKey]: newLang }));
+                                                  if (activeEventTranslation[eventKey]) {
+                                                    handleTranslateEventDesc(eventKey, ev.description || '', newLang, true);
+                                                  }
+                                                }}
+                                                className="text-[11px] font-bold pl-2 pr-5 py-0.5 rounded-lg bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400 appearance-none"
+                                                title="Choose translation language for this event"
+                                              >
+                                                {TRANSLATION_LANGUAGES.map((lang) => (
+                                                  <option key={lang.code} value={lang.code}>
+                                                    {lang.flag} {lang.name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1 pointer-events-none" />
+                                            </div>
+
+                                            {translatedEvText ? (
+                                              <div className="inline-flex items-center gap-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleTranslateEventDesc(eventKey, ev.description || '', evTargetLang)
+                                                  }
+                                                  disabled={isTranslatingEvent[eventKey]}
+                                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                                                  title={isEvTrans ? 'View original description' : `Show ${targetEvLangObj?.name} translation`}
+                                                >
+                                                  <Languages className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                                  <span>{isEvTrans ? 'Show Original' : 'Show Translation'}</span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleTranslateEventDesc(eventKey, ev.description || '', evTargetLang, true)
+                                                  }
+                                                  disabled={isTranslatingEvent[eventKey]}
+                                                  className="p-0.5 rounded-lg bg-white/95 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+                                                  title="Re-translate / Refresh translation"
+                                                >
+                                                  <RotateCcw
+                                                    className={`w-3 h-3 ${isTranslatingEvent[eventKey] ? 'animate-spin text-purple-600' : ''}`}
+                                                  />
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleTranslateEventDesc(eventKey, ev.description || '', evTargetLang, true)
+                                                }
+                                                disabled={isTranslatingEvent[eventKey]}
+                                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                                                title={`Translate event description to ${targetEvLangObj?.name}`}
+                                              >
+                                                {isTranslatingEvent[eventKey] ? (
+                                                  <>
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                    <span>Translating...</span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Languages className="w-3 h-3" />
+                                                    <span>Translate Event</span>
+                                                  </>
+                                                )}
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {isEvTrans && (
+                                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                                              <span>{targetEvLangObj.flag}</span>
+                                              <span>{targetEvLangObj.name}</span>
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
                                   <a
@@ -1202,8 +1482,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                     )}
 
                     {/* Social Platforms Row */}
-                    <div className="p-5 pt-3 border-t border-slate-100 dark:border-slate-800 mt-3">
-                      <span className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    <div className="p-6 pt-3.5 border-t border-slate-100 dark:border-slate-800 mt-3.5">
+                      <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
                         Official Social Links
                       </span>
                       <div className="flex flex-wrap gap-1.5">
@@ -1225,25 +1505,46 @@ export const FanHub: React.FC<FanHubProps> = ({
         <div className="flex flex-col gap-5">
           {/* Controls Bar: Search, Status Filter, Actor Filter, + Create Project */}
           <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-4 shadow-sm border border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={supportSearch}
-                onChange={(e) => setSupportSearch(e.target.value)}
-                placeholder="Search food support projects, events, food trucks, coffee carts..."
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-purple-400"
-              />
-              {supportSearch && (
-                <button
-                  type="button"
-                  onClick={() => setSupportSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+            {/* Search Input & Country Picker Group */}
+            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap flex-1 max-w-xl">
+              {/* Compact Search Input */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={supportSearch}
+                  onChange={(e) => setSupportSearch(e.target.value)}
+                  placeholder="Search food drives, trucks..."
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-purple-400"
+                />
+                {supportSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSupportSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Country Picker Dropdown beside Search */}
+              <div className="relative shrink-0">
+                <select
+                  value={supportCountryFilter}
+                  onChange={(e) => setSupportCountryFilter(e.target.value)}
+                  aria-label="Filter Food Support by Country"
+                  className="px-3 py-2 pr-7 rounded-xl text-xs font-bold bg-slate-50 dark:bg-slate-800 text-[#1A3668] dark:text-white border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-purple-400 cursor-pointer appearance-none shadow-2xs"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+                  <option value="all">🌍 All Countries</option>
+                  {POPULAR_FAN_COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
 
             {/* Filter Pills */}
@@ -1973,60 +2274,32 @@ export const FanHub: React.FC<FanHubProps> = ({
                 </div>
               </div>
 
-              {/* Description & International Translation */}
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Description / Bio (Original) *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const res = getTranslatedBio(editingClub.description);
-                        setEditingClub({
-                          ...editingClub,
-                          translatedDescription: res.text.replace(/^\[English translation\]:\s*/i, '')
-                        });
-                        showToast('Auto-generated translation!');
-                      }}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      <span>Auto-Translate to English</span>
-                    </button>
-                  </div>
-                  <textarea
-                    rows={2}
-                    required
-                    value={editingClub.description}
-                    onChange={(e) => setEditingClub({ ...editingClub, description: e.target.value })}
-                    placeholder="What projects, fan gatherings, or translations does this fan club coordinate?"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                    <Languages className="w-3.5 h-3.5 text-purple-600" />
-                    <span>English / International Translation (Optional)</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={editingClub.translatedDescription || ''}
-                    onChange={(e) => setEditingClub({ ...editingClub, translatedDescription: e.target.value })}
-                    placeholder="English translation for international fans..."
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
-                  />
-                </div>
+              {/* Description / Bio */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Description / Bio *
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={editingClub.description}
+                  onChange={(e) => setEditingClub({ ...editingClub, description: e.target.value })}
+                  placeholder="What projects, fan gatherings, or translations does this fan club coordinate?"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[100px]"
+                />
               </div>
 
-              {/* Social Links List */}
-              <div className="space-y-2">
+              {/* Social Media Links with Drag-and-Drop Reordering + Official Email */}
+              <div className="space-y-2 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Social Media Links
-                  </label>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Official Social Links & Email
+                    </label>
+                    <span className="text-[11px] text-slate-400">
+                      Drag ⠿ or use arrows to rearrange order
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -2037,57 +2310,148 @@ export const FanHub: React.FC<FanHubProps> = ({
                     }}
                     className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
                   >
-                    + Add Link
+                    + Add Link / Email
                   </button>
                 </div>
 
                 <div className="space-y-2">
-                  {editingClub.socials.map((soc, sIdx) => (
-                    <div key={sIdx} className="flex items-center gap-2">
-                      <select
-                        value={soc.platform}
-                        onChange={(e) => {
-                          const next = [...editingClub.socials];
-                          next[sIdx].platform = e.target.value as any;
-                          setEditingClub({ ...editingClub, socials: next });
+                  {editingClub.socials.map((soc, sIdx) => {
+                    const isDragging = draggedSocialIdx === sIdx;
+                    const isDragOver = dragOverSocialIdx === sIdx;
+
+                    const handleMove = (from: number, to: number) => {
+                      const next = [...editingClub.socials];
+                      if (to < 0 || to >= next.length) return;
+                      const [removed] = next.splice(from, 1);
+                      next.splice(to, 0, removed);
+                      setEditingClub({ ...editingClub, socials: next });
+                    };
+
+                    return (
+                      <div
+                        key={sIdx}
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggedSocialIdx(sIdx);
+                          e.dataTransfer.effectAllowed = 'move';
                         }}
-                        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (dragOverSocialIdx !== sIdx) {
+                            setDragOverSocialIdx(sIdx);
+                          }
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverSocialIdx === sIdx) {
+                            setDragOverSocialIdx(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedSocialIdx !== null && draggedSocialIdx !== sIdx) {
+                            handleMove(draggedSocialIdx, sIdx);
+                          }
+                          setDraggedSocialIdx(null);
+                          setDragOverSocialIdx(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedSocialIdx(null);
+                          setDragOverSocialIdx(null);
+                        }}
+                        className={`flex items-center gap-1.5 p-1.5 rounded-xl transition-all ${
+                          isDragging
+                            ? 'opacity-40 bg-purple-100/50 dark:bg-purple-950/40 border border-dashed border-purple-400'
+                            : isDragOver
+                            ? 'bg-purple-50 dark:bg-purple-950/60 ring-2 ring-purple-400'
+                            : 'bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700/80'
+                        }`}
                       >
-                        <option value="x">𝕏 Twitter</option>
-                        <option value="instagram">Instagram</option>
-                        <option value="tiktok">TikTok</option>
-                        <option value="facebook">Facebook</option>
-                        <option value="line">Line</option>
-                        <option value="discord">Discord</option>
-                        <option value="youtube">YouTube</option>
-                        <option value="weibo">Weibo</option>
-                        <option value="web">Website</option>
-                      </select>
-                      <input
-                        type="url"
-                        value={soc.url}
-                        onChange={(e) => {
-                          const next = [...editingClub.socials];
-                          next[sIdx].url = e.target.value;
-                          setEditingClub({ ...editingClub, socials: next });
-                        }}
-                        placeholder="https://..."
-                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
-                      />
-                      {editingClub.socials.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = editingClub.socials.filter((_, idx) => idx !== sIdx);
+                        {/* Drag Handle */}
+                        <div
+                          className="p-1 text-slate-400 hover:text-purple-600 cursor-grab active:cursor-grabbing shrink-0 select-none"
+                          title="Drag to rearrange order"
+                        >
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+
+                        {/* Order buttons */}
+                        <div className="flex flex-col gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            disabled={sIdx === 0}
+                            onClick={() => handleMove(sIdx, sIdx - 1)}
+                            className="p-0.5 rounded text-slate-400 hover:text-purple-600 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                            title="Move link up"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={sIdx === editingClub.socials.length - 1}
+                            onClick={() => handleMove(sIdx, sIdx + 1)}
+                            className="p-0.5 rounded text-slate-400 hover:text-purple-600 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                            title="Move link down"
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Platform Select */}
+                        <select
+                          value={soc.platform}
+                          onChange={(e) => {
+                            const next = [...editingClub.socials];
+                            next[sIdx].platform = e.target.value as any;
                             setEditingClub({ ...editingClub, socials: next });
                           }}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 cursor-pointer"
+                          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none shrink-0"
                         >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                          <option value="x">𝕏 Twitter / X</option>
+                          <option value="email">✉️ Official Email</option>
+                          <option value="instagram">📷 Instagram</option>
+                          <option value="tiktok">🎵 TikTok</option>
+                          <option value="facebook">📘 Facebook</option>
+                          <option value="line">💬 Line</option>
+                          <option value="discord">👾 Discord</option>
+                          <option value="youtube">▶️ YouTube</option>
+                          <option value="weibo">🔴 Weibo</option>
+                          <option value="web">🌐 Website</option>
+                        </select>
+
+                        {/* URL or Email Input */}
+                        <input
+                          type={soc.platform === 'email' ? 'text' : 'url'}
+                          value={soc.url}
+                          onChange={(e) => {
+                            const next = [...editingClub.socials];
+                            next[sIdx].url = e.target.value;
+                            setEditingClub({ ...editingClub, socials: next });
+                          }}
+                          placeholder={
+                            soc.platform === 'email'
+                              ? 'e.g. contact@fanclub.com or team@gmail.com'
+                              : 'https://...'
+                          }
+                          className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+
+                        {/* Remove */}
+                        {editingClub.socials.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = editingClub.socials.filter((_, idx) => idx !== sIdx);
+                              setEditingClub({ ...editingClub, socials: next });
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer shrink-0"
+                            title="Remove link"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -2323,31 +2687,206 @@ export const FanHub: React.FC<FanHubProps> = ({
                             />
                           </div>
 
-                          {/* Poster URL */}
-                          <div className="sm:col-span-6">
-                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
-                              <ImageIcon className="w-3 h-3 text-purple-600" />
-                              <span>Poster / Graphic URL</span>
-                            </label>
-                            <div className="flex gap-2 items-center">
-                              <input
-                                type="url"
-                                value={evItem.posterUrl || ''}
-                                onChange={(e) => {
-                                  const next = [...(editingClub.events || [])];
-                                  next[evIdx] = { ...next[evIdx], posterUrl: e.target.value };
-                                  setEditingClub({ ...editingClub, events: next });
-                                }}
-                                placeholder="https://... (event graphic)"
-                                className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                              />
-                              {evItem.posterUrl && (
-                                <img
-                                  src={evItem.posterUrl}
-                                  alt="Poster thumbnail"
-                                  className="w-7 h-7 rounded-md object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                                  onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                          {/* Media Aspect Ratio, Size & Multiple Photo Gallery */}
+                          <div className="sm:col-span-12 p-3 rounded-xl bg-purple-50/60 dark:bg-slate-800/80 border border-purple-200/70 dark:border-purple-800/60 space-y-2.5">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-[#1A3668] dark:text-purple-200">
+                                <ImageIcon className="w-4 h-4 text-purple-600" />
+                                <span>Event Media & Photo Gallery (Multiple Photos & Size Control)</span>
+                              </div>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                {/* Aspect Ratio */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase">Aspect:</span>
+                                  <select
+                                    value={evItem.photoAspect || 'poster'}
+                                    onChange={(e) => {
+                                      const next = [...(editingClub.events || [])];
+                                      next[evIdx] = { ...next[evIdx], photoAspect: e.target.value as FanClubPhotoAspect };
+                                      setEditingClub({ ...editingClub, events: next });
+                                    }}
+                                    className="rounded-lg border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[11px] font-bold text-[#1A3668] dark:text-white"
+                                  >
+                                    <option value="poster">3:4 Poster</option>
+                                    <option value="card">16:9 Banner</option>
+                                    <option value="square">1:1 Square</option>
+                                  </select>
+                                </div>
+
+                                {/* Size */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase">Size:</span>
+                                  <select
+                                    value={evItem.photoSize || 'medium'}
+                                    onChange={(e) => {
+                                      const next = [...(editingClub.events || [])];
+                                      next[evIdx] = { ...next[evIdx], photoSize: e.target.value as FanClubPhotoSize };
+                                      setEditingClub({ ...editingClub, events: next });
+                                    }}
+                                    className="rounded-lg border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[11px] font-bold text-[#1A3668] dark:text-white"
+                                  >
+                                    <option value="small">Compact</option>
+                                    <option value="medium">Regular</option>
+                                    <option value="large">Large</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Main Poster / Graphic URL */}
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                Primary Event Poster / Graphic URL
+                              </label>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="url"
+                                  value={evItem.posterUrl || ''}
+                                  onChange={(e) => {
+                                    const next = [...(editingClub.events || [])];
+                                    next[evIdx] = { ...next[evIdx], posterUrl: e.target.value };
+                                    setEditingClub({ ...editingClub, events: next });
+                                  }}
+                                  placeholder="https://... (main event graphic or cup sleeve poster)"
+                                  className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                                 />
+                                {evItem.posterUrl && (
+                                  <img
+                                    src={evItem.posterUrl}
+                                    alt="Poster thumbnail"
+                                    className="w-8 h-8 rounded-md object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                    onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Additional Photos List */}
+                            <div className="space-y-1.5 pt-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                  Additional Event Photos & Media ({evItem.photos?.length || 0})
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const evKey = evItem.id || `ev-${evIdx}`;
+                                      setShowBatchPhotos((prev) => ({ ...prev, [evKey]: !prev[evKey] }));
+                                    }}
+                                    className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                                  >
+                                    {showBatchPhotos[evItem.id || `ev-${evIdx}`] ? 'Close Batch Paste' : 'Batch Paste URLs'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...(editingClub.events || [])];
+                                      next[evIdx] = {
+                                        ...next[evIdx],
+                                        photos: [...(next[evIdx].photos || []), '']
+                                      };
+                                      setEditingClub({ ...editingClub, events: next });
+                                    }}
+                                    className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                                  >
+                                    + Add Photo URL
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Batch paste box if toggled */}
+                              {showBatchPhotos[evItem.id || `ev-${evIdx}`] && (
+                                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 space-y-1.5">
+                                  <span className="block text-[10.5px] font-bold text-slate-500">
+                                    Paste image URLs (one per line):
+                                  </span>
+                                  <textarea
+                                    rows={3}
+                                    value={batchPhotosInput[evItem.id || `ev-${evIdx}`] || ''}
+                                    onChange={(e) => {
+                                      const evKey = evItem.id || `ev-${evIdx}`;
+                                      setBatchPhotosInput((prev) => ({ ...prev, [evKey]: e.target.value }));
+                                    }}
+                                    placeholder="https://... photo 1&#10;https://... photo 2"
+                                    className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2 text-xs font-mono"
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const evKey = evItem.id || `ev-${evIdx}`;
+                                        const text = batchPhotosInput[evKey] || '';
+                                        const urls = text
+                                          .split('\n')
+                                          .map((u) => u.trim())
+                                          .filter((u) => u.startsWith('http'));
+                                        if (urls.length > 0) {
+                                          const next = [...(editingClub.events || [])];
+                                          const existing = next[evIdx].photos || [];
+                                          next[evIdx] = {
+                                            ...next[evIdx],
+                                            photos: [...existing, ...urls]
+                                          };
+                                          setEditingClub({ ...editingClub, events: next });
+                                          setBatchPhotosInput((prev) => ({ ...prev, [evKey]: '' }));
+                                          setShowBatchPhotos((prev) => ({ ...prev, [evKey]: false }));
+                                          showToast(`Added ${urls.length} photos!`);
+                                        }
+                                      }}
+                                      className="px-2.5 py-1 rounded-md bg-purple-600 text-white text-[11px] font-bold"
+                                    >
+                                      Add All Photos
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Individual additional photo rows */}
+                              {evItem.photos && evItem.photos.length > 0 && (
+                                <div className="space-y-1.5 pt-1">
+                                  {evItem.photos.map((photoUrl, pIdx) => (
+                                    <div key={pIdx} className="flex items-center gap-2">
+                                      <span className="text-[10px] font-bold text-slate-400 w-4 text-center">
+                                        #{pIdx + 1}
+                                      </span>
+                                      <input
+                                        type="url"
+                                        value={photoUrl}
+                                        onChange={(e) => {
+                                          const next = [...(editingClub.events || [])];
+                                          const pList = [...(next[evIdx].photos || [])];
+                                          pList[pIdx] = e.target.value;
+                                          next[evIdx] = { ...next[evIdx], photos: pList };
+                                          setEditingClub({ ...editingClub, events: next });
+                                        }}
+                                        placeholder="https://... (additional photo or graphic)"
+                                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-semibold text-[#1A3668] dark:text-white"
+                                      />
+                                      {photoUrl && (
+                                        <img
+                                          src={photoUrl}
+                                          alt={`Photo ${pIdx + 1}`}
+                                          className="w-7 h-7 rounded object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                          onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                        />
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const next = [...(editingClub.events || [])];
+                                          const pList = (next[evIdx].photos || []).filter((_, idx) => idx !== pIdx);
+                                          next[evIdx] = { ...next[evIdx], photos: pList };
+                                          setEditingClub({ ...editingClub, events: next });
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer"
+                                        title="Remove photo"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -2377,7 +2916,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                               Event Description, Perks & Freebies
                             </label>
                             <textarea
-                              rows={2}
+                              rows={3}
                               value={evItem.description || ''}
                               onChange={(e) => {
                                 const next = [...(editingClub.events || [])];
@@ -2385,7 +2924,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                 setEditingClub({ ...editingClub, events: next });
                               }}
                               placeholder="Details on cup sleeves, special drinks, photocards, raffle, photo wall, dress code..."
-                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[75px]"
                             />
                           </div>
                         </div>
@@ -2562,6 +3101,61 @@ export const FanHub: React.FC<FanHubProps> = ({
                 </div>
               )}
 
+              {/* Country & Location for Food Support */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Country & Venue Location
+                  </label>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    Links with Country Filter
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-slate-500 mb-1">
+                      Country / Region
+                    </label>
+                    <select
+                      value={editingProject.countryCode || ''}
+                      onChange={(e) => {
+                        const found = POPULAR_FAN_COUNTRIES.find((c) => c.code === e.target.value);
+                        if (found) {
+                          setEditingProject({
+                            ...editingProject,
+                            countryCode: found.code,
+                            countryName: found.name,
+                            flagEmoji: found.flag
+                          });
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
+                    >
+                      <option value="">-- Select Country --</option>
+                      {POPULAR_FAN_COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-slate-500 mb-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-rose-500" />
+                      <span>City / Venue</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editingProject.location || ''}
+                      onChange={(e) => setEditingProject({ ...editingProject, location: e.target.value })}
+                      placeholder="e.g. centralWorld, Bangkok or MOA Arena"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Event Link & Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -2718,12 +3312,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                     )}
                   </div>
                   <textarea
-                    rows={2}
+                    rows={4}
                     required
                     value={editingProject.description}
                     onChange={(e) => setEditingProject({ ...editingProject, description: e.target.value })}
                     placeholder="Detail the menu, stickers, cup sleeves, food truck wrap design, etc."
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[90px]"
                   />
                 </div>
 
@@ -2732,13 +3326,13 @@ export const FanHub: React.FC<FanHubProps> = ({
                     🌐 English / International Menu Concept Translation (Optional)
                   </label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={editingProject.translatedDescription || ''}
                     onChange={(e) =>
                       setEditingProject({ ...editingProject, translatedDescription: e.target.value })
                     }
                     placeholder="English translation of menu concept for international fans..."
-                    className="w-full rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/30 px-3.5 py-2 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
+                    className="w-full rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/30 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[80px]"
                   />
                 </div>
               </div>
@@ -2850,11 +3444,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                     )}
                   </div>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={editingProject.deliveryNotes || ''}
                     onChange={(e) => setEditingProject({ ...editingProject, deliveryNotes: e.target.value })}
                     placeholder="e.g. Delivered successfully! Artists loved the coconut puddings and signed our banner."
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[80px]"
                   />
                 </div>
 
@@ -2863,13 +3457,13 @@ export const FanHub: React.FC<FanHubProps> = ({
                     🌐 English / International Thank You Message Translation (Optional)
                   </label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={editingProject.translatedDeliveryNotes || ''}
                     onChange={(e) =>
                       setEditingProject({ ...editingProject, translatedDeliveryNotes: e.target.value })
                     }
                     placeholder="English translation of delivery update & thank you message..."
-                    className="w-full rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/30 px-3.5 py-2 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
+                    className="w-full rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/30 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-y min-h-[80px]"
                   />
                 </div>
               </div>
