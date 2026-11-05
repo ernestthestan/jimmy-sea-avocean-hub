@@ -5154,12 +5154,12 @@ export default function App() {
           const currentHeight = settings.bannerHeight || 'medium';
           const heightClass =
             currentHeight === 'compact'
-              ? 'h-32 sm:h-40 md:h-48 lg:h-60 xl:h-72 max-h-[20vh] sm:max-h-[22vh] landscape:h-28 sm:landscape:h-32 landscape:max-h-[110px] md:landscape:max-h-[130px]'
+              ? 'h-36 sm:h-48 md:h-56 lg:h-72 xl:h-80 2xl:h-88 landscape:max-h-[120px] md:landscape:max-h-[150px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'
               : currentHeight === 'tall'
-              ? 'h-48 sm:h-60 md:h-72 lg:h-[360px] xl:h-[440px] max-h-[30vh] sm:max-h-[34vh] landscape:h-36 sm:landscape:h-40 landscape:max-h-[150px] md:landscape:max-h-[175px]'
+              ? 'h-52 sm:h-68 md:h-84 lg:h-[440px] xl:h-[500px] 2xl:h-[560px] landscape:max-h-[160px] md:landscape:max-h-[200px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'
               : currentHeight === 'auto'
-              ? 'h-38 sm:h-48 md:h-56 lg:h-68 xl:h-80 max-h-[24vh] sm:max-h-[28vh] landscape:h-32 sm:landscape:h-36 landscape:max-h-[125px] md:landscape:max-h-[145px]'
-              : 'h-36 sm:h-46 md:h-56 lg:h-68 xl:h-76 max-h-[24vh] sm:max-h-[26vh] landscape:h-30 sm:landscape:h-34 landscape:max-h-[120px] md:landscape:max-h-[140px]'; // medium default
+              ? 'h-44 sm:h-56 md:h-68 lg:h-84 xl:h-[400px] 2xl:h-[440px] landscape:max-h-[145px] md:landscape:max-h-[180px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'
+              : 'h-40 sm:h-52 md:h-64 lg:h-84 xl:h-[380px] 2xl:h-[420px] landscape:max-h-[140px] md:landscape:max-h-[170px] lg:landscape:max-h-none xl:landscape:max-h-none lg:max-h-none xl:max-h-none'; // medium default
 
           const activePhoto =
             activeBannerPhotos.length > 0
@@ -5308,8 +5308,8 @@ export default function App() {
       {/* ============================================================== */}
       {/* 2. SEPARATED HUB HEADER CARD WITH INTEGRATED MEMBER FILTERS     */}
       {/* ============================================================== */}
-      <div className={`${containerWidthClass} mb-3 sm:mb-5 landscape:mb-2.5`}>
-        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-6 landscape:p-3 sm:landscape:p-4 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-2.5 sm:gap-4">
+      <div className={`${containerWidthClass} mb-3 sm:mb-5 lg:mb-6 landscape:mb-2.5 lg:landscape:mb-6`}>
+        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-6 lg:p-7 landscape:p-3 sm:landscape:p-4 lg:landscape:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-2.5 sm:gap-4">
           {/* Top Row: Title, Badges, Greeting & Owner Quick Actions */}
           <div className={`flex flex-col md:flex-row gap-2.5 sm:gap-4 ${
             (settings.headerAlignment || 'left') === 'center'
