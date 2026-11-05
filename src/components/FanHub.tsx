@@ -36,6 +36,7 @@ import {
   PartyPopper,
   CalendarPlus,
   Maximize2,
+  Minimize2,
   GripVertical,
   Mail,
   ChevronUp,
@@ -45,6 +46,8 @@ import {
 import type {
   FanClub,
   FanClubBannerHeight,
+  FanClubBannerFit,
+  FanClubBannerPosition,
   FanClubAvatarSize,
   FanClubEvent,
   FanClubEventCategory,
@@ -630,14 +633,20 @@ export const FanHub: React.FC<FanHubProps> = ({
   const getClubBannerHeightClass = (h?: FanClubBannerHeight) => {
     switch (h) {
       case 'compact':
-        return 'h-28 sm:h-32';
+        return 'h-32 sm:h-36 md:h-40';
       case 'large':
-        return 'h-48 sm:h-56 md:h-60';
+        return 'h-52 sm:h-60 md:h-68 lg:h-72';
       case 'tall':
-        return 'h-60 sm:h-72 md:h-80';
+        return 'h-64 sm:h-76 md:h-84 lg:h-96';
+      case 'auto':
+        return 'h-auto min-h-[160px] sm:min-h-[210px] md:min-h-[260px] aspect-[2.6/1] sm:aspect-[2.8/1] md:aspect-[3/1]';
+      case 'header':
+        return 'aspect-[3/1] min-h-[150px] sm:min-h-[190px] md:min-h-[230px]';
+      case 'widescreen':
+        return 'aspect-video min-h-[180px] sm:min-h-[240px] md:min-h-[280px]';
       case 'standard':
       default:
-        return 'h-36 sm:h-44 md:h-48';
+        return 'h-44 sm:h-52 md:h-60 lg:h-64';
     }
   };
 
@@ -655,18 +664,9 @@ export const FanHub: React.FC<FanHubProps> = ({
     }
   };
 
-  const getClubAvatarMarginClass = (s?: FanClubAvatarSize) => {
-    switch (s) {
-      case 'small':
-        return '-mt-8 sm:-mt-10';
-      case 'large':
-        return '-mt-12 sm:-mt-14';
-      case 'xl':
-        return '-mt-14 sm:-mt-16';
-      case 'standard':
-      default:
-        return '-mt-10 sm:-mt-12';
-    }
+  const getClubAvatarMarginClass = (_s?: FanClubAvatarSize) => {
+    // Sits cleanly below the banner so the entire banner artwork is 100% visible and never covered
+    return 'pt-3.5 sm:pt-4';
   };
 
 
@@ -1092,14 +1092,43 @@ export const FanHub: React.FC<FanHubProps> = ({
                             title={club.bannerUrl ? 'Click to view full banner' : club.name}
                           >
                             {club.bannerUrl ? (
-                              <img
-                                src={club.bannerUrl}
-                                alt={`${club.name} banner`}
-                                className="w-full h-full object-cover group-hover/banner:scale-105 transition-transform duration-300"
-                                onError={(e) => {
-                                  (e.target as HTMLElement).style.display = 'none';
-                                }}
-                              />
+                              club.bannerFit === 'contain' ? (
+                                <div className="relative w-full h-full overflow-hidden flex items-center justify-center bg-slate-950/80">
+                                  {/* Ambient background blur */}
+                                  <img
+                                    src={club.bannerUrl}
+                                    alt=""
+                                    aria-hidden="true"
+                                    className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-55"
+                                  />
+                                  {/* Crisp full uncropped banner */}
+                                  <img
+                                    src={club.bannerUrl}
+                                    alt={`${club.name} banner`}
+                                    className="relative z-1 max-w-full max-h-full object-contain group-hover/banner:scale-102 transition-transform duration-300 drop-shadow-md"
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <img
+                                  src={club.bannerUrl}
+                                  alt={`${club.name} banner`}
+                                  style={{
+                                    objectPosition:
+                                      club.bannerPosition === 'top'
+                                        ? 'center top'
+                                        : club.bannerPosition === 'bottom'
+                                        ? 'center bottom'
+                                        : 'center center'
+                                  }}
+                                  className="w-full h-full object-cover group-hover/banner:scale-105 transition-transform duration-300"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              )
                             ) : (
                               <div className={`w-full h-full ${fallbackBannerClass} flex items-center justify-end pr-4 opacity-90`}>
                                 <Sparkles className="w-12 h-12 text-white/20" />
@@ -1113,6 +1142,38 @@ export const FanHub: React.FC<FanHubProps> = ({
                                   <Maximize2 className="w-3.5 h-3.5" />
                                   <span>View Banner</span>
                                 </span>
+                              </div>
+                            )}
+
+                            {/* Quick Fit Toggle Button on Top Left of Banner */}
+                            {club.bannerUrl && canEdit && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-3 left-3 z-20"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextFit: FanClubBannerFit = (club.bannerFit === 'contain' ? 'cover' : 'contain');
+                                    const updatedClub = { ...club, bannerFit: nextFit };
+                                    onSaveFanClub(updatedClub);
+                                    showToast(nextFit === 'contain' ? 'Banner fit: Full View (Uncropped)' : 'Banner fit: Fill Frame (Cover)');
+                                  }}
+                                  className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-black/60 hover:bg-black/85 text-white backdrop-blur-md flex items-center gap-1.5 border border-white/25 transition-all cursor-pointer shadow-md active:scale-95"
+                                  title={club.bannerFit === 'contain' ? 'Switch to Fill Box' : 'Switch to Full Banner (No Crop)'}
+                                >
+                                  {club.bannerFit === 'contain' ? (
+                                    <>
+                                      <Minimize2 className="w-3 h-3 text-emerald-300" />
+                                      <span>Full View</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Maximize2 className="w-3 h-3 text-purple-300" />
+                                      <span>Fit Banner</span>
+                                    </>
+                                  )}
+                                </button>
                               </div>
                             )}
 
@@ -1154,8 +1215,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                             )}
                           </div>
 
-                          {/* AVATAR + PILLS ROW (Avatar is clickable to open in Lightbox) */}
-                          <div className={`px-6 ${avatarMarginClass} flex items-end gap-3 relative z-10 mb-2.5 flex-wrap`}>
+                          {/* AVATAR + PILLS ROW (Avatar is clickable to open in Lightbox, positioned cleanly below the banner) */}
+                          <div className={`px-6 ${avatarMarginClass} flex items-center gap-3.5 relative z-10 mb-2.5`}>
                             <div
                               onClick={() => {
                                 if (club.avatarUrl) {
@@ -1171,7 +1232,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                   <img
                                     src={club.avatarUrl}
                                     alt={`${club.name} profile`}
-                                    className={`${avatarSizeClass} rounded-full border-4 border-white dark:border-slate-900 shadow-lg object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200`}
+                                    className={`${avatarSizeClass} rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200`}
                                     onError={(e) => {
                                       (e.target as HTMLElement).style.display = 'none';
                                     }}
@@ -1181,15 +1242,15 @@ export const FanHub: React.FC<FanHubProps> = ({
                                   </div>
                                 </>
                               ) : (
-                                <div className={`${avatarSizeClass} rounded-full border-4 border-white dark:border-slate-900 shadow-lg bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black`}>
+                                <div className={`${avatarSizeClass} rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black`}>
                                   {club.flagEmoji || '🥑'}
                                 </div>
                               )}
                             </div>
 
                         {/* Pills positioned beside avatar in yellow circled area */}
-                        <div className="flex items-center gap-1.5 flex-wrap pb-1.5">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+                        <div className="flex items-center gap-1.5 flex-wrap pb-1.5 min-w-0 flex-1">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0">
                             <span className="text-base leading-none">{club.flagEmoji}</span>
                             <span>{club.countryName}</span>
                             {club.city && (
@@ -1199,7 +1260,9 @@ export const FanHub: React.FC<FanHubProps> = ({
                             )}
                           </span>
 
-                          {renderCategoryBadge(club.actor)}
+                          <div className="shrink-0">
+                            {renderCategoryBadge(club.actor)}
+                          </div>
                         </div>
                       </div>
 
@@ -2440,38 +2503,141 @@ export const FanHub: React.FC<FanHubProps> = ({
                 </div>
 
                 {/* Visual Sizing Adjustments: Banner Height & Profile Photo Size */}
-                <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <ImageIcon className="w-3 h-3 text-purple-600" />
-                        <span>Banner Height / Sizing</span>
-                      </span>
-                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold capitalize">
-                        {editingClub.bannerHeight || 'standard'}
-                      </span>
-                    </label>
-                    <div className="grid grid-cols-4 gap-1 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                      {[
-                        { id: 'compact', label: 'Compact', desc: '120px' },
-                        { id: 'standard', label: 'Standard', desc: '165px' },
-                        { id: 'large', label: 'Large', desc: '210px' },
-                        { id: 'tall', label: 'Tall / Hero', desc: '260px' }
-                      ].map((opt) => (
+                <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <ImageIcon className="w-3 h-3 text-purple-600" />
+                          <span>Banner Height & Ratio</span>
+                        </span>
+                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                          {editingClub.bannerHeight || 'standard'}
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                        {[
+                          { id: 'auto', label: 'Auto 2.8:1', desc: 'Desktop fit' },
+                          { id: 'header', label: 'Twitter 3:1', desc: 'Widescreen' },
+                          { id: 'standard', label: 'Standard', desc: '240px' },
+                          { id: 'large', label: 'Large', desc: '270px' },
+                          { id: 'tall', label: 'Tall Hero', desc: '340px' },
+                          { id: 'compact', label: 'Compact', desc: '140px' }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setEditingClub({ ...editingClub, bannerHeight: opt.id as any })}
+                            className={`py-1.5 px-0.5 rounded-lg text-center transition-all cursor-pointer ${
+                              (editingClub.bannerHeight || 'standard') === opt.id
+                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black shadow-xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold'
+                            }`}
+                          >
+                            <div className="text-[10px] leading-tight truncate">{opt.label}</div>
+                            <div className="text-[8px] opacity-75">{opt.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 h-3 text-sky-600" />
+                          <span>Profile Photo / Avatar Size</span>
+                        </span>
+                        <span className="text-[10px] text-sky-600 dark:text-sky-400 font-extrabold capitalize">
+                          {editingClub.avatarSize || 'standard'}
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-4 gap-1 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                        {[
+                          { id: 'small', label: 'Small', desc: '76px' },
+                          { id: 'standard', label: 'Standard', desc: '96px' },
+                          { id: 'large', label: 'Large', desc: '112px' },
+                          { id: 'xl', label: 'Extra Lg', desc: '128px' }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setEditingClub({ ...editingClub, avatarSize: opt.id as any })}
+                            className={`py-1.5 px-0.5 rounded-lg text-center transition-all cursor-pointer ${
+                              (editingClub.avatarSize || 'standard') === opt.id
+                                ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-black shadow-xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold'
+                            }`}
+                          >
+                            <div className="text-[11px] leading-tight truncate">{opt.label}</div>
+                            <div className="text-[9px] opacity-75">{opt.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Banner Fit Mode (Auto-Fit uncropped vs Fill Cover) & Focal Position */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span>Banner Crop / Fit Mode</span>
+                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
+                          {editingClub.bannerFit === 'contain' ? 'Full View (No Crop)' : 'Fill Frame (Cover)'}
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
                         <button
-                          key={opt.id}
                           type="button"
-                          onClick={() => setEditingClub({ ...editingClub, bannerHeight: opt.id as any })}
-                          className={`py-1.5 px-0.5 rounded-lg text-center transition-all cursor-pointer ${
-                            (editingClub.bannerHeight || 'standard') === opt.id
-                              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black shadow-xs'
-                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold'
+                          onClick={() => setEditingClub({ ...editingClub, bannerFit: 'contain' })}
+                          className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer text-xs font-bold ${
+                            editingClub.bannerFit === 'contain'
+                              ? 'bg-purple-600 text-white shadow-xs'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                           }`}
                         >
-                          <div className="text-[11px] leading-tight truncate">{opt.label}</div>
-                          <div className="text-[9px] opacity-75">{opt.desc}</div>
+                          ✨ Full View (No Crop)
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => setEditingClub({ ...editingClub, bannerFit: 'cover' })}
+                          className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer text-xs font-bold ${
+                            editingClub.bannerFit !== 'contain'
+                              ? 'bg-purple-600 text-white shadow-xs'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          🖼️ Fill Frame (Cover)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span>Vertical Focal Point (When Filling)</span>
+                        <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold capitalize">
+                          {editingClub.bannerPosition || 'center'}
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-3 gap-1 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                        {[
+                          { id: 'top', label: 'Top (Heads/Hair)' },
+                          { id: 'center', label: 'Center (Default)' },
+                          { id: 'bottom', label: 'Bottom (Names/Text)' }
+                        ].map((pos) => (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() => setEditingClub({ ...editingClub, bannerPosition: pos.id as any })}
+                            className={`py-1.5 px-1 rounded-lg text-center transition-all cursor-pointer text-[10px] font-bold ${
+                              (editingClub.bannerPosition || 'center') === pos.id
+                                ? 'bg-sky-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
