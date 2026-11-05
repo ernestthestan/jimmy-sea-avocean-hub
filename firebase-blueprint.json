@@ -108,6 +108,34 @@
         "totalVisits": { "type": "number" },
         "lastUpdated": { "type": "string" }
       }
+    },
+    "FanClub": {
+      "title": "FanClub",
+      "description": "Fan club directory entry with social links, banner, and upcoming events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "actor": { "type": "string" },
+        "countryCode": { "type": "string" },
+        "countryName": { "type": "string" },
+        "flagEmoji": { "type": "string" },
+        "description": { "type": "string" },
+        "handle": { "type": "string" },
+        "bannerUrl": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "isOfficialOrVerified": { "type": "boolean" },
+        "socials": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "events": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "countryName"]
     }
   },
   "firestore": {
@@ -118,6 +146,10 @@
     "/settings/global": {
       "schema": "AppSettings",
       "description": "Global configuration document for hub"
+    },
+    "/fan_clubs/{clubId}": {
+      "schema": "FanClub",
+      "description": "Collection of fan clubs and their organized events"
     },
     "/fan_messages/{messageId}": {
       "schema": "FanMessage",

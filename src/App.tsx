@@ -158,6 +158,10 @@ export interface FanMessage {
   // Fan Club Directory fields
   fanClubCountry?: string;
   fanClubCity?: string;
+  fanClubEventTitle?: string;
+  fanClubEventDate?: string;
+  fanClubEventLocation?: string;
+  fanClubEventLink?: string;
   // Food Support fields
   foodSupportTarget?: string;
   foodSupportOrganizer?: string;
@@ -1995,6 +1999,10 @@ export default function App() {
   // Category-specific fields for Fan Clubs
   const [msgFanClubCountry, setMsgFanClubCountry] = useState<string>('');
   const [msgFanClubCity, setMsgFanClubCity] = useState<string>('');
+  const [msgFanClubEventTitle, setMsgFanClubEventTitle] = useState<string>('');
+  const [msgFanClubEventDate, setMsgFanClubEventDate] = useState<string>('');
+  const [msgFanClubEventLocation, setMsgFanClubEventLocation] = useState<string>('');
+  const [msgFanClubEventLink, setMsgFanClubEventLink] = useState<string>('');
 
   // Category-specific fields for Food Support
   const [msgFoodSupportTarget, setMsgFoodSupportTarget] = useState<string>('');
@@ -2110,7 +2118,11 @@ export default function App() {
       ...(msgCategory === 'fanclub'
         ? {
             fanClubCountry: msgFanClubCountry.trim() || undefined,
-            fanClubCity: msgFanClubCity.trim() || undefined
+            fanClubCity: msgFanClubCity.trim() || undefined,
+            fanClubEventTitle: msgFanClubEventTitle.trim() || undefined,
+            fanClubEventDate: msgFanClubEventDate.trim() || undefined,
+            fanClubEventLocation: msgFanClubEventLocation.trim() || undefined,
+            fanClubEventLink: msgFanClubEventLink.trim() || undefined
           }
         : {}),
       ...(msgCategory === 'foodsupport'
@@ -2142,6 +2154,10 @@ export default function App() {
         setMsgProjectYear('');
         setMsgFanClubCountry('');
         setMsgFanClubCity('');
+        setMsgFanClubEventTitle('');
+        setMsgFanClubEventDate('');
+        setMsgFanClubEventLocation('');
+        setMsgFanClubEventLink('');
         setMsgFoodSupportTarget('');
         setMsgFoodSupportOrganizer('');
         setMsgThanksTo('Jimmy & Sea');
@@ -2163,6 +2179,10 @@ export default function App() {
         setMsgProjectYear('');
         setMsgFanClubCountry('');
         setMsgFanClubCity('');
+        setMsgFanClubEventTitle('');
+        setMsgFanClubEventDate('');
+        setMsgFanClubEventLocation('');
+        setMsgFanClubEventLink('');
         setMsgFoodSupportTarget('');
         setMsgFoodSupportOrganizer('');
         setMsgThanksTo('Jimmy & Sea');
@@ -10298,6 +10318,46 @@ export default function App() {
                         className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                       />
                     </div>
+
+                    {/* Optional Fan Club Upcoming Event */}
+                    <div className="p-3.5 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-purple-800 dark:text-purple-300">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Upcoming Fan Club Event / Cafe Project (Optional)</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Does your club have an upcoming birthday cup sleeve, watch party, or gathering? Tell us so admins can feature it in the directory!
+                      </p>
+                      <input
+                        type="text"
+                        value={msgFanClubEventTitle}
+                        onChange={(e) => setMsgFanClubEventTitle(e.target.value)}
+                        placeholder="Event Title (e.g. Sea 27th Birthday Cafe & Gallery)"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="date"
+                          value={msgFanClubEventDate}
+                          onChange={(e) => setMsgFanClubEventDate(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                        <input
+                          type="text"
+                          value={msgFanClubEventLocation}
+                          onChange={(e) => setMsgFanClubEventLocation(e.target.value)}
+                          placeholder="Venue / City (e.g. Siam Square, Bangkok)"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <input
+                        type="url"
+                        value={msgFanClubEventLink}
+                        onChange={(e) => setMsgFanClubEventLink(e.target.value)}
+                        placeholder="Announcement or RSVP link (https://...)"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
                   </>
                 )}
 
@@ -10782,6 +10842,13 @@ export default function App() {
                                 {msg.fanClubCountry && (
                                   <span className="font-semibold px-2.5 py-1 rounded-lg bg-sky-100/70 dark:bg-sky-950/70 text-sky-800 dark:text-sky-200">
                                     📍 {msg.fanClubCountry} {msg.fanClubCity ? `(${msg.fanClubCity})` : ''}
+                                  </span>
+                                )}
+                                {msg.fanClubEventTitle && (
+                                  <span className="font-semibold px-2.5 py-1 rounded-lg bg-amber-100/80 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200">
+                                    🎉 Event: {msg.fanClubEventTitle}
+                                    {msg.fanClubEventDate ? ` (${msg.fanClubEventDate})` : ''}
+                                    {msg.fanClubEventLocation ? ` • ${msg.fanClubEventLocation}` : ''}
                                   </span>
                                 )}
                               </>

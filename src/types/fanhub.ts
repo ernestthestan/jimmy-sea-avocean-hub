@@ -27,6 +27,30 @@ export interface SocialLink {
   url: string;
 }
 
+export type FanClubEventCategory =
+  | 'cup_sleeve'
+  | 'watch_party'
+  | 'gathering'
+  | 'concert_support'
+  | 'charity'
+  | 'exhibit'
+  | 'birthday'
+  | 'other';
+
+export interface FanClubEvent {
+  id: string;
+  title: string;
+  category?: FanClubEventCategory;
+  date: string; // YYYY-MM-DD
+  endDate?: string; // Optional multi-day end date
+  time?: string; // e.g. "11:00 AM - 5:00 PM"
+  location?: string; // Venue / Cafe / City
+  locationUrl?: string; // Google Maps URL
+  description?: string; // Project/event details (giveaways, photobooths, cup sleeves, etc.)
+  link?: string; // Official announcement / RSVP link
+  posterUrl?: string; // Event poster image URL
+}
+
 export interface FanClub {
   id: string;
   name: string;
@@ -43,6 +67,7 @@ export interface FanClub {
   socials: SocialLink[];
   hashtags?: string;
   tags?: string[];
+  events?: FanClubEvent[]; // Upcoming and ongoing fan club events
   updatedAt?: string;
 }
 

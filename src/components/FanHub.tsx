@@ -32,10 +32,15 @@ import {
   Image as ImageIcon,
   ChevronDown,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  PartyPopper,
+  CalendarPlus,
+  Maximize2
 } from 'lucide-react';
 import type {
   FanClub,
+  FanClubEvent,
+  FanClubEventCategory,
   FoodSupportProject,
   FanClubActor,
   ProjectStatus,
@@ -263,6 +268,7 @@ export const FanHub: React.FC<FanHubProps> = ({
   // Modals
   const [editingClub, setEditingClub] = useState<FanClub | null>(null);
   const [isClubModalOpen, setIsClubModalOpen] = useState<boolean>(false);
+  const [directoryEventFilter, setDirectoryEventFilter] = useState<'all' | 'has_events'>('all');
 
   const [editingProject, setEditingProject] = useState<FoodSupportProject | null>(null);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState<boolean>(false);
@@ -428,6 +434,42 @@ export const FanHub: React.FC<FanHubProps> = ({
     );
   };
 
+  // Helper for Fan Club Event category badges
+  const getClubEventCategoryLabel = (category?: FanClubEventCategory) => {
+    switch (category) {
+      case 'cup_sleeve':
+        return '☕ Cup Sleeve Cafe';
+      case 'watch_party':
+        return '🍿 Watch Party';
+      case 'gathering':
+        return '🎉 Fan Gathering';
+      case 'concert_support':
+        return '🎫 Concert Gathering';
+      case 'birthday':
+        return '🎂 Birthday Project';
+      case 'charity':
+        return '💝 Charity Drive';
+      case 'exhibit':
+        return '🖼️ Photo Exhibit';
+      case 'other':
+      default:
+        return '✨ Fan Event';
+    }
+  };
+
+  // Generate Google Calendar one-click direct template URL
+  const getGoogleCalendarUrl = (event: FanClubEvent, clubName: string) => {
+    const title = encodeURIComponent(`${event.title} - ${clubName}`);
+    const start = (event.date || '').replace(/-/g, '');
+    const end = (event.endDate || event.date || '').replace(/-/g, '');
+    const dates = start ? `${start}/${end || start}` : '';
+    const details = encodeURIComponent(
+      `${event.description || ''}\n\nOrganized by Fan Club: ${clubName}\n${event.link ? `More Info & RSVP: ${event.link}` : ''}`
+    );
+    const location = encodeURIComponent(event.location || '');
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
+  };
+
 
   // Distinct countries for directory filter
   const availableCountries = Array.from(
@@ -438,12 +480,15 @@ export const FanHub: React.FC<FanHubProps> = ({
     )
   ).map((str) => JSON.parse(str));
 
-  // Filtered fan clubs (filtered by top member filter, country, and search)
+  // Filtered fan clubs (filtered by top member filter, country, upcoming events toggle, and search)
   const filteredFanClubs = fanClubs.filter((club) => {
     if (!matchesActiveMembers(club.actor)) {
       return false;
     }
     if (directoryCountryFilter !== 'all' && club.countryCode !== directoryCountryFilter) {
+      return false;
+    }
+    if (directoryEventFilter === 'has_events' && (!club.events || club.events.length === 0)) {
       return false;
     }
     if (directorySearch.trim()) {
@@ -453,7 +498,13 @@ export const FanHub: React.FC<FanHubProps> = ({
       const matchHandle = club.handle?.toLowerCase().includes(q);
       const matchDesc = club.description.toLowerCase().includes(q);
       const matchTrans = club.translatedDescription?.toLowerCase().includes(q);
-      return matchName || matchCountry || matchHandle || matchDesc || matchTrans;
+      const matchEvents = (club.events || []).some(
+        (ev) =>
+          ev.title.toLowerCase().includes(q) ||
+          ev.location?.toLowerCase().includes(q) ||
+          ev.description?.toLowerCase().includes(q)
+      );
+      return matchName || matchCountry || matchHandle || matchDesc || matchTrans || matchEvents;
     }
     return true;
   });
@@ -651,6 +702,18 @@ export const FanHub: React.FC<FanHubProps> = ({
                 ))}
               </select>
 
+              {/* Event Filter Select */}
+              <select
+                value={directoryEventFilter}
+                onChange={(e) => setDirectoryEventFilter(e.target.value as any)}
+                aria-label="Filter by Events"
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-[#1A3668] dark:text-white border border-slate-200 dark:border-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Clubs ({fanClubs.length})</option>
+                <option value="has_events">
+                  🎉 Has Upcoming Events ({fanClubs.filter((c) => c.events && c.events.length > 0).length})
+                </option>
+              </select>
 
               {/* Add Club Button (Admin / Owner) */}
               {canEdit && (
@@ -667,7 +730,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                       description: '',
                       handle: '',
                       isOfficialOrVerified: false,
-                      socials: [{ platform: 'x', url: '' }]
+                      socials: [{ platform: 'x', url: '' }],
+                      events: []
                     });
                     setIsClubModalOpen(true);
                   }}
@@ -705,7 +769,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                       description: '',
                       handle: '',
                       isOfficialOrVerified: true,
-                      socials: [{ platform: 'x', label: 'X (Twitter)', url: '' }]
+                      socials: [{ platform: 'x', label: 'X (Twitter)', url: '' }],
+                      events: []
                     });
                     setIsClubModalOpen(true);
                   }}
@@ -996,6 +1061,134 @@ export const FanHub: React.FC<FanHubProps> = ({
                       </div>
                     </div>
 
+                    {/* UPCOMING FAN CLUB EVENTS */}
+                    {club.events && club.events.length > 0 && (
+                      <div className="px-5 pt-3">
+                        <div className="rounded-2xl p-3 sm:p-3.5 bg-gradient-to-br from-purple-50/90 via-indigo-50/30 to-sky-50/70 dark:from-purple-950/40 dark:via-slate-800 dark:to-sky-950/30 border border-purple-200/90 dark:border-purple-800/80 shadow-2xs space-y-2.5">
+                          <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-black text-purple-700 dark:text-purple-300">
+                              <PartyPopper className="w-3.5 h-3.5 text-purple-600 animate-bounce" />
+                              <span>Upcoming Club Events</span>
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-200/70 dark:bg-purple-900/80 text-purple-800 dark:text-purple-200 border border-purple-300/60 dark:border-purple-700/60">
+                              {club.events.length} {club.events.length === 1 ? 'Event' : 'Events'}
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {club.events.map((ev, evIdx) => (
+                              <div
+                                key={ev.id || evIdx}
+                                className="p-2.5 sm:p-3 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-purple-100 dark:border-slate-800 shadow-2xs space-y-1.5"
+                              >
+                                <div className="flex items-start justify-between gap-1.5">
+                                  <h4 className="text-xs sm:text-sm font-bold text-[#1A3668] dark:text-white leading-snug">
+                                    {ev.title}
+                                  </h4>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 shrink-0 border border-purple-200/60 dark:border-purple-800/60">
+                                    {getClubEventCategoryLabel(ev.category)}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap text-[11px] text-[#475569] dark:text-slate-300 font-semibold">
+                                  <span className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300 font-bold bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md">
+                                    <Calendar className="w-3 h-3 text-purple-600" />
+                                    <span>
+                                      {ev.date}
+                                      {ev.endDate && ev.endDate !== ev.date ? ` – ${ev.endDate}` : ''}
+                                    </span>
+                                  </span>
+
+                                  {ev.time && (
+                                    <span className="inline-flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-slate-400" />
+                                      <span>{ev.time}</span>
+                                    </span>
+                                  )}
+
+                                  {ev.location && (
+                                    <span className="inline-flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-rose-500" />
+                                      {ev.locationUrl ? (
+                                        <a
+                                          href={ev.locationUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="hover:underline text-rose-600 dark:text-rose-400"
+                                        >
+                                          {ev.location}
+                                        </a>
+                                      ) : (
+                                        <span>{ev.location}</span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {ev.posterUrl && (
+                                  <div className="pt-0.5">
+                                    <div
+                                      onClick={() =>
+                                        setLightboxMedia({
+                                          url: ev.posterUrl!,
+                                          caption: `${club.name} — ${ev.title}`
+                                        })
+                                      }
+                                      className="relative h-24 sm:h-28 w-full rounded-lg overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950"
+                                      title="Click to view event poster"
+                                    >
+                                      <img
+                                        src={ev.posterUrl}
+                                        alt={ev.title}
+                                        className="w-full h-full object-cover group-hover/poster:scale-105 transition-transform duration-300"
+                                        onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                      />
+                                      <div className="absolute inset-0 bg-black/20 group-hover/poster:bg-black/40 flex items-center justify-center transition-colors">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/70 text-white text-[10.5px] font-bold backdrop-blur-xs">
+                                          <Maximize2 className="w-3 h-3" />
+                                          <span>View Poster</span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {ev.description && (
+                                  <p className="text-[11.5px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line pt-0.5">
+                                    {ev.description}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                                  <a
+                                    href={getGoogleCalendarUrl(ev, club.name)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline py-1"
+                                    title="Add this fan club event to your Google Calendar"
+                                  >
+                                    <CalendarPlus className="w-3.5 h-3.5" />
+                                    <span>Add to Calendar</span>
+                                  </a>
+
+                                  {ev.link && (
+                                    <a
+                                      href={ev.link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all"
+                                    >
+                                      <span>Event Info / RSVP</span>
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Official Hashtags Section */}
                     {club.hashtags && (
@@ -1896,6 +2089,310 @@ export const FanHub: React.FC<FanHubProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* UPCOMING FAN CLUB EVENTS (CUP SLEEVES, CAFE PROJECTS, WATCH PARTIES, GATHERINGS) */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50/70 via-indigo-50/40 to-sky-50/50 dark:from-purple-950/40 dark:via-slate-800/60 dark:to-sky-950/30 border border-purple-200/80 dark:border-purple-800/60 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <PartyPopper className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      <label className="block text-xs font-bold text-[#1A3668] dark:text-white">
+                        Upcoming Fan Club Events (Cafe, Gatherings & Projects)
+                      </label>
+                      {(editingClub.events?.length || 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-200/80 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
+                          {editingClub.events?.length} Event{(editingClub.events?.length || 0) > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Add cup sleeve birthday cafes, fan meetups, watch parties, or charity projects organized by this club!
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newEvent: FanClubEvent = {
+                        id: `fce-${Date.now()}`,
+                        title: '',
+                        category: 'cup_sleeve',
+                        date: '',
+                        endDate: '',
+                        time: '',
+                        location: '',
+                        locationUrl: '',
+                        description: '',
+                        link: '',
+                        posterUrl: ''
+                      };
+                      setEditingClub({
+                        ...editingClub,
+                        events: [...(editingClub.events || []), newEvent]
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Upcoming Event</span>
+                  </button>
+                </div>
+
+                {/* Events List */}
+                {(!editingClub.events || editingClub.events.length === 0) ? (
+                  <div className="p-4 rounded-xl border border-dashed border-purple-200 dark:border-purple-800/80 bg-white/60 dark:bg-slate-900/60 text-center">
+                    <Calendar className="w-6 h-6 text-purple-400 mx-auto mb-1.5 opacity-70" />
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      No upcoming events listed for this fan club yet.
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-0.5">
+                      If this club is hosting a cup-sleeve cafe, watch party, or charity drive, click "+ Add Upcoming Event" above.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {editingClub.events.map((evItem, evIdx) => (
+                      <div
+                        key={evItem.id || evIdx}
+                        className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-purple-200/80 dark:border-purple-900/60 shadow-xs space-y-3 transition-all"
+                      >
+                        {/* Header of each event */}
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-5 h-5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[11px] font-black flex items-center justify-center shrink-0">
+                              {evIdx + 1}
+                            </span>
+                            <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
+                              {evItem.title.trim() || `Event #${evIdx + 1}`}
+                            </span>
+                            {evItem.date && (
+                              <span className="text-[10.5px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/70 px-2 py-0.5 rounded-md border border-purple-200/60 dark:border-purple-800/60 shrink-0">
+                                📅 {evItem.date}
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = (editingClub.events || []).filter((_, idx) => idx !== evIdx);
+                              setEditingClub({ ...editingClub, events: next });
+                            }}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer transition-colors"
+                            title="Remove event"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Form fields for event */}
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                          {/* Title */}
+                          <div className="sm:col-span-8">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                              Event Title *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={evItem.title}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], title: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="e.g. Sea's 27th Birthday Cafe: Under The Sea"
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Category */}
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                              Category
+                            </label>
+                            <select
+                              value={evItem.category || 'cup_sleeve'}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], category: e.target.value as any };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
+                            >
+                              <option value="cup_sleeve">☕ Cup Sleeve / Cafe</option>
+                              <option value="watch_party">🍿 Watch Party</option>
+                              <option value="gathering">🎉 Fan Gathering</option>
+                              <option value="concert_support">🎫 Concert Support</option>
+                              <option value="birthday">🎂 Birthday Project</option>
+                              <option value="charity">💝 Charity Drive</option>
+                              <option value="exhibit">🖼️ Photo Exhibit / LED</option>
+                              <option value="other">✨ Other Fan Event</option>
+                            </select>
+                          </div>
+
+                          {/* Start Date */}
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                              Start Date *
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={evItem.date}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], date: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* End Date */}
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                              End Date (Optional)
+                            </label>
+                            <input
+                              type="date"
+                              value={evItem.endDate || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], endDate: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Time */}
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                              Hours / Time
+                            </label>
+                            <input
+                              type="text"
+                              value={evItem.time || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], time: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="e.g. 11:00 AM - 5:00 PM"
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Location */}
+                          <div className="sm:col-span-6">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-purple-600" />
+                              <span>Venue / Location</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={evItem.location || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], location: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="e.g. Cafe Amazon, Siam Square or Quezon City"
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Location URL */}
+                          <div className="sm:col-span-6">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                              <Globe className="w-3 h-3 text-sky-600" />
+                              <span>Google Maps / Location Link</span>
+                            </label>
+                            <input
+                              type="url"
+                              value={evItem.locationUrl || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], locationUrl: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="https://maps.google.com/..."
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Poster URL */}
+                          <div className="sm:col-span-6">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3 text-purple-600" />
+                              <span>Poster / Graphic URL</span>
+                            </label>
+                            <div className="flex gap-2 items-center">
+                              <input
+                                type="url"
+                                value={evItem.posterUrl || ''}
+                                onChange={(e) => {
+                                  const next = [...(editingClub.events || [])];
+                                  next[evIdx] = { ...next[evIdx], posterUrl: e.target.value };
+                                  setEditingClub({ ...editingClub, events: next });
+                                }}
+                                placeholder="https://... (event graphic)"
+                                className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                              />
+                              {evItem.posterUrl && (
+                                <img
+                                  src={evItem.posterUrl}
+                                  alt="Poster thumbnail"
+                                  className="w-7 h-7 rounded-md object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                  onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Announcement / RSVP Link */}
+                          <div className="sm:col-span-6">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                              <ExternalLink className="w-3 h-3 text-purple-600" />
+                              <span>Announcement / RSVP URL</span>
+                            </label>
+                            <input
+                              type="url"
+                              value={evItem.link || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], link: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="https://x.com/... (thread or RSVP link)"
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          {/* Description / Perks */}
+                          <div className="sm:col-span-12">
+                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                              Event Description, Perks & Freebies
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={evItem.description || ''}
+                              onChange={(e) => {
+                                const next = [...(editingClub.events || [])];
+                                next[evIdx] = { ...next[evIdx], description: e.target.value };
+                                setEditingClub({ ...editingClub, events: next });
+                              }}
+                              placeholder="Details on cup sleeves, special drinks, photocards, raffle, photo wall, dress code..."
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 resize-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Official Hashtags with Quick Add Pills */}
