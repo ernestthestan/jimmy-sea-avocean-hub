@@ -77,6 +77,7 @@ import {
 } from '../utils/translation';
 import { OfficialHashtagPicker } from './OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './HashtagsDisplayCard';
+import { CountryFlagImage, detectCountryDetails } from '../utils/countryFlags';
 
 interface CountryOptionItem {
   code: string;
@@ -173,7 +174,12 @@ const CountryMultiSelectPicker: React.FC<CountryMultiSelectPickerProps> = ({
       const match = options.find((o) => o.code === selectedCodes[0]);
       return (
         <span className="flex items-center gap-1.5 truncate">
-          <span className="text-sm">{match?.flag || '🌐'}</span>
+          <CountryFlagImage
+            countryCode={selectedCodes[0]}
+            countryName={match?.name}
+            flagEmoji={match?.flag}
+            className="w-4 h-3 object-cover rounded-xs"
+          />
           <span className="truncate">{match?.name || selectedCodes[0]}</span>
         </span>
       );
@@ -308,7 +314,12 @@ const CountryMultiSelectPicker: React.FC<CountryMultiSelectPickerProps> = ({
                         onChange={() => handleToggleCountry(country.code)}
                         className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600"
                       />
-                      <span className="text-sm shrink-0">{country.flag}</span>
+                      <CountryFlagImage
+                        countryCode={country.code}
+                        countryName={country.name}
+                        flagEmoji={country.flag}
+                        className="w-4 h-3 object-cover rounded-xs"
+                      />
                       <span className="truncate">{country.name}</span>
                     </div>
 
@@ -945,79 +956,6 @@ export const FanHub: React.FC<FanHubProps> = ({
   };
 
 
-  // Multi-select country options for Directory with counts (pins Worldwide/Inter and Other/Custom Region at top 2)
-  const directoryCountryOptions: CountryOptionItem[] = useMemo(() => {
-    const map = new Map<string, { code: string; name: string; flag: string; count: number }>();
-    fanClubs.forEach((club) => {
-      const code = club.countryCode || 'GLOBAL';
-      const name = club.countryName || 'Global';
-      const flag = (code === 'GLOBAL' || code === 'OTHER') ? '🌐' : (club.flagEmoji || '🌍');
-      const existing = map.get(code);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        map.set(code, { code, name, flag, count: 1 });
-      }
-    });
-
-    // Also include standard popular countries so users can browse any country
-    POPULAR_FAN_COUNTRIES.forEach((c) => {
-      if (!map.has(c.code)) {
-        map.set(c.code, { code: c.code, name: c.name, flag: c.flag, count: 0 });
-      } else if (c.code === 'OTHER' || c.code === 'GLOBAL') {
-        const item = map.get(c.code)!;
-        item.flag = '🌐';
-      }
-    });
-
-    // Pinned top 2 options: Worldwide / Inter, then Other / Custom Region; remainder sorted alphabetically by country name
-    const topPinned = ['GLOBAL', 'OTHER'];
-    return Array.from(map.values()).sort((a, b) => {
-      const aPinned = topPinned.indexOf(a.code);
-      const bPinned = topPinned.indexOf(b.code);
-      if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
-      if (aPinned !== -1) return -1;
-      if (bPinned !== -1) return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-    });
-  }, [fanClubs]);
-
-  // Multi-select country options for Food Support with counts (pins Worldwide/Inter and Other/Custom Region at top 2)
-  const supportCountryOptions: CountryOptionItem[] = useMemo(() => {
-    const matchesCountry = (proj: FoodSupportProject, c: typeof POPULAR_FAN_COUNTRIES[0]) => {
-      if (proj.countryCode === c.code) return true;
-      const lower = c.name.toLowerCase();
-      if (proj.countryName?.toLowerCase().includes(lower)) return true;
-      if (proj.location?.toLowerCase().includes(lower)) return true;
-      if (proj.title.toLowerCase().includes(lower)) return true;
-      if (c.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) return true;
-      if (c.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) return true;
-      if (c.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) return true;
-      if (c.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) return true;
-      if (c.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) return true;
-      if (c.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom'))) return true;
-      return false;
-    };
-
-    const topPinned = ['GLOBAL', 'OTHER'];
-    return POPULAR_FAN_COUNTRIES.map((c) => {
-      const count = foodProjects.filter((p) => matchesCountry(p, c)).length;
-      return {
-        code: c.code,
-        name: c.name,
-        flag: c.flag,
-        count
-      };
-    }).sort((a, b) => {
-      const aPinned = topPinned.indexOf(a.code);
-      const bPinned = topPinned.indexOf(b.code);
-      if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
-      if (aPinned !== -1) return -1;
-      if (bPinned !== -1) return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-    });
-  }, [foodProjects]);
-
   // Helpers for alphabetical ordering by country:
   const getClubCountryName = (club: FanClub): string => {
     if (club.countryName && club.countryName.trim()) return club.countryName.trim();
@@ -1066,6 +1004,93 @@ export const FanHub: React.FC<FanHubProps> = ({
 
     return countryA.localeCompare(countryB, undefined, { sensitivity: 'base' });
   };
+
+  // Multi-select country options for Directory with counts (pins Worldwide/Inter and Other/Custom Region at top 2)
+  const directoryCountryOptions: CountryOptionItem[] = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; flag: string; count: number }>();
+    fanClubs.forEach((club) => {
+      const code = club.countryCode || 'GLOBAL';
+      const name = club.countryName || 'Global';
+      const flag = (code === 'GLOBAL' || code === 'OTHER') ? '🌐' : (club.flagEmoji || '🌍');
+      const existing = map.get(code);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(code, { code, name, flag, count: 1 });
+      }
+    });
+
+    // Also include standard popular countries so users can browse any country
+    POPULAR_FAN_COUNTRIES.forEach((c) => {
+      if (!map.has(c.code)) {
+        map.set(c.code, { code: c.code, name: c.name, flag: c.flag, count: 0 });
+      } else if (c.code === 'OTHER' || c.code === 'GLOBAL') {
+        const item = map.get(c.code)!;
+        item.flag = '🌐';
+      }
+    });
+
+    // Pinned top 2 options: Worldwide / Inter, then Other / Custom Region; remainder sorted alphabetically by country name
+    const topPinned = ['GLOBAL', 'OTHER'];
+    return Array.from(map.values()).sort((a, b) => {
+      const aPinned = topPinned.indexOf(a.code);
+      const bPinned = topPinned.indexOf(b.code);
+      if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
+      if (aPinned !== -1) return -1;
+      if (bPinned !== -1) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+  }, [fanClubs]);
+
+  // Multi-select country options for Food Support with counts (pins Worldwide/Inter and Other/Custom Region at top 2)
+  const supportCountryOptions: CountryOptionItem[] = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; flag: string; count: number }>();
+
+    // Start with POPULAR_FAN_COUNTRIES
+    POPULAR_FAN_COUNTRIES.forEach((c) => {
+      map.set(c.code, { code: c.code, name: c.name, flag: c.flag, count: 0 });
+    });
+
+    // Also include any custom country from food projects
+    foodProjects.forEach((proj) => {
+      const cName = getProjectCountryName(proj);
+      const cCode = proj.countryCode || (cName.toLowerCase().includes('worldwide') ? 'GLOBAL' : 'OTHER');
+      const cFlag = proj.flagEmoji || '🌐';
+      if (!map.has(cCode) && cCode !== 'GLOBAL' && cCode !== 'OTHER') {
+        map.set(cCode, { code: cCode, name: cName, flag: cFlag, count: 0 });
+      }
+    });
+
+    const matchesCountry = (proj: FoodSupportProject, c: { code: string; name: string }) => {
+      if (proj.countryCode === c.code) return true;
+      const lower = c.name.toLowerCase();
+      if (proj.countryName?.toLowerCase().includes(lower)) return true;
+      if (proj.location?.toLowerCase().includes(lower)) return true;
+      if (proj.title.toLowerCase().includes(lower)) return true;
+      if (c.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) return true;
+      if (c.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) return true;
+      if (c.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) return true;
+      if (c.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) return true;
+      if (c.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) return true;
+      if (c.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom'))) return true;
+      return false;
+    };
+
+    const items = Array.from(map.values()).map((item) => ({
+      ...item,
+      count: foodProjects.filter((p) => matchesCountry(p, item)).length
+    }));
+
+    const topPinned = ['GLOBAL', 'OTHER'];
+    return items.sort((a, b) => {
+      const aPinned = topPinned.indexOf(a.code);
+      const bPinned = topPinned.indexOf(b.code);
+      if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
+      if (aPinned !== -1) return -1;
+      if (bPinned !== -1) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+  }, [foodProjects]);
 
   // Filtered fan clubs (filtered and sorted in alphabetical order by country, then club name)
   const filteredFanClubs = fanClubs
@@ -1596,8 +1621,13 @@ export const FanHub: React.FC<FanHubProps> = ({
                                   </div>
                                 </>
                               ) : (
-                                <div className={`${avatarSizeClass} rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black`}>
-                                  {club.flagEmoji || '🥑'}
+                                <div className={`${avatarSizeClass} rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white text-2xl font-black overflow-hidden`}>
+                                  <CountryFlagImage
+                                    countryCode={club.countryCode}
+                                    countryName={club.countryName}
+                                    flagEmoji={club.flagEmoji}
+                                    className="w-8 h-6 object-cover rounded-xs"
+                                  />
                                 </div>
                               )}
                             </div>
@@ -1605,7 +1635,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                         {/* Pills positioned beside avatar in yellow circled area */}
                         <div className="flex items-center gap-1.5 flex-wrap pb-1.5 min-w-0 flex-1">
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0">
-                            <span className="text-base leading-none">{club.flagEmoji}</span>
+                            <CountryFlagImage
+                              countryCode={club.countryCode}
+                              countryName={club.countryName}
+                              flagEmoji={club.flagEmoji}
+                              className="w-5 h-3.5 object-cover rounded-xs"
+                            />
                             <span>{club.countryName}</span>
                             {club.city && (
                               <span className="text-slate-400 dark:text-slate-500 font-normal">
@@ -2241,13 +2276,14 @@ export const FanHub: React.FC<FanHubProps> = ({
                           </span>
                           {(() => {
                             const cName = getProjectCountryName(proj);
-                            const foundCountry = POPULAR_FAN_COUNTRIES.find(
-                              (c) => c.code === proj.countryCode || c.name.toLowerCase() === cName.toLowerCase()
-                            );
-                            const flag = proj.flagEmoji || foundCountry?.flag || (cName.toLowerCase().includes('worldwide') ? '🌐' : cName.toLowerCase().includes('thailand') ? '🇹🇭' : cName.toLowerCase().includes('philippines') ? '🇵🇭' : '🌐');
                             return (
                               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0">
-                                <span className="text-sm leading-none">{flag}</span>
+                                <CountryFlagImage
+                                  countryCode={proj.countryCode}
+                                  countryName={cName}
+                                  flagEmoji={proj.flagEmoji}
+                                  className="w-5 h-3.5 object-cover rounded-xs"
+                                />
                                 <span>{cName}</span>
                               </span>
                             );
@@ -2782,30 +2818,39 @@ export const FanHub: React.FC<FanHubProps> = ({
 
                 {/* Editable inputs */}
                 <div className="flex gap-2 items-center">
-                  <div className="flex flex-col">
+                  <div className="flex flex-col items-center">
                     <span className="text-[10px] font-bold text-slate-400 mb-0.5">Flag</span>
-                    <input
-                      type="text"
-                      value={editingClub.flagEmoji}
-                      onChange={(e) => setEditingClub({ ...editingClub, flagEmoji: e.target.value })}
-                      placeholder="🇵🇭"
-                      className="w-14 text-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1.5 text-base font-bold text-[#1A3668] dark:text-white focus:outline-none"
-                    />
+                    <div className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shrink-0">
+                      <CountryFlagImage
+                        countryCode={editingClub.countryCode}
+                        countryName={editingClub.countryName}
+                        flagEmoji={editingClub.flagEmoji}
+                        className="w-6 h-4 object-cover rounded-xs"
+                      />
+                    </div>
                   </div>
                   <div className="flex-1 flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 mb-0.5">Country / Region Name</span>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px] font-bold text-slate-400">Type Country / Region Name</span>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">
+                        ✨ Auto-sorted alphabetically
+                      </span>
+                    </div>
                     <input
                       type="text"
                       value={editingClub.countryName}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const detected = detectCountryDetails(val);
                         setEditingClub({
                           ...editingClub,
-                          countryName: e.target.value,
-                          countryCode: e.target.value.substring(0, 3).toUpperCase()
-                        })
-                      }
-                      placeholder="Philippines"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                          countryName: val,
+                          countryCode: detected ? detected.code : (val.trim() ? val.trim().substring(0, 3).toUpperCase() : 'OTHER'),
+                          flagEmoji: detected ? detected.flag : (editingClub.flagEmoji || '🌐')
+                        });
+                      }}
+                      placeholder="e.g. Philippines, Mexico, Chile, Spain"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                     />
                   </div>
                 </div>
@@ -3899,52 +3944,96 @@ export const FanHub: React.FC<FanHubProps> = ({
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Country & Venue Location
+                    Country & Venue Location *
                   </label>
                   <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
-                    Links with Country Filter
+                    ✨ Auto-sorted alphabetically
                   </span>
                 </div>
+
+                {/* Country Quick Preset Dropdown */}
+                <div>
+                  <label className="block text-[10.5px] font-bold text-slate-500 mb-1">
+                    Preset Country / Quick Select
+                  </label>
+                  <select
+                    value={
+                      POPULAR_FAN_COUNTRIES.some((c) => c.code === editingProject.countryCode)
+                        ? editingProject.countryCode
+                        : 'OTHER'
+                    }
+                    onChange={(e) => {
+                      const found = POPULAR_FAN_COUNTRIES.find((c) => c.code === e.target.value);
+                      if (found) {
+                        setEditingProject({
+                          ...editingProject,
+                          countryCode: found.code,
+                          countryName: found.name,
+                          flagEmoji: found.flag
+                        });
+                      }
+                    }}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
+                  >
+                    <option value="">-- Select Country or choose Other to type --</option>
+                    {POPULAR_FAN_COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Typeable Country Name with Flag & City / Venue */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-[10.5px] font-bold text-slate-500 mb-1">
-                      Country / Region
-                    </label>
-                    <select
-                      value={editingProject.countryCode || ''}
-                      onChange={(e) => {
-                        const found = POPULAR_FAN_COUNTRIES.find((c) => c.code === e.target.value);
-                        if (found) {
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10.5px] font-bold text-slate-500">
+                        Type Country / Region Name
+                      </label>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">
+                        Type any country A–Z
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0 flex items-center justify-center">
+                        <CountryFlagImage
+                          countryCode={editingProject.countryCode}
+                          countryName={editingProject.countryName}
+                          flagEmoji={editingProject.flagEmoji}
+                          className="w-6 h-4 object-cover rounded-xs"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={editingProject.countryName || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const detected = detectCountryDetails(val);
                           setEditingProject({
                             ...editingProject,
-                            countryCode: found.code,
-                            countryName: found.name,
-                            flagEmoji: found.flag
+                            countryName: val,
+                            countryCode: detected ? detected.code : (val.trim() ? val.trim().substring(0, 3).toUpperCase() : 'OTHER'),
+                            flagEmoji: detected ? detected.flag : (editingProject.flagEmoji || '🌐')
                           });
-                        }
-                      }}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
-                    >
-                      <option value="">-- Select Country --</option>
-                      {POPULAR_FAN_COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.flag} {c.name} ({c.code})
-                        </option>
-                      ))}
-                    </select>
+                        }}
+                        placeholder="e.g. Philippines, Mexico, Chile, Spain"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
                   </div>
 
                   <div>
                     <label className="block text-[10.5px] font-bold text-slate-500 mb-1 flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-rose-500" />
-                      <span>City / Venue</span>
+                      <span>City / Venue Location</span>
                     </label>
                     <input
                       type="text"
                       value={editingProject.location || ''}
                       onChange={(e) => setEditingProject({ ...editingProject, location: e.target.value })}
                       placeholder="e.g. centralWorld, Bangkok or MOA Arena"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                     />
                   </div>
                 </div>
