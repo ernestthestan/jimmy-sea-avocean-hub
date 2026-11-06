@@ -970,7 +970,7 @@ export const FanHub: React.FC<FanHubProps> = ({
       }
     });
 
-    // Pinned top 2 options: Worldwide / Inter, then Other / Custom Region
+    // Pinned top 2 options: Worldwide / Inter, then Other / Custom Region; remainder sorted alphabetically by country name
     const topPinned = ['GLOBAL', 'OTHER'];
     return Array.from(map.values()).sort((a, b) => {
       const aPinned = topPinned.indexOf(a.code);
@@ -978,8 +978,7 @@ export const FanHub: React.FC<FanHubProps> = ({
       if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
       if (aPinned !== -1) return -1;
       if (bPinned !== -1) return 1;
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
   }, [fanClubs]);
 
@@ -1015,92 +1014,162 @@ export const FanHub: React.FC<FanHubProps> = ({
       if (aPinned !== -1 && bPinned !== -1) return aPinned - bPinned;
       if (aPinned !== -1) return -1;
       if (bPinned !== -1) return 1;
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
   }, [foodProjects]);
 
-  // Filtered fan clubs (filtered by top member filter, multi-country selection, upcoming events toggle, and search)
-  const filteredFanClubs = fanClubs.filter((club) => {
-    if (!matchesActiveMembers(club.actor)) {
-      return false;
+  // Helpers for alphabetical ordering by country:
+  const getClubCountryName = (club: FanClub): string => {
+    if (club.countryName && club.countryName.trim()) return club.countryName.trim();
+    if (club.countryCode) {
+      const found = POPULAR_FAN_COUNTRIES.find((c) => c.code === club.countryCode);
+      if (found) return found.name;
     }
-    const hasCountryFilter = directoryCountryFilter.length > 0 && !directoryCountryFilter.includes('all');
-    if (hasCountryFilter) {
-      const matches = directoryCountryFilter.some((code) => {
-        if (club.countryCode === code) return true;
-        if (code === 'GLOBAL' && (club.countryCode === 'GLOBAL' || club.countryName?.toLowerCase().includes('global') || club.countryName?.toLowerCase().includes('worldwide'))) return true;
-        if (code === 'OTHER' && (club.countryCode === 'OTHER' || club.countryName?.toLowerCase().includes('other') || club.countryName?.toLowerCase().includes('custom'))) return true;
-        return false;
-      });
-      if (!matches) {
-        return false;
-      }
-    }
-    if (directoryEventFilter === 'has_events' && (!club.events || club.events.length === 0)) {
-      return false;
-    }
-    if (directorySearch.trim()) {
-      const q = directorySearch.toLowerCase();
-      const matchName = club.name.toLowerCase().includes(q);
-      const matchCountry = club.countryName.toLowerCase().includes(q);
-      const matchHandle = club.handle?.toLowerCase().includes(q);
-      const matchDesc = club.description.toLowerCase().includes(q);
-      const matchTrans = club.translatedDescription?.toLowerCase().includes(q);
-      const matchEvents = (club.events || []).some(
-        (ev) =>
-          ev.title.toLowerCase().includes(q) ||
-          ev.location?.toLowerCase().includes(q) ||
-          ev.description?.toLowerCase().includes(q)
-      );
-      return matchName || matchCountry || matchHandle || matchDesc || matchTrans || matchEvents;
-    }
-    return true;
-  });
+    return 'Worldwide / Inter';
+  };
 
-  // Filtered food support projects (filtered by top member filter, status, multi-country selection, and search)
-  const filteredProjects = foodProjects.filter((proj) => {
-    if (!matchesActiveMembers(proj.actor)) {
-      return false;
+  const getProjectCountryName = (proj: FoodSupportProject): string => {
+    if (proj.countryName && proj.countryName.trim()) return proj.countryName.trim();
+    if (proj.countryCode) {
+      const found = POPULAR_FAN_COUNTRIES.find((c) => c.code === proj.countryCode);
+      if (found) return found.name;
     }
-    if (supportStatusFilter !== 'all' && proj.status !== supportStatusFilter) {
-      return false;
-    }
-    const hasCountryFilter = supportCountryFilter.length > 0 && !supportCountryFilter.includes('all');
-    if (hasCountryFilter) {
-      const matchesAnySelected = supportCountryFilter.some((code) => {
-        if (proj.countryCode === code) return true;
-        const selected = POPULAR_FAN_COUNTRIES.find((c) => c.code === code);
-        if (!selected) return false;
-        const lower = selected.name.toLowerCase();
-        return (
-          proj.countryName?.toLowerCase().includes(lower) ||
-          proj.location?.toLowerCase().includes(lower) ||
-          proj.title.toLowerCase().includes(lower) ||
-          (selected.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) ||
-          (selected.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) ||
-          (selected.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) ||
-          (selected.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) ||
-          (selected.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) ||
-          (selected.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom')))
-        );
-      });
-      if (!matchesAnySelected) {
+    const loc = (proj.location || '').toLowerCase();
+    const org = (proj.organizerName || '').toLowerCase();
+    const curr = (proj.currency || '').toUpperCase();
+    if (loc.includes('bangkok') || loc.includes('thailand') || curr === 'THB') return 'Thailand';
+    if (loc.includes('manila') || loc.includes('philippines') || curr === 'PHP' || org.includes('philippines')) return 'Philippines';
+    if (loc.includes('vietnam') || curr === 'VND' || org.includes('vietnam')) return 'Vietnam';
+    if (loc.includes('tokyo') || loc.includes('japan') || curr === 'JPY' || org.includes('japan')) return 'Japan';
+    if (loc.includes('global') || loc.includes('inter') || org.includes('worldwide') || org.includes('global') || curr === 'USD') return 'Worldwide / Inter';
+    return 'Other / Custom Region';
+  };
+
+  // Alphabetical comparison function by country:
+  // Keeps Worldwide / Inter (1st) and Other / Custom Region (2nd) at top (per user's previous preference),
+  // and sorts all remaining countries in strict alphabetical order (A to Z).
+  const compareByCountryAlphabetical = (
+    countryA: string,
+    countryB: string,
+    codeA?: string,
+    codeB?: string
+  ): number => {
+    const isGlobalA = codeA === 'GLOBAL' || countryA.toLowerCase().includes('worldwide') || countryA.toLowerCase().includes('global');
+    const isGlobalB = codeB === 'GLOBAL' || countryB.toLowerCase().includes('worldwide') || countryB.toLowerCase().includes('global');
+    const isOtherA = codeA === 'OTHER' || countryA.toLowerCase().includes('other') || countryA.toLowerCase().includes('custom');
+    const isOtherB = codeB === 'OTHER' || countryB.toLowerCase().includes('other') || countryB.toLowerCase().includes('custom');
+
+    if (isGlobalA && !isGlobalB) return -1;
+    if (!isGlobalA && isGlobalB) return 1;
+    if (isOtherA && !isOtherB) return isGlobalB ? 1 : -1;
+    if (!isOtherA && isOtherB) return isGlobalA ? -1 : 1;
+
+    return countryA.localeCompare(countryB, undefined, { sensitivity: 'base' });
+  };
+
+  // Filtered fan clubs (filtered and sorted in alphabetical order by country, then club name)
+  const filteredFanClubs = fanClubs
+    .filter((club) => {
+      if (!matchesActiveMembers(club.actor)) {
         return false;
       }
-    }
-    if (supportSearch.trim()) {
-      const q = supportSearch.toLowerCase();
-      const matchTitle = proj.title.toLowerCase().includes(q);
-      const matchEvent = proj.eventName?.toLowerCase().includes(q);
-      const matchOrg = proj.organizerName.toLowerCase().includes(q);
-      const matchDesc = proj.description.toLowerCase().includes(q);
-      const matchLoc = proj.location?.toLowerCase().includes(q);
-      const matchCountry = proj.countryName?.toLowerCase().includes(q);
-      return matchTitle || matchEvent || matchOrg || matchDesc || matchLoc || matchCountry;
-    }
-    return true;
-  });
+      const hasCountryFilter = directoryCountryFilter.length > 0 && !directoryCountryFilter.includes('all');
+      if (hasCountryFilter) {
+        const matches = directoryCountryFilter.some((code) => {
+          if (club.countryCode === code) return true;
+          if (code === 'GLOBAL' && (club.countryCode === 'GLOBAL' || club.countryName?.toLowerCase().includes('global') || club.countryName?.toLowerCase().includes('worldwide'))) return true;
+          if (code === 'OTHER' && (club.countryCode === 'OTHER' || club.countryName?.toLowerCase().includes('other') || club.countryName?.toLowerCase().includes('custom'))) return true;
+          return false;
+        });
+        if (!matches) {
+          return false;
+        }
+      }
+      if (directoryEventFilter === 'has_events' && (!club.events || club.events.length === 0)) {
+        return false;
+      }
+      if (directorySearch.trim()) {
+        const q = directorySearch.toLowerCase();
+        const matchName = club.name.toLowerCase().includes(q);
+        const matchCountry = club.countryName.toLowerCase().includes(q);
+        const matchHandle = club.handle?.toLowerCase().includes(q);
+        const matchDesc = club.description.toLowerCase().includes(q);
+        const matchTrans = club.translatedDescription?.toLowerCase().includes(q);
+        const matchEvents = (club.events || []).some(
+          (ev) =>
+            ev.title.toLowerCase().includes(q) ||
+            ev.location?.toLowerCase().includes(q) ||
+            ev.description?.toLowerCase().includes(q)
+        );
+        return matchName || matchCountry || matchHandle || matchDesc || matchTrans || matchEvents;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const countryDiff = compareByCountryAlphabetical(
+        getClubCountryName(a),
+        getClubCountryName(b),
+        a.countryCode,
+        b.countryCode
+      );
+      if (countryDiff !== 0) return countryDiff;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+
+  // Filtered food support projects (filtered and sorted in alphabetical order by country, then project title)
+  const filteredProjects = foodProjects
+    .filter((proj) => {
+      if (!matchesActiveMembers(proj.actor)) {
+        return false;
+      }
+      if (supportStatusFilter !== 'all' && proj.status !== supportStatusFilter) {
+        return false;
+      }
+      const hasCountryFilter = supportCountryFilter.length > 0 && !supportCountryFilter.includes('all');
+      if (hasCountryFilter) {
+        const matchesAnySelected = supportCountryFilter.some((code) => {
+          if (proj.countryCode === code) return true;
+          const selected = POPULAR_FAN_COUNTRIES.find((c) => c.code === code);
+          if (!selected) return false;
+          const lower = selected.name.toLowerCase();
+          return (
+            proj.countryName?.toLowerCase().includes(lower) ||
+            proj.location?.toLowerCase().includes(lower) ||
+            proj.title.toLowerCase().includes(lower) ||
+            (selected.code === 'TH' && (proj.currency === 'THB' || proj.location?.toLowerCase().includes('bangkok') || proj.location?.toLowerCase().includes('thailand'))) ||
+            (selected.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) ||
+            (selected.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) ||
+            (selected.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) ||
+            (selected.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) ||
+            (selected.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom')))
+          );
+        });
+        if (!matchesAnySelected) {
+          return false;
+        }
+      }
+      if (supportSearch.trim()) {
+        const q = supportSearch.toLowerCase();
+        const matchTitle = proj.title.toLowerCase().includes(q);
+        const matchEvent = proj.eventName?.toLowerCase().includes(q);
+        const matchOrg = proj.organizerName.toLowerCase().includes(q);
+        const matchDesc = proj.description.toLowerCase().includes(q);
+        const matchLoc = proj.location?.toLowerCase().includes(q);
+        const matchCountry = proj.countryName?.toLowerCase().includes(q);
+        return matchTitle || matchEvent || matchOrg || matchDesc || matchLoc || matchCountry;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const countryDiff = compareByCountryAlphabetical(
+        getProjectCountryName(a),
+        getProjectCountryName(b),
+        a.countryCode,
+        b.countryCode
+      );
+      if (countryDiff !== 0) return countryDiff;
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+    });
 
   // Platform icon helper
   const renderPlatformBadge = (platform: SocialPlatform, url: string, label?: string) => {
@@ -2170,6 +2239,19 @@ export const FanHub: React.FC<FanHubProps> = ({
                               ? proj.customSupportType
                               : proj.supportType.replace('_', ' ')}
                           </span>
+                          {(() => {
+                            const cName = getProjectCountryName(proj);
+                            const foundCountry = POPULAR_FAN_COUNTRIES.find(
+                              (c) => c.code === proj.countryCode || c.name.toLowerCase() === cName.toLowerCase()
+                            );
+                            const flag = proj.flagEmoji || foundCountry?.flag || (cName.toLowerCase().includes('worldwide') ? '🌐' : cName.toLowerCase().includes('thailand') ? '🇹🇭' : cName.toLowerCase().includes('philippines') ? '🇵🇭' : '🌐');
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0">
+                                <span className="text-sm leading-none">{flag}</span>
+                                <span>{cName}</span>
+                              </span>
+                            );
+                          })()}
                           {renderCategoryBadge(proj.actor)}
                         </div>
                         {statusBadge}
