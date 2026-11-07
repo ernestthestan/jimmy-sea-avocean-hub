@@ -9359,8 +9359,8 @@ export default function App() {
                       className="w-full h-auto max-h-44 object-cover"
                     />
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-100 dark:border-slate-700 space-y-0.5">
-                      <span className="text-[9.5px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 block">
-                        jimmy-sea-avocean-hub.ernestthestan.workers.dev
+                      <span className="text-[9.5px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 block truncate">
+                        {typeof window !== 'undefined' ? window.location.host : 'jimmy-sea-hub'}
                       </span>
                       <p className="text-xs font-black text-[#1A3668] dark:text-white truncate">
                         JIMMY SEA AVOCEAN HUB

@@ -56,8 +56,13 @@ ${text}`,
   }
 });
 
-// Anti-cache middleware to guarantee instant cross-device syncing
+// Security & Anti-cache middleware for mobile browsers (Samsung Internet / Chrome)
 app.use((req, res, next) => {
+  // Mobile security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+
   // Never allow caching of HTML, manifest, or application scripts
   if (
     req.path === '/' ||
