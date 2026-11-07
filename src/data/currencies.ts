@@ -24,6 +24,7 @@ export const POPULAR_CURRENCIES: CurrencyOption[] = [
   { code: 'AUD', symbol: 'AU$', name: 'Australian Dollar', flag: '🇦🇺' },
   { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar', flag: '🇭🇰' },
   { code: 'MXN', symbol: 'Mex$', name: 'Mexican Peso', flag: '🇲🇽' },
+  { code: 'PEN', symbol: 'S/', name: 'Peruvian Sol', flag: '🇵🇪' },
   { code: 'CUSTOM', symbol: '', name: 'Custom / Other Currency', flag: '🌐' }
 ];
 

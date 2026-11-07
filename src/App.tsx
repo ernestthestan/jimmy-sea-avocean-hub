@@ -303,7 +303,8 @@ const COUNTRY_CODES: CountryCodeOption[] = [
   { country: 'Spain', code: '+34', flag: '🇪🇸' },
   { country: 'Brazil', code: '+55', flag: '🇧🇷' },
   { country: 'India', code: '+91', flag: '🇮🇳' },
-  { country: 'Mexico', code: '+52', flag: '🇲🇽' }
+  { country: 'Mexico', code: '+52', flag: '🇲🇽' },
+  { country: 'Peru', code: '+51', flag: '🇵🇪' }
 ];
 
 // --- Comprehensive World Timezone Directory ---
@@ -324,6 +325,7 @@ const ALL_TIMEZONES: TimezoneOption[] = [
   { code: 'PST', label: 'PST/PDT - US Pacific', offset: 'UTC-8/-7', numericOffset: -7, region: 'Los Angeles, San Francisco, Vancouver', category: 'Popular Fan Zones' },
   { code: 'EST', label: 'EST/EDT - US Eastern', offset: 'UTC-5/-4', numericOffset: -4, region: 'New York, Toronto, Miami', category: 'Popular Fan Zones' },
   { code: 'CST_US', label: 'CST/CDT - US Central', offset: 'UTC-6/-5', numericOffset: -5, region: 'Chicago, Dallas, Mexico City', category: 'Popular Fan Zones' },
+  { code: 'PET', label: 'PET - Peru Time', offset: 'UTC-5', numericOffset: -5, region: 'Lima, Peru', category: 'Popular Fan Zones' },
   { code: 'AEST', label: 'AEST - Sydney', offset: 'UTC+10', numericOffset: 10, region: 'Sydney, Melbourne, Brisbane', category: 'Popular Fan Zones' },
 
   // Asia & Pacific

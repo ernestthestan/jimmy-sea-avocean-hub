@@ -1071,6 +1071,7 @@ export const FanHub: React.FC<FanHubProps> = ({
       if (c.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) return true;
       if (c.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) return true;
       if (c.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) return true;
+      if (c.code === 'PE' && (proj.currency === 'PEN' || proj.location?.toLowerCase().includes('peru') || proj.location?.toLowerCase().includes('lima') || proj.countryName?.toLowerCase().includes('peru'))) return true;
       if (c.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) return true;
       if (c.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom'))) return true;
       return false;
@@ -1165,6 +1166,7 @@ export const FanHub: React.FC<FanHubProps> = ({
             (selected.code === 'PH' && (proj.currency === 'PHP' || proj.location?.toLowerCase().includes('manila') || proj.location?.toLowerCase().includes('philippines'))) ||
             (selected.code === 'VN' && (proj.currency === 'VND' || proj.location?.toLowerCase().includes('vietnam'))) ||
             (selected.code === 'JP' && (proj.currency === 'JPY' || proj.location?.toLowerCase().includes('tokyo') || proj.location?.toLowerCase().includes('japan'))) ||
+            (selected.code === 'PE' && (proj.currency === 'PEN' || proj.location?.toLowerCase().includes('peru') || proj.location?.toLowerCase().includes('lima') || proj.countryName?.toLowerCase().includes('peru'))) ||
             (selected.code === 'GLOBAL' && (proj.location?.toLowerCase().includes('global') || proj.currency === 'USD' || proj.countryName?.toLowerCase().includes('worldwide') || proj.location?.toLowerCase().includes('inter'))) ||
             (selected.code === 'OTHER' && (proj.countryCode === 'OTHER' || proj.location?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('other') || proj.countryName?.toLowerCase().includes('custom')))
           );

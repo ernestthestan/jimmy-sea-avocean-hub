@@ -20,6 +20,7 @@ export interface CareerProject {
   id: string;
   title: string;
   englishTitle?: string;
+  thaiTitle?: string; // Optional authentic Thai script title (e.g. ภาพนายไม่เคยลืม) for projects that have one
   category: ProjectCategory;
   artist: ProjectArtist;
   role?: string;

@@ -729,6 +729,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
   // Form Fields
   const [formTitle, setFormTitle] = useState<string>('');
+  const [formThaiTitle, setFormThaiTitle] = useState<string>('');
   const [formEnglishTitle, setFormEnglishTitle] = useState<string>('');
   const [formCategory, setFormCategory] = useState<ProjectCategory>('shows');
   const [formArtist, setFormArtist] = useState<ProjectArtist>('jimmysea');
@@ -908,6 +909,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     try {
       const items: Array<{ key: string; text: string }> = [
         { key: 'title', text: proj.title || '' },
+        { key: 'thaiTitle', text: proj.thaiTitle || '' },
         { key: 'englishTitle', text: proj.englishTitle || '' },
         { key: 'jimmyRole', text: proj.jimmyRole || '' },
         { key: 'seaRole', text: proj.seaRole || '' },
@@ -1020,6 +1022,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const inTitle = p.title.toLowerCase().includes(q);
+        const inThai = (p.thaiTitle || '').toLowerCase().includes(q);
         const inEng = (p.englishTitle || '').toLowerCase().includes(q);
         const inRole = (p.role || '').toLowerCase().includes(q);
         const inJimmy = (p.jimmyRole || '').toLowerCase().includes(q);
@@ -1034,7 +1037,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         const inLinks = (p.watchLinks || []).some(
           (l) => l.label.toLowerCase().includes(q) || (l.platform || '').toLowerCase().includes(q)
         );
-        return inTitle || inEng || inRole || inJimmy || inSea || inDirector || inDesc || inPlatform || inYear || inFilmed || inTags || inHighlight || inLinks;
+        return inTitle || inThai || inEng || inRole || inJimmy || inSea || inDirector || inDesc || inPlatform || inYear || inFilmed || inTags || inHighlight || inLinks;
       }
       return true;
     });
@@ -1045,7 +1048,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         return getProjectChronologicalScore(a) - getProjectChronologicalScore(b);
       }
       if (projectSortOrder === 'az') {
-        return (a.englishTitle || a.title).localeCompare(b.englishTitle || b.title);
+        return (a.title || a.englishTitle || '').localeCompare(b.title || b.englishTitle || '');
       }
       // 'newest' default: newest on top-left, oldest at the end
       return getProjectChronologicalScore(b) - getProjectChronologicalScore(a);
@@ -1089,6 +1092,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const openAddModal = () => {
     setEditingProject(null);
     setFormTitle('');
+    setFormThaiTitle('');
     setFormEnglishTitle('');
     setFormCategory('shows');
     setFormArtist('jimmysea');
@@ -1126,8 +1130,28 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
   const openEditModal = (proj: CareerProject) => {
     setEditingProject(proj);
-    setFormTitle(proj.title);
-    setFormEnglishTitle(proj.englishTitle || '');
+    let resolvedTitle = proj.title;
+    let resolvedThai = proj.thaiTitle ? proj.thaiTitle.trim() : '';
+
+    // If thaiTitle wasn't explicitly saved yet, check whether existing title had Thai script
+    if (!resolvedThai) {
+      const hasThaiInTitle = /[\u0E00-\u0E7F]/.test(proj.title);
+      const hasThaiInEng = proj.englishTitle ? /[\u0E00-\u0E7F]/.test(proj.englishTitle) : false;
+      if (hasThaiInTitle && proj.englishTitle && !hasThaiInEng) {
+        resolvedTitle = proj.englishTitle;
+        resolvedThai = proj.title;
+      } else if (hasThaiInEng && !hasThaiInTitle) {
+        resolvedTitle = proj.title;
+        resolvedThai = proj.englishTitle;
+      } else if (hasThaiInTitle && !proj.englishTitle) {
+        resolvedTitle = proj.title;
+        resolvedThai = proj.title;
+      }
+    }
+
+    setFormTitle(resolvedTitle);
+    setFormThaiTitle(resolvedThai);
+    setFormEnglishTitle(proj.englishTitle || resolvedTitle);
     setFormCategory(proj.category);
     setFormArtist(proj.artist);
 
@@ -1310,7 +1334,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     const projectToSave: CareerProject = {
       id: editingProject ? editingProject.id : `proj-${formCategory}-${Date.now()}`,
       title: formTitle.trim(),
-      englishTitle: formEnglishTitle.trim() || undefined,
+      thaiTitle: formThaiTitle.trim() || undefined,
+      englishTitle: formTitle.trim(),
       category: formCategory,
       artist: formArtist,
       role: trimmedRole || undefined,
@@ -2595,33 +2620,40 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 const effectiveZoom = projectCardZoom[proj.id] || proj.fontSize || projectFontZoom;
                 const typo = getProjectTypography(effectiveZoom);
 
-                // English title & original Thai script separation (Green underline = English, Yellow underline = Thai)
+                // English title & original Thai script separation:
+                // IMPORTANT: Not all projects have Thai titles (e.g. brands, endorsements, music singles, international campaigns)!
                 const hasThaiInTitle = /[\u0E00-\u0E7F]/.test(proj.title);
                 const hasThaiInEnglishTitle = proj.englishTitle ? /[\u0E00-\u0E7F]/.test(proj.englishTitle) : false;
+                const explicitThai = proj.thaiTitle ? proj.thaiTitle.trim() : '';
 
-                let englishCandidate = '';
-                let thaiCandidate = '';
+                let primaryEnglishTitle = proj.title;
+                let originalThaiScript = '';
 
-                if (proj.englishTitle) {
-                  if (hasThaiInEnglishTitle && !hasThaiInTitle) {
-                    englishCandidate = proj.title;
-                    thaiCandidate = proj.englishTitle;
-                  } else {
-                    englishCandidate = proj.englishTitle;
-                    thaiCandidate = proj.title;
-                  }
+                if (explicitThai) {
+                  // Explicit authentic Thai title provided
+                  originalThaiScript = explicitThai;
+                  primaryEnglishTitle = proj.title || proj.englishTitle || explicitThai;
+                } else if (hasThaiInTitle && proj.englishTitle && !hasThaiInEnglishTitle) {
+                  // Legacy data: title was Thai script, englishTitle was Romanized/English
+                  primaryEnglishTitle = proj.englishTitle;
+                  originalThaiScript = proj.title;
+                } else if (hasThaiInEnglishTitle && !hasThaiInTitle) {
+                  // Legacy data: englishTitle was Thai script, title was English
+                  primaryEnglishTitle = proj.title;
+                  originalThaiScript = proj.englishTitle;
                 } else if (hasThaiInTitle) {
-                  englishCandidate = isShowingTrans && cachedFullTrans?.title ? cachedFullTrans.title : proj.title;
-                  thaiCandidate = proj.title;
+                  // The single title is in Thai script
+                  primaryEnglishTitle = (isShowingTrans && cachedFullTrans?.title) ? cachedFullTrans.title : proj.title;
+                  originalThaiScript = proj.title;
                 } else {
-                  englishCandidate = proj.title;
-                  thaiCandidate = '';
+                  // Clean project without a Thai title (e.g. Avocean, Mediheal, GMMTV Live, Converse, etc.)
+                  primaryEnglishTitle = proj.title || proj.englishTitle || '';
+                  originalThaiScript = '';
                 }
 
-                const primaryEnglishTitle = (isShowingTrans && cachedFullTrans?.title)
-                  ? cachedFullTrans.title
-                  : (englishCandidate || proj.title);
-                const originalThaiScript = thaiCandidate;
+                if (isShowingTrans && cachedFullTrans?.title) {
+                  primaryEnglishTitle = cachedFullTrans.title;
+                }
 
                 const displayJimmyRole = (isShowingTrans && cachedFullTrans?.jimmyRole) ? cachedFullTrans.jimmyRole : proj.jimmyRole;
                 const displaySeaRole = (isShowingTrans && cachedFullTrans?.seaRole) ? cachedFullTrans.seaRole : proj.seaRole;
@@ -3368,33 +3400,44 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               </div>
 
-              {/* Title & English Title */}
+              {/* Title & Optional Thai Script Title */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Title / Thai Title <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400">
+                      Project Title <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-medium">Primary Name</span>
+                  </div>
                   <input
                     type="text"
                     required
                     value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    placeholder="e.g. Last Twilight ภาพนายไม่เคยลืม"
+                    onChange={(e) => {
+                      setFormTitle(e.target.value);
+                      setFormEnglishTitle(e.target.value);
+                    }}
+                    placeholder="e.g. Last Twilight, Vice Versa, Avocean..."
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">Main display title for this show, brand, song, or project.</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    English / International Title
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400">
+                      Thai Script Title <span className="text-slate-400 font-normal">(Optional / ถ้ามี)</span>
+                    </label>
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium font-thai">ชื่อภาษาไทย</span>
+                  </div>
                   <input
                     type="text"
-                    value={formEnglishTitle}
-                    onChange={(e) => setFormEnglishTitle(e.target.value)}
-                    placeholder="e.g. Last Twilight The Series"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    value={formThaiTitle}
+                    onChange={(e) => setFormThaiTitle(e.target.value)}
+                    placeholder="e.g. ภาพนายไม่เคยลืม (Leave blank if none)"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 font-thai"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">Leave empty for brands, endorsements, or projects without a Thai title.</p>
                 </div>
               </div>
 
@@ -3953,11 +3996,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               })()}
                             </div>
                             <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
-                              <span>{formEnglishTitle || formTitle || 'Your Project Title Here'}</span>
-                              {formEnglishTitle && formTitle && formTitle !== formEnglishTitle && (
+                              <span>{formTitle || 'Your Project Title Here'}</span>
+                              {formThaiTitle && formThaiTitle.trim().length > 0 && (
                                 <>
                                   <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
-                                  <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formTitle}</span>
+                                  <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formThaiTitle.trim()}</span>
                                 </>
                               )}
                             </h4>

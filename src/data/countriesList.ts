@@ -20,6 +20,7 @@ export const POPULAR_FAN_COUNTRIES: CountryOption[] = [
   { code: 'JP', name: 'Japan', flag: '🇯🇵' },
   { code: 'LATAM', name: 'Latin America', flag: '🇲🇽' },
   { code: 'MY', name: 'Malaysia', flag: '🇲🇾' },
+  { code: 'PE', name: 'Peru', flag: '🇵🇪' },
   { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
   { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
   { code: 'KR', name: 'South Korea', flag: '🇰🇷' },
