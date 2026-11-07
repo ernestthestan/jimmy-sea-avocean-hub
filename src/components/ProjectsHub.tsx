@@ -725,8 +725,53 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingProject, setEditingProject] = useState<CareerProject | null>(null);
 
-  // Lightbox Photo Viewer
-  const [lightboxImageUrl, setLightboxImageUrl] = useState<{ url: string; title: string } | null>(null);
+  // Lightbox Photo Viewer & Multi-Media Carousel State
+  interface LightboxGalleryState {
+    url: string;
+    title: string;
+    photos?: string[];
+    currentIndex?: number;
+  }
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<LightboxGalleryState | null>(null);
+
+  const navigateLightbox = (direction: 'prev' | 'next') => {
+    setLightboxImageUrl((prev) => {
+      if (!prev) return null;
+      const photos = prev.photos && prev.photos.length > 0 ? prev.photos : [prev.url];
+      if (photos.length <= 1) return prev;
+      const curIdx = typeof prev.currentIndex === 'number'
+        ? prev.currentIndex
+        : Math.max(0, photos.indexOf(prev.url));
+      const nextIdx = direction === 'next'
+        ? (curIdx + 1) % photos.length
+        : (curIdx - 1 + photos.length) % photos.length;
+      return {
+        ...prev,
+        url: photos[nextIdx],
+        currentIndex: nextIdx
+      };
+    });
+  };
+
+  // Global Arrow Keys keyboard listener for Lightbox navigation
+  useEffect(() => {
+    if (!lightboxImageUrl) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLightboxImageUrl(null);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigateLightbox('prev');
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigateLightbox('next');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxImageUrl]);
 
   // Form Fields
   const [formTitle, setFormTitle] = useState<string>('');
@@ -1859,7 +1904,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               if (activeAvatarPhoto) {
                                 setLightboxImageUrl({
                                   url: activeAvatarPhoto,
-                                  title: `${profile.name}${allAvatarPhotos.length > 1 ? ` (${currentAvatarIdx + 1}/${allAvatarPhotos.length})` : ''}`
+                                  title: `${profile.name}${allAvatarPhotos.length > 1 ? ` (${currentAvatarIdx + 1}/${allAvatarPhotos.length})` : ''}`,
+                                  photos: allAvatarPhotos.length > 0 ? allAvatarPhotos : [activeAvatarPhoto],
+                                  currentIndex: currentAvatarIdx
                                 });
                               }
                             }}
@@ -2988,6 +3035,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                         return (
                           <div
+                            tabIndex={!isBrand && mediaList.length > 1 ? 0 : undefined}
+                            onKeyDown={(e) => {
+                              if (isBrand || mediaList.length <= 1) return;
+                              if (e.key === 'ArrowLeft') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setProjectCardMediaIndex((prev) => ({
+                                  ...prev,
+                                  [proj.id]: (activeMediaIdx - 1 + mediaList.length) % mediaList.length
+                                }));
+                              } else if (e.key === 'ArrowRight') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setProjectCardMediaIndex((prev) => ({
+                                  ...prev,
+                                  [proj.id]: (activeMediaIdx + 1) % mediaList.length
+                                }));
+                              }
+                            }}
                             onClick={() =>
                               setLightboxImageUrl({
                                 url: activePhoto,
@@ -2995,11 +3061,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                   ? `${primaryEnglishTitle} Official Banner`
                                   : `${primaryEnglishTitle} ${
                                       mediaList.length > 1 ? `(Photo ${activeMediaIdx + 1} of ${mediaList.length})` : ''
-                                    }`
+                                    }`,
+                                photos: isBrand ? [activePhoto] : mediaList,
+                                currentIndex: isBrand ? 0 : activeMediaIdx
                               })
                             }
-                            className={`relative ${aspectClass} bg-slate-900 dark:bg-slate-950 overflow-hidden group cursor-pointer select-none transition-all`}
-                            title={isBrand ? 'Click banner to expand in high resolution' : 'Click poster to expand in high resolution'}
+                            className={`relative ${aspectClass} bg-slate-900 dark:bg-slate-950 overflow-hidden group cursor-pointer select-none transition-all focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                            title={isBrand ? 'Click banner to expand in high resolution' : (mediaList.length > 1 ? 'Click poster to expand · Use Arrow Keys or buttons to switch photos' : 'Click poster to expand in high resolution')}
                           >
                             {/* Ambient Blur Backdrop for Auto-Fit (contain) so 100% of the photo is visible without stark black bars */}
                             {isContain && (
@@ -3046,10 +3114,16 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                   e.stopPropagation();
                                   setLightboxImageUrl({
                                     url: activePhoto,
-                                    title: isBrand ? `${primaryEnglishTitle} Official Banner` : `${primaryEnglishTitle} (Photo ${activeMediaIdx + 1})`
+                                    title: isBrand
+                                      ? `${primaryEnglishTitle} Official Banner`
+                                      : `${primaryEnglishTitle} ${
+                                          mediaList.length > 1 ? `(Photo ${activeMediaIdx + 1} of ${mediaList.length})` : ''
+                                        }`,
+                                    photos: isBrand ? [activePhoto] : mediaList,
+                                    currentIndex: isBrand ? 0 : activeMediaIdx
                                   });
                                 }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-md cursor-pointer shadow-md"
+                                className="opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-md cursor-pointer shadow-md"
                                 title={isBrand ? "Expand Banner in Full Resolution" : "Expand Full Resolution"}
                               >
                                 <Maximize2 className="w-3.5 h-3.5" />
@@ -3068,10 +3142,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                       [proj.id]: (activeMediaIdx - 1 + mediaList.length) % mediaList.length
                                     }));
                                   }}
-                                  className="absolute left-2 top-1/2 -translate-y-1/2 z-30 p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110"
-                                  title="Previous Photo"
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-1.5 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-md opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110 active:scale-95"
+                                  title="Previous Photo (← Left Arrow)"
+                                  aria-label="Previous Photo"
                                 >
-                                  <ChevronLeft className="w-3.5 h-3.5" />
+                                  <ChevronLeft className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                                 </button>
                                 <button
                                   type="button"
@@ -3082,10 +3157,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                       [proj.id]: (activeMediaIdx + 1) % mediaList.length
                                     }));
                                   }}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 z-30 p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110"
-                                  title="Next Photo"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-1.5 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-md opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110 active:scale-95"
+                                  title="Next Photo (→ Right Arrow)"
+                                  aria-label="Next Photo"
                                 >
-                                  <ChevronRight className="w-3.5 h-3.5" />
+                                  <ChevronRight className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                                 </button>
                               </>
                             )}
@@ -3103,7 +3179,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 e.stopPropagation();
                                 setLightboxImageUrl({
                                   url: proj.avatarUrl,
-                                  title: `${primaryEnglishTitle} Display Photo`
+                                  title: `${primaryEnglishTitle} Display Photo`,
+                                  photos: [proj.avatarUrl],
+                                  currentIndex: 0
                                 });
                               }
                             }}
@@ -3401,11 +3479,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     onClick={() =>
                                       setLightboxImageUrl({
                                         url: photo,
-                                        title: `${primaryEnglishTitle} — Brand Media (${pIdx + 1} of ${brandMediaList.length})`
+                                        title: `${primaryEnglishTitle} — Brand Media (${pIdx + 1} of ${brandMediaList.length})`,
+                                        photos: brandMediaList,
+                                        currentIndex: pIdx
                                       })
                                     }
                                     className="group/media relative aspect-square rounded-xl overflow-hidden bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs hover:border-purple-400 hover:shadow-xs transition-all"
-                                    title="Click to view full photo"
+                                    title="Click to view full photo in gallery (use arrow keys to browse)"
                                   >
                                     <img
                                       src={photo}
@@ -4468,7 +4548,14 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => setLightboxImageUrl({ url: currentBannerPhoto, title: formTitle ? `${formTitle} Banner` : 'Brand Banner Preview' })}
+                                  onClick={() =>
+                                    setLightboxImageUrl({
+                                      url: currentBannerPhoto,
+                                      title: formTitle ? `${formTitle} Banner` : 'Brand Banner Preview',
+                                      photos: [currentBannerPhoto],
+                                      currentIndex: 0
+                                    })
+                                  }
                                   className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
                                   title="View Full Resolution Banner in Lightbox"
                                 >
@@ -4686,7 +4773,14 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               className="relative p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-purple-300 transition-all flex flex-col justify-between group shadow-2xs"
                             >
                               <div
-                                onClick={() => setLightboxImageUrl({ url: photo, title: `Brand Media Photo #${idx + 1}` })}
+                                onClick={() =>
+                                  setLightboxImageUrl({
+                                    url: photo,
+                                    title: `${formTitle || 'Brand Media'} Photo #${idx + 1} of ${formMediaPhotos.length}`,
+                                    photos: formMediaPhotos,
+                                    currentIndex: idx
+                                  })
+                                }
                                 className="relative aspect-square rounded-lg overflow-hidden bg-slate-950 mb-1.5 cursor-pointer"
                               >
                                 <img
@@ -5123,7 +5217,18 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               )}
                               <button
                                 type="button"
-                                onClick={() => setLightboxImageUrl({ url: currentPreviewPhoto, title: formTitle || 'Poster Preview' })}
+                                onClick={() =>
+                                  setLightboxImageUrl({
+                                    url: currentPreviewPhoto,
+                                    title: `${formTitle || 'Poster Preview'} ${
+                                      formMediaPhotos.length > 1
+                                        ? `(Photo ${formActiveMediaIndex + 1} of ${formMediaPhotos.length})`
+                                        : ''
+                                    }`,
+                                    photos: formMediaPhotos.length > 0 ? formMediaPhotos : [currentPreviewPhoto],
+                                    currentIndex: formActiveMediaIndex
+                                  })
+                                }
                                 className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
                                 title="View Full Resolution in Lightbox"
                               >
@@ -5669,46 +5774,159 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       )}
 
       {/* ============================================================== */}
-      {/* 4. LIGHTBOX PHOTO VIEWER                                       */}
+      {/* 4. LIGHTBOX PHOTO VIEWER & MULTI-PHOTO GALLERY                 */}
       {/* ============================================================== */}
-      {lightboxImageUrl && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setLightboxImageUrl(null)}
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-4 cursor-pointer animate-in fade-in duration-200"
-        >
+      {lightboxImageUrl && (() => {
+        const photos = lightboxImageUrl.photos && lightboxImageUrl.photos.length > 0
+          ? lightboxImageUrl.photos
+          : [lightboxImageUrl.url];
+        const curIdx = typeof lightboxImageUrl.currentIndex === 'number'
+          ? lightboxImageUrl.currentIndex
+          : Math.max(0, photos.indexOf(lightboxImageUrl.url));
+        const hasMultiple = photos.length > 1;
+
+        return (
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-4xl flex items-center justify-between text-white pb-2"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Photo Lightbox Gallery"
+            onClick={() => setLightboxImageUrl(null)}
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 select-none animate-in fade-in duration-200"
           >
-            <h3 className="text-sm sm:text-base font-bold truncate">
-              {lightboxImageUrl.title}
-            </h3>
-            <button
-              onClick={() => setLightboxImageUrl(null)}
-              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+            {/* Top Bar: Title, Counter, Close Button */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-5xl mx-auto flex items-center justify-between text-white pb-2 z-10"
             >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+              <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                <h3 className="text-sm sm:text-base font-bold truncate text-white">
+                  {lightboxImageUrl.title}
+                </h3>
+                {hasMultiple && (
+                  <span className="shrink-0 px-2.5 py-0.5 rounded-full text-xs font-black bg-white/15 text-white border border-white/20 backdrop-blur-md">
+                    📷 {curIdx + 1} / {photos.length}
+                  </span>
+                )}
+              </div>
 
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-[80vh] max-w-[90vw] flex items-center justify-center cursor-default"
-          >
-            <img
-              src={lightboxImageUrl.url}
-              alt={lightboxImageUrl.title}
-              className="max-h-[80vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
-            />
-          </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setLightboxImageUrl(null)}
+                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                  title="Close (Esc)"
+                  aria-label="Close Lightbox"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
 
-          <div className="text-xs text-white/60 pt-2">
-            Click outside or press Esc to close
+            {/* Center Stage: Floating Prev Button + Photo + Floating Next Button */}
+            <div className="relative flex-1 w-full max-w-6xl mx-auto flex items-center justify-center my-auto min-h-0 py-2">
+              {/* Prev Arrow Button */}
+              {hasMultiple && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigateLightbox('prev');
+                  }}
+                  className="absolute left-2 sm:left-4 z-20 p-2.5 sm:p-3.5 rounded-full bg-black/75 hover:bg-black/95 text-white border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer hover:scale-110 active:scale-95"
+                  title="Previous Photo (← Left Arrow)"
+                  aria-label="Previous Photo"
+                >
+                  <ChevronLeft className="w-5 h-5 sm:w-7 sm:h-7 stroke-[2.5]" />
+                </button>
+              )}
+
+              {/* Main Image Container */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="relative max-h-[75vh] max-w-[90vw] sm:max-w-[85vw] flex items-center justify-center cursor-default"
+              >
+                <img
+                  key={lightboxImageUrl.url}
+                  src={lightboxImageUrl.url}
+                  alt={lightboxImageUrl.title}
+                  className="max-h-[75vh] max-w-[90vw] sm:max-w-[85vw] object-contain rounded-2xl shadow-2xl border border-white/10 transition-opacity duration-200"
+                />
+              </div>
+
+              {/* Next Arrow Button */}
+              {hasMultiple && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigateLightbox('next');
+                  }}
+                  className="absolute right-2 sm:right-4 z-20 p-2.5 sm:p-3.5 rounded-full bg-black/75 hover:bg-black/95 text-white border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer hover:scale-110 active:scale-95"
+                  title="Next Photo (→ Right Arrow)"
+                  aria-label="Next Photo"
+                >
+                  <ChevronRight className="w-5 h-5 sm:w-7 sm:h-7 stroke-[2.5]" />
+                </button>
+              )}
+            </div>
+
+            {/* Bottom Bar: Thumbnail Strip (if multiple) & Keyboard Hint */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-4xl mx-auto flex flex-col items-center gap-2 pt-2 z-10"
+            >
+              {hasMultiple && (
+                <div className="w-full flex items-center justify-center gap-2 overflow-x-auto py-1 px-2 scrollbar-none max-w-full">
+                  {photos.map((thumbUrl, tIdx) => {
+                    const isSelected = tIdx === curIdx;
+                    return (
+                      <button
+                        key={tIdx}
+                        type="button"
+                        onClick={() =>
+                          setLightboxImageUrl((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  url: thumbUrl,
+                                  currentIndex: tIdx
+                                }
+                              : null
+                          )
+                        }
+                        className={`relative shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-purple-400 ring-2 ring-purple-400/60 scale-105 opacity-100'
+                            : 'border-white/20 opacity-50 hover:opacity-85'
+                        }`}
+                        title={`Jump to photo ${tIdx + 1}`}
+                      >
+                        <img
+                          src={thumbUrl}
+                          alt={`Thumbnail ${tIdx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="text-[11px] sm:text-xs text-white/60 text-center flex items-center gap-2 flex-wrap justify-center">
+                {hasMultiple ? (
+                  <>
+                    <span className="font-semibold text-white/80">
+                      ← / → Arrow Keys or Chevron Buttons to switch photos
+                    </span>
+                    <span>•</span>
+                  </>
+                ) : null}
+                <span>Click outside or press Esc to close</span>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ============================================================== */}
       {/* 5. ACTOR PROFILE EDIT MODAL                                    */}
