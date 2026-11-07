@@ -66,8 +66,8 @@ export const PROJECT_CATEGORIES: ProjectCategoryOption[] = [
   { id: 'shows', label: 'Shows & Series', emoji: '📺', subLabel: 'Dramas & Variety' },
   { id: 'movies', label: 'Movies & Films', emoji: '🎬', subLabel: 'Theatrical & Films' },
   { id: 'music_videos', label: 'Music Videos', emoji: '🎵', subLabel: 'OSTs & Singles' },
-  { id: 'partner_brands', label: 'Partner Brands', emoji: '🤝', subLabel: 'Endorsements' },
-  { id: 'owned_brands', label: 'Owned Brands', emoji: '👑', subLabel: 'Personal Ventures' }
+  { id: 'owned_brands', label: 'Owned Brands', emoji: '👑', subLabel: 'Personal Ventures' },
+  { id: 'partner_brands', label: 'Partner Brands', emoji: '🤝', subLabel: 'Endorsements' }
 ];
 
 export interface ActorProfile {

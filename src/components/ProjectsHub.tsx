@@ -1086,8 +1086,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     });
   }, [projects, currentMemberIds, selectedCategory, searchQuery, projectSortOrder]);
 
-  // Status Filter State ('all' | 'upcoming' | 'airing' | 'past')
-  const [selectedStatus, setSelectedStatus] = useState<'all' | 'upcoming' | 'airing' | 'past'>('all');
+  // Status Filter State ('all' | 'upcoming' | 'airing' | 'active' | 'past')
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'upcoming' | 'airing' | 'active' | 'past'>('all');
 
   // Grid Columns Layout Preference ('3' | '2' | 'auto')
   const [projectGridColumns, setProjectGridColumns] = useState<'3' | '2' | 'auto'>(() => {
@@ -1106,17 +1106,68 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     showToast(`Grid layout: ${cols === '2' ? '2 Cards Row' : '3 Cards Row'}`);
   };
 
-  // Partitioned projects by status in exact user-requested order: Upcoming, Airing, Past Projects
+  // Helper to identify commercial ventures & endorsements vs broadcasting shows
+  const isBrandProj = (p: CareerProject) =>
+    p.category === 'owned_brands' || p.category === 'partner_brands';
+
+  // Partitioned projects by status and category:
+  // CRITICAL RULE: Brands are NOT television shows/movies and must NEVER be placed in Airing.
   const upcomingProjects = useMemo(
     () => filteredProjects.filter((p) => p.status === 'upcoming'),
     [filteredProjects]
   );
-  const airingProjects = useMemo(
-    () => filteredProjects.filter((p) => p.status === 'ongoing' || p.status === 'active'),
+  const upcomingShows = useMemo(
+    () => filteredProjects.filter((p) => !isBrandProj(p) && p.status === 'upcoming'),
     [filteredProjects]
   );
+  const upcomingBrands = useMemo(
+    () => filteredProjects.filter((p) => isBrandProj(p) && p.status === 'upcoming'),
+    [filteredProjects]
+  );
+
+  // Airing shows: STRICTLY television/film series & music videos currently on-air (0 BRANDS ALLOWED)
+  const airingShows = useMemo(
+    () => filteredProjects.filter((p) => !isBrandProj(p) && (p.status === 'ongoing' || p.status === 'active')),
+    [filteredProjects]
+  );
+
+  // Active brands: Operating commercial ventures & ongoing brand endorsements
+  const activeBrands = useMemo(
+    () => filteredProjects.filter((p) => isBrandProj(p) && (p.status === 'active' || p.status === 'ongoing')),
+    [filteredProjects]
+  );
+
+  // Past television/film projects
+  const pastShows = useMemo(
+    () =>
+      filteredProjects.filter(
+        (p) =>
+          !isBrandProj(p) &&
+          (p.status === 'released' ||
+            (p.status !== 'upcoming' && p.status !== 'ongoing' && p.status !== 'active'))
+      ),
+    [filteredProjects]
+  );
+
+  // Non-active/concluded brands
+  const nonActiveBrands = useMemo(
+    () =>
+      filteredProjects.filter(
+        (p) =>
+          isBrandProj(p) &&
+          (p.status === 'released' ||
+            (p.status !== 'upcoming' && p.status !== 'active' && p.status !== 'ongoing'))
+      ),
+    [filteredProjects]
+  );
+
   const pastProjects = useMemo(
-    () => filteredProjects.filter((p) => p.status === 'released' || (p.status !== 'upcoming' && p.status !== 'ongoing' && p.status !== 'active')),
+    () =>
+      filteredProjects.filter(
+        (p) =>
+          p.status === 'released' ||
+          (p.status !== 'upcoming' && p.status !== 'ongoing' && p.status !== 'active')
+      ),
     [filteredProjects]
   );
 
@@ -2291,15 +2342,23 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
               const statusItems = isViewingBrands
                 ? [
                     { id: 'all', label: 'All Brands', emoji: '👑', count: filteredProjects.length },
+                    { id: 'active', label: 'Active', emoji: '🟢', count: activeBrands.length },
+                    { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingBrands.length },
+                    { id: 'past', label: 'Non-Active', emoji: '⚪', count: nonActiveBrands.length },
+                  ]
+                : selectedCategory === 'all'
+                ? [
+                    { id: 'all', label: 'All Works', emoji: '✨', count: filteredProjects.length },
+                    { id: 'airing', label: 'Airing Shows', emoji: '📺', count: airingShows.length },
+                    { id: 'active', label: 'Active Brands', emoji: '🟢', count: activeBrands.length },
                     { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
-                    { id: 'airing', label: 'Active', emoji: '🟢', count: airingProjects.length },
-                    { id: 'past', label: 'Non-Active', emoji: '⚪', count: pastProjects.length },
+                    { id: 'past', label: 'Past Projects', emoji: '🎬', count: pastShows.length },
                   ]
                 : [
                     { id: 'all', label: 'All Projects', emoji: '✨', count: filteredProjects.length },
-                    { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
-                    { id: 'airing', label: 'Airing', emoji: '📺', count: airingProjects.length },
-                    { id: 'past', label: 'Past Projects', emoji: '🎬', count: pastProjects.length },
+                    { id: 'airing', label: 'Airing', emoji: '📺', count: airingShows.length },
+                    { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingShows.length },
+                    { id: 'past', label: 'Past Projects', emoji: '🎬', count: pastShows.length },
                   ];
 
               return (
@@ -2395,7 +2454,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             )}
           </div>
 
-          {/* Status Navigation Tabs (Upcoming, Airing, Past Projects): Wraps naturally without sliders */}
+          {/* Status Navigation Tabs: Strictly separates Airing shows from Active brands */}
           {(() => {
             const isViewingBrands = selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands';
             return (
@@ -2421,6 +2480,62 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     </span>
                   </button>
 
+                  {/* Airing Shows Tab (Strictly TV/Film series & MVs, 0 brands) */}
+                  {!isViewingBrands && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStatus('airing')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedStatus === 'airing'
+                          ? 'bg-sky-500 text-white shadow-xs'
+                          : 'bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200/60 dark:border-sky-900/50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>📺 Airing Shows</span>
+                        {airingShows.length > 0 && (
+                          <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                          </span>
+                        )}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                        selectedStatus === 'airing' ? 'bg-white/25 text-white' : 'bg-sky-200/80 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200'
+                      }`}>
+                        {airingShows.length}
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Active Brands Tab (Dedicated for Operating Brands & Live Endorsements) */}
+                  {(isViewingBrands || activeBrands.length > 0 || selectedCategory === 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStatus('active')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedStatus === 'active'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-900/50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>🟢 {isViewingBrands ? 'Active' : 'Active Brands'}</span>
+                        {activeBrands.length > 0 && (
+                          <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                        )}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                        selectedStatus === 'active' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200'
+                      }`}>
+                        {activeBrands.length}
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setSelectedStatus('upcoming')}
@@ -2434,32 +2549,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
                       selectedStatus === 'upcoming' ? 'bg-white/25 text-white' : 'bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200'
                     }`}>
-                      {upcomingProjects.length}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus('airing')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      selectedStatus === 'airing'
-                        ? 'bg-sky-500 text-white shadow-xs'
-                        : 'bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200/60 dark:border-sky-900/50'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span>{isViewingBrands ? '🟢 Active' : '📺 Airing'}</span>
-                      {airingProjects.length > 0 && (
-                        <span className="flex h-2 w-2 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                        </span>
-                      )}
-                    </span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                      selectedStatus === 'airing' ? 'bg-white/25 text-white' : 'bg-sky-200/80 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200'
-                    }`}>
-                      {airingProjects.length}
+                      {isViewingBrands ? upcomingBrands.length : upcomingProjects.length}
                     </span>
                   </button>
 
@@ -2468,23 +2558,23 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     onClick={() => setSelectedStatus('past')}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       selectedStatus === 'past'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-900/50'
+                        ? 'bg-slate-700 dark:bg-slate-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700'
                     }`}
                   >
                     <span>{isViewingBrands ? '⚪ Non-Active' : '🎬 Past Projects'}</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                      selectedStatus === 'past' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200'
+                      selectedStatus === 'past' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
                     }`}>
-                      {pastProjects.length}
+                      {isViewingBrands ? nonActiveBrands.length : pastShows.length}
                     </span>
                   </button>
                 </div>
 
                 <div className="text-[11px] font-semibold text-slate-400 px-1 hidden sm:block">
                   {isViewingBrands
-                    ? 'Organized: Upcoming → Active → Non-Active Brands'
-                    : 'Organized: Upcoming → Airing → Past Projects'}
+                    ? 'Organized: Active Brands → Upcoming → Non-Active'
+                    : 'Organized: Shows & Series → Movies → Music Videos → Brands'}
                 </div>
               </div>
             );
@@ -2765,13 +2855,17 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         const isContain = proj.mediaFit === 'contain' || projectPosterAspect === 'contain';
                         const focalPos = proj.mediaPosition || `center ${proj.mediaOffsetY ?? 50}%`;
 
-                        // Aspect ratio calculation to show the whole poster photo
-                        const aspectClass =
-                          projectPosterAspect === 'poster'
-                            ? 'aspect-[2/3] sm:aspect-[3/4]'
-                            : projectPosterAspect === 'contain'
-                            ? 'aspect-[3/4] sm:aspect-[2/3]'
-                            : 'aspect-[16/10]';
+                        // Aspect ratio calculation:
+                        // For brands: sleek horizontal landscape banner (16:7 / 2.2:1, max-h 240px) matching Fan Clubs style
+                        // For television shows & movies: theatrical portrait poster (2:3 or 3:4) or 16:10 card
+                        const isBrand = proj.category === 'owned_brands' || proj.category === 'partner_brands';
+                        const aspectClass = isBrand
+                          ? 'aspect-[16/9] sm:aspect-[2/1] w-full max-h-[260px]'
+                          : projectPosterAspect === 'poster'
+                          ? 'aspect-[2/3] sm:aspect-[3/4]'
+                          : projectPosterAspect === 'contain'
+                          ? 'aspect-[3/4] sm:aspect-[2/3]'
+                          : 'aspect-[16/10]';
 
                         return (
                           <div
@@ -2783,10 +2877,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 }`
                               })
                             }
-                            className={`relative ${aspectClass} bg-slate-950 overflow-hidden group cursor-pointer select-none transition-all`}
-                            title="Click poster to expand in high resolution"
+                            className={`relative ${aspectClass} bg-slate-900 dark:bg-slate-950 overflow-hidden group cursor-pointer select-none transition-all`}
+                            title={isBrand ? 'Click banner to expand in high resolution' : 'Click poster to expand in high resolution'}
                           >
-                            {/* Ambient Blur Backdrop for Auto-Fit (contain) so 100% of the photo is visible */}
+                            {/* Ambient Blur Backdrop for Auto-Fit (contain) so 100% of the photo is visible without stark black bars */}
                             {isContain && (
                               <div
                                 className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-40 scale-110 pointer-events-none"
@@ -2799,7 +2893,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               alt={primaryEnglishTitle}
                               style={{ objectPosition: focalPos }}
                               className={`w-full h-full relative z-10 transition-transform duration-500 ${
-                                isContain ? 'object-contain' : 'object-cover group-hover:scale-105'
+                                isBrand
+                                  ? isContain
+                                    ? 'object-contain'
+                                    : 'object-cover group-hover:scale-105'
+                                  : isContain
+                                  ? 'object-contain'
+                                  : 'object-cover group-hover:scale-105'
                               }`}
                               loading="lazy"
                             />
@@ -2808,7 +2908,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             <div className="absolute inset-0 z-20 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                               <span className="px-3.5 py-1.5 rounded-full bg-black/75 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-xl border border-white/20 transform scale-95 group-hover:scale-100 transition-transform">
                                 <Maximize2 className="w-3.5 h-3.5 text-purple-300" />
-                                <span>Click to Expand</span>
+                                <span>{isBrand ? 'Click to Enlarge Banner' : 'Click to Expand'}</span>
                               </span>
                             </div>
 
@@ -2869,61 +2969,85 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         );
                       })()}
 
-                      {/* Card Content Body */}
-                      <div className="p-5 space-y-3">
-                        {/* Display Picture / Avatar (Just like Fan Clubs) */}
-                        {proj.avatarUrl && (
-                          <div className="flex items-center gap-3.5 pt-0.5 pb-1">
-                            <div
-                              onClick={(e) => {
+                      {/* Brand Header: Display Picture + Badges Row placed cleanly below the banner (no negative margin, no covering the banner) */}
+                      {isBrand && (
+                        <div className="px-5 sm:px-6 pt-3.5 pb-0.5 flex items-center gap-3.5 relative z-20">
+                          {/* Clickable Display Picture */}
+                          <div
+                            onClick={(e) => {
+                              if (proj.avatarUrl) {
                                 e.stopPropagation();
                                 setLightboxImageUrl({
-                                  url: proj.avatarUrl!,
+                                  url: proj.avatarUrl,
                                   title: `${primaryEnglishTitle} Display Photo`
                                 });
-                              }}
-                              className="relative shrink-0 cursor-pointer group/avatar"
-                              title="Click to view full display photo"
-                            >
-                              <img
-                                src={proj.avatarUrl}
-                                alt={`${primaryEnglishTitle} display photo`}
-                                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200"
-                                onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-                              />
-                              <div className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/avatar:opacity-100">
-                                <Maximize2 className="w-3.5 h-3.5 text-white drop-shadow-md" />
+                              }
+                            }}
+                            className={`relative shrink-0 ${proj.avatarUrl ? 'cursor-pointer group/avatar' : ''}`}
+                            title={proj.avatarUrl ? 'Click to view full display photo' : primaryEnglishTitle}
+                          >
+                            {proj.avatarUrl ? (
+                              <>
+                                <img
+                                  src={proj.avatarUrl}
+                                  alt={`${primaryEnglishTitle} display photo`}
+                                  className="w-13 h-13 sm:w-15 sm:h-15 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-sm object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                                <div className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/avatar:opacity-100">
+                                  <Maximize2 className="w-3.5 h-3.5 text-white drop-shadow-md" />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-tr from-amber-500 via-purple-600 to-indigo-600 flex items-center justify-center text-white text-lg sm:text-xl font-black">
+                                {proj.category === 'owned_brands' ? '👑' : '🤝'}
                               </div>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 block">
-                                {proj.category === 'owned_brands' ? '👑 Owned Brand' : proj.category === 'partner_brands' ? '🤝 Partner Brand' : 'Project'}
-                              </span>
-                              <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate block">
-                                {artistInfo.label}
-                              </span>
-                            </div>
+                            )}
                           </div>
-                        )}
 
-                        {/* Badges Row: Category, Artist & Status */}
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+                          {/* Badges beside the avatar */}
+                          <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs shrink-0">
                               {getCategoryIcon(proj.category)}
                               <span>{getCategoryBadge(proj.category)}</span>
                             </span>
 
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border shadow-2xs ${artistInfo.bg}`}>
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border shadow-2xs shrink-0 ${artistInfo.bg}`}>
                               <span>{artistInfo.emoji}</span>
                               <span>{artistInfo.label}</span>
                             </span>
-                          </div>
 
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs ${statusInfo.color}`}>
-                            {statusInfo.label}
-                          </span>
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs shrink-0 ${statusInfo.color}`}>
+                              {statusInfo.label}
+                            </span>
+                          </div>
                         </div>
+                      )}
+
+                      {/* Card Content Body */}
+                      <div className="p-5 space-y-3">
+                        {/* Badges Row: Category, Artist & Status (For Shows, Movies & MVs) */}
+                        {!isBrand && (
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+                                {getCategoryIcon(proj.category)}
+                                <span>{getCategoryBadge(proj.category)}</span>
+                              </span>
+
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border shadow-2xs ${artistInfo.bg}`}>
+                                <span>{artistInfo.emoji}</span>
+                                <span>{artistInfo.label}</span>
+                              </span>
+                            </div>
+
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs ${statusInfo.color}`}>
+                              {statusInfo.label}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Interactive Language Selector, Card Typography Zoom & Translator Bar */}
                         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
@@ -3295,163 +3419,159 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
               const isViewingBrands = selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands';
 
-              return (
-                <div className="space-y-8">
-                  {/* 1. UPCOMING SECTION */}
-                  {(selectedStatus === 'all' || selectedStatus === 'upcoming') && (
-                    upcomingProjects.length > 0 ? (
-                      <section className="space-y-4 pt-1">
-                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-amber-400/40 dark:border-amber-700/50">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center text-lg shadow-2xs border border-amber-200/60 dark:border-amber-800">
-                              🕒
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                                  {isViewingBrands ? 'Upcoming Brand Launches' : 'Upcoming'}
-                                </h3>
-                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                                  {upcomingProjects.length} {upcomingProjects.length === 1 ? (isViewingBrands ? 'brand' : 'project') : (isViewingBrands ? 'brands' : 'projects')}
-                                </span>
-                              </div>
-                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                {isViewingBrands
-                                  ? 'Anticipated upcoming brand collaborations, launches & announced ventures'
-                                  : 'Anticipated future premieres, announced works & upcoming releases'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        {renderProjectGrid(upcomingProjects)}
-                      </section>
-                    ) : selectedStatus === 'upcoming' ? (
-                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-amber-300/80 dark:border-amber-800/80 flex flex-col items-center justify-center gap-2">
-                        <div className="text-3xl">🕒</div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          {isViewingBrands ? 'No Upcoming Brands Found' : 'No Upcoming Projects Found'}
-                        </h4>
-                        <p className="text-xs text-slate-500 max-w-sm">
-                          {isViewingBrands
-                            ? 'No upcoming brands match your selected filters. Click "+ Add Project" above to announce upcoming brand ventures.'
-                            : 'No upcoming projects match your selected filters. Click "+ Add Project" above to announce upcoming works.'}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedStatus('all')}
-                          className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
-                        >
-                          {isViewingBrands ? 'View All Brands' : 'View All Projects'}
-                        </button>
-                      </div>
-                    ) : null
-                  )}
+              const CATEGORY_SECTIONS: {
+                id: ProjectCategory;
+                title: string;
+                emoji: string;
+                subtitle: string;
+                accentBorder: string;
+                badgeBg: string;
+              }[] = [
+                {
+                  id: 'shows',
+                  title: 'Shows & Series',
+                  emoji: '📺',
+                  subtitle: 'Official television series, dramas, on-air episodes & broadcast variety',
+                  accentBorder: 'border-purple-400/50 dark:border-purple-700/60',
+                  badgeBg: 'bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                },
+                {
+                  id: 'movies',
+                  title: 'Movies & Films',
+                  emoji: '🎬',
+                  subtitle: 'Theatrical releases, feature films & cinematic productions',
+                  accentBorder: 'border-indigo-400/50 dark:border-indigo-700/60',
+                  badgeBg: 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                },
+                {
+                  id: 'music_videos',
+                  title: 'Music Videos & Singles',
+                  emoji: '🎵',
+                  subtitle: 'Official singles, music videos & soundtrack performances',
+                  accentBorder: 'border-pink-400/50 dark:border-pink-700/60',
+                  badgeBg: 'bg-pink-100 dark:bg-pink-950/80 text-pink-800 dark:text-pink-300 border-pink-200 dark:border-pink-800'
+                },
+                {
+                  id: 'owned_brands',
+                  title: 'Owned Brands & Personal Ventures',
+                  emoji: '👑',
+                  subtitle: 'Founder ventures, official business lines & personal merchandise',
+                  accentBorder: 'border-emerald-400/50 dark:border-emerald-700/60',
+                  badgeBg: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                },
+                {
+                  id: 'partner_brands',
+                  title: 'Partner Brands & Endorsements',
+                  emoji: '🤝',
+                  subtitle: 'Commercial endorsements, brand ambassador campaigns & official partnerships',
+                  accentBorder: 'border-amber-400/50 dark:border-amber-700/60',
+                  badgeBg: 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                }
+              ];
 
-                  {/* 2. AIRING / ACTIVE BRANDS SECTION */}
-                  {(selectedStatus === 'all' || selectedStatus === 'airing') && (
-                    airingProjects.length > 0 ? (
-                      <section className="space-y-4 pt-1">
-                        <div className={`flex items-center justify-between gap-3 pb-2.5 border-b-2 ${isViewingBrands ? 'border-emerald-400/40 dark:border-emerald-700/50' : 'border-sky-400/40 dark:border-sky-700/50'}`}>
+              const sectionsToDisplay =
+                selectedCategory === 'all'
+                  ? CATEGORY_SECTIONS
+                  : CATEGORY_SECTIONS.filter((c) => c.id === selectedCategory);
+
+              // Filter projects for each section according to status selection
+              const getSectionProjects = (catId: ProjectCategory) => {
+                return filteredProjects.filter((p) => {
+                  if (p.category !== catId) return false;
+                  if (selectedStatus === 'airing') {
+                    return !isBrandProj(p) && (p.status === 'ongoing' || p.status === 'active');
+                  }
+                  if (selectedStatus === 'active') {
+                    return isBrandProj(p) && (p.status === 'active' || p.status === 'ongoing');
+                  }
+                  if (selectedStatus === 'upcoming') {
+                    return p.status === 'upcoming';
+                  }
+                  if (selectedStatus === 'past') {
+                    return (
+                      p.status === 'released' ||
+                      (p.status !== 'upcoming' && p.status !== 'ongoing' && p.status !== 'active')
+                    );
+                  }
+                  return true;
+                });
+              };
+
+              const visibleSections = sectionsToDisplay
+                .map((sec) => ({
+                  ...sec,
+                  items: getSectionProjects(sec.id)
+                }))
+                .filter((sec) => (selectedCategory === 'all' ? sec.items.length > 0 : true));
+
+              const totalVisibleItems = visibleSections.reduce((acc, sec) => acc + sec.items.length, 0);
+
+              if (totalVisibleItems === 0) {
+                return (
+                  <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] p-10 text-center border border-dashed border-slate-300 dark:border-slate-800 space-y-3 shadow-xs">
+                    <div className="text-4xl">🔍</div>
+                    <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                      No Projects or Brands Found
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      No items match your selected filters. Try clearing your search or switching status filters to view all career projects and brands.
+                    </p>
+                    <div className="pt-2 flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategory('all');
+                          setSelectedStatus('all');
+                          setSearchQuery('');
+                        }}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
+                      >
+                        Reset All Filters
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-10">
+                  {visibleSections.map((sec) => {
+                    const count = sec.items.length;
+                    return (
+                      <section key={sec.id} className="space-y-4 pt-1">
+                        {/* Category Section Header */}
+                        <div className={`flex items-center justify-between gap-3 pb-2.5 border-b-2 ${sec.accentBorder}`}>
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-lg shadow-2xs border ${isViewingBrands ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800' : 'bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 border-sky-200/60 dark:border-sky-800'}`}>
-                              {isViewingBrands ? '🟢' : '📺'}
+                            <div className="w-9 h-9 rounded-2xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 flex items-center justify-center text-lg shadow-2xs border border-slate-200/80 dark:border-slate-700">
+                              {sec.emoji}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                                  <span>{isViewingBrands ? 'Active Brands' : 'Airing'}</span>
-                                  {!isViewingBrands && (
-                                    <span className="flex h-2.5 w-2.5 relative">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
-                                    </span>
-                                  )}
+                                  <span>{sec.title}</span>
                                 </h3>
-                                <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${isViewingBrands ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800'}`}>
-                                  {airingProjects.length} {airingProjects.length === 1 ? (isViewingBrands ? 'brand' : 'project') : (isViewingBrands ? 'brands' : 'projects')}
+                                <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${sec.badgeBg}`}>
+                                  {count} {count === 1 ? 'item' : 'items'}
                                 </span>
                               </div>
                               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                {isViewingBrands
-                                  ? 'Currently operating brand ventures, active endorsements & live official business lines'
-                                  : 'Currently broadcasting series, on-air episodes & active campaigns'}
+                                {sec.subtitle}
                               </p>
                             </div>
                           </div>
                         </div>
-                        {renderProjectGrid(airingProjects)}
-                      </section>
-                    ) : selectedStatus === 'airing' ? (
-                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-sky-300/80 dark:border-sky-800/80 flex flex-col items-center justify-center gap-2">
-                        <div className="text-3xl">{isViewingBrands ? '🟢' : '📺'}</div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          {isViewingBrands ? 'No Active Brands Found' : 'No Currently Airing Projects Found'}
-                        </h4>
-                        <p className="text-xs text-slate-500 max-w-sm">
-                          {isViewingBrands
-                            ? 'No active brands match your selected filters.'
-                            : 'No active or on-air series match your selected filters.'}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedStatus('all')}
-                          className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
-                        >
-                          {isViewingBrands ? 'View All Brands' : 'View All Projects'}
-                        </button>
-                      </div>
-                    ) : null
-                  )}
 
-                  {/* 3. PAST / NON-ACTIVE SECTION */}
-                  {(selectedStatus === 'all' || selectedStatus === 'past') && (
-                    pastProjects.length > 0 ? (
-                      <section className="space-y-4 pt-1">
-                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-slate-300/60 dark:border-slate-700/60">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-lg shadow-2xs border border-slate-200/80 dark:border-slate-700">
-                              {isViewingBrands ? '⚪' : '🎬'}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                                  {isViewingBrands ? 'Non-Active Brands' : 'Past Projects'}
-                                </h3>
-                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                  {pastProjects.length} {pastProjects.length === 1 ? (isViewingBrands ? 'brand' : 'project') : (isViewingBrands ? 'brands' : 'projects')}
-                                </span>
-                              </div>
-                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                {isViewingBrands
-                                  ? 'Concluded partnerships, completed brand endorsements & archived ventures'
-                                  : 'Concluded series, released filmography, past music videos & brand archives'}
-                              </p>
-                            </div>
+                        {/* Project Cards Grid */}
+                        {sec.items.length > 0 ? (
+                          renderProjectGrid(sec.items)
+                        ) : (
+                          <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-500">
+                            No {sec.title.toLowerCase()} currently match your active status filters.
                           </div>
-                        </div>
-                        {renderProjectGrid(pastProjects)}
+                        )}
                       </section>
-                    ) : selectedStatus === 'past' ? (
-                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-slate-300/80 dark:border-slate-700/80 flex flex-col items-center justify-center gap-2">
-                        <div className="text-3xl">{isViewingBrands ? '⚪' : '🎬'}</div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          {isViewingBrands ? 'No Non-Active Brands Found' : 'No Past Projects Found'}
-                        </h4>
-                        <p className="text-xs text-slate-500 max-w-sm">
-                          {isViewingBrands
-                            ? 'No non-active brands match your selected filters.'
-                            : 'No concluded or past projects match your selected filters.'}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedStatus('all')}
-                          className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
-                        >
-                          {isViewingBrands ? 'View All Brands' : 'View All Projects'}
-                        </button>
-                      </div>
-                    ) : null
-                  )}
+                    );
+                  })}
                 </div>
               );
             })()
@@ -3985,41 +4105,47 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   <div className="flex items-center gap-2">
                     <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
                       <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                      <span>Project Photos & Media ({formMediaPhotos.length})</span>
+                      <span>{isBrandProject ? 'Brand Header Banner & Photos' : 'Project Photos & Media'} ({formMediaPhotos.length})</span>
                     </label>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                       Multi-Photo Enabled
                     </span>
                   </div>
 
-                  {/* Ratio Toggles */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 mr-0.5">Ratio:</span>
-                    <button
-                      type="button"
-                      onClick={() => setPosterPreviewAspect('card')}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                        posterPreviewAspect === 'card'
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                      title="16:10 Landscape Card Preview"
-                    >
-                      16:10 Card
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPosterPreviewAspect('poster')}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                        posterPreviewAspect === 'poster'
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                      title="2:3 Portrait Poster Preview"
-                    >
-                      2:3 Poster
-                    </button>
-                  </div>
+                  {/* Ratio Toggles for Shows vs Landscape Banner Badge for Brands */}
+                  {!isBrandProject ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 mr-0.5">Ratio:</span>
+                      <button
+                        type="button"
+                        onClick={() => setPosterPreviewAspect('card')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                          posterPreviewAspect === 'card'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="16:10 Landscape Card Preview"
+                      >
+                        16:10 Card
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPosterPreviewAspect('poster')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                          posterPreviewAspect === 'poster'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="2:3 Portrait Poster Preview"
+                      >
+                        2:3 Poster
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      📐 Landscape Banner (16:7 / 2.2:1)
+                    </span>
+                  )}
                 </div>
 
                 {/* Media Fit (Auto Fit vs Fill Area) & Vertical Adjustment Slider */}
@@ -4129,7 +4255,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       {currentPreviewPhoto && !posterLoadError ? (
                         <div
                           className={`relative w-full ${
-                            posterPreviewAspect === 'card' ? 'aspect-[16/10]' : 'aspect-[2/3] max-h-[360px]'
+                            isBrandProject
+                              ? 'aspect-[16/7] sm:aspect-[2.2/1] max-h-[220px]'
+                              : posterPreviewAspect === 'card'
+                              ? 'aspect-[16/10]'
+                              : 'aspect-[2/3] max-h-[360px]'
                           } overflow-hidden bg-slate-950 flex items-center justify-center group`}
                         >
                           {/* Ambient Blurred Backdrop when Auto-Fit (contain) is active */}
