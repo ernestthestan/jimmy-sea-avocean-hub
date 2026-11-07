@@ -19,6 +19,7 @@ import {
   Calendar,
   Layers,
   Tag,
+  Link2,
   Maximize2,
   Languages,
   RotateCcw,
@@ -774,7 +775,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   };
   const posterFileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [formAvatarUrl, setFormAvatarUrl] = useState<string>('');
+  const [formBannerUrl, setFormBannerUrl] = useState<string>('');
+  const [isUploadingBanner, setIsUploadingBanner] = useState<boolean>(false);
+  const [bannerLoadError, setBannerLoadError] = useState<boolean>(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const [isUploadingPoster, setIsUploadingPoster] = useState<boolean>(false);
   const [posterLoadError, setPosterLoadError] = useState<boolean>(false);
@@ -817,12 +822,14 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
       if (compressedList.length > 0) {
         setFormMediaPhotos((prev) => [...prev, ...compressedList]);
-        setFormImageUrl(compressedList[0]);
+        if (!isBrandProject) {
+          setFormImageUrl(compressedList[0]);
+        }
         setFormActiveMediaIndex(formMediaPhotos.length);
         showToast(
           compressedList.length === 1
-            ? 'Media photo uploaded successfully!'
-            : `${compressedList.length} media photos uploaded successfully!`
+            ? 'Media photo added successfully!'
+            : `${compressedList.length} media photos added successfully!`
         );
       }
     } catch (err) {
@@ -863,24 +870,77 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     }
   };
 
+  const handleBannerFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingBanner(true);
+    setBannerLoadError(false);
+    try {
+      const compressed = await compressImageFile(file, 1600, 1000, 0.85);
+      setFormBannerUrl(compressed);
+      setFormImageUrl(compressed);
+      showToast('Brand header banner uploaded successfully!');
+    } catch (err) {
+      console.warn('Banner compression fallback:', err);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const res = (ev.target?.result as string) || '';
+        if (res) {
+          setFormBannerUrl(res);
+          setFormImageUrl(res);
+          showToast('Brand header banner uploaded successfully!');
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingBanner(false);
+      if (bannerFileInputRef.current) {
+        bannerFileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleAddMediaUrl = (urlInput: string) => {
     if (!urlInput.trim()) return;
-    const tokens = urlInput.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+
+    // Matches any http://, https://, or data:image/ URLs
+    const urlRegex = /(https?:\/\/[^\s"',<>[\]]+|data:image\/[^\s"',<>[\]]+)/gi;
+    const matched = urlInput.match(urlRegex) || [];
+
+    // Fallback if user typed clean plain paths or comma/space separated list without protocol
+    const fallbackTokens = urlInput
+      .split(/[\n\r,\s;]+/)
+      .map((s) => s.trim().replace(/^['"<(]+|['">)]+$/g, ''))
+      .filter(Boolean);
+
+    const candidates = matched.length > 0 ? matched : fallbackTokens;
+    const cleanList = candidates
+      .map((u) => u.trim().replace(/[.,;)]+$/, ''))
+      .filter(Boolean);
+
     const additions: string[] = [];
-    tokens.forEach((url) => {
+    cleanList.forEach((url) => {
       if (!formMediaPhotos.includes(url) && !additions.includes(url)) {
         additions.push(url);
       }
     });
+
     if (additions.length === 0) {
-      showToast('Photo is already in media collection');
+      if (cleanList.length > 0) {
+        showToast(cleanList.length === 1 ? 'This photo is already in the media collection' : 'All entered photos are already in the media collection');
+      } else {
+        showToast('Please enter a valid image URL');
+      }
       return;
     }
+
     setFormMediaPhotos((prev) => [...prev, ...additions]);
     setNewMediaUrlInput('');
-    setFormImageUrl(additions[0]);
+    if (!isBrandProject) {
+      setFormImageUrl(additions[0]);
+    }
     setFormActiveMediaIndex(formMediaPhotos.length);
-    showToast(additions.length === 1 ? 'Photo added to media collection!' : `${additions.length} photos added to media collection!`);
+    showToast(additions.length === 1 ? 'Photo added to media collection!' : `Added ${additions.length} photos at once!`);
   };
 
   const handleRemoveMediaPhoto = (idxToRemove: number) => {
@@ -1177,6 +1237,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormThaiTitle('');
     setFormEnglishTitle('');
     setFormAvatarUrl('');
+    setFormBannerUrl('');
     const initialCategory: ProjectCategory =
       selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands'
         ? selectedCategory
@@ -1193,9 +1254,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormFilmedPeriod('');
     setFormStatus(initialCategory === 'owned_brands' || initialCategory === 'partner_brands' ? 'active' : 'released');
     setFormDescription('');
-    const sampleCover = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
+    const isBrandInit = initialCategory === 'owned_brands' || initialCategory === 'partner_brands';
+    const sampleCover = isBrandInit ? '' : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
     setFormImageUrl(sampleCover);
-    setFormMediaPhotos([sampleCover]);
+    setFormMediaPhotos(isBrandInit ? [] : [sampleCover]);
     setFormActiveMediaIndex(0);
     setFormMediaFit('cover');
     setFormMediaOffsetY(50);
@@ -1214,6 +1276,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     ]);
     setPosterLoadError(false);
     setIsUploadingPoster(false);
+    setIsUploadingBanner(false);
     setIsModalOpen(true);
   };
 
@@ -1242,6 +1305,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormThaiTitle(resolvedThai);
     setFormEnglishTitle(proj.englishTitle || resolvedTitle);
     setFormAvatarUrl(proj.avatarUrl || '');
+    const isBrandProjItem = proj.category === 'owned_brands' || proj.category === 'partner_brands';
+    const resolvedBanner = proj.bannerUrl || (isBrandProjItem ? proj.imageUrl : '');
+    setFormBannerUrl(resolvedBanner || '');
     setFormCategory(proj.category);
     setFormArtist(proj.artist);
 
@@ -1268,9 +1334,26 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormStatus(proj.status);
     setFormDescription(proj.description);
 
-    const photos = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
-      ? [...proj.mediaPhotos]
-      : (proj.imageUrl ? [proj.imageUrl] : []);
+    let photos: string[] = [];
+    if (isBrandProjItem) {
+      if (proj.mediaPhotos && proj.mediaPhotos.length > 0) {
+        // Filter out any legacy banner photo so Brand Media & Lookbook Gallery starts completely empty
+        // unless distinct product/campaign photos have been explicitly added!
+        photos = proj.mediaPhotos.filter(
+          (p) =>
+            p &&
+            p.trim() !== (resolvedBanner || '').trim() &&
+            p.trim() !== (proj.bannerUrl || '').trim() &&
+            p.trim() !== (proj.imageUrl || '').trim()
+        );
+      } else {
+        photos = [];
+      }
+    } else {
+      photos = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
+        ? [...proj.mediaPhotos]
+        : (proj.imageUrl ? [proj.imageUrl] : []);
+    }
     setFormMediaPhotos(photos);
     setFormActiveMediaIndex(0);
     setFormMediaFit(proj.mediaFit || 'cover');
@@ -1278,7 +1361,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormTitleSize(proj.titleSize || 'medium');
     setFormFontSize(proj.fontSize || 'medium');
     setNewMediaUrlInput('');
-    setFormImageUrl(photos[0] || proj.imageUrl || '');
+    setFormImageUrl(isBrandProjItem ? (resolvedBanner || '') : (photos[0] || proj.imageUrl || ''));
 
     setFormPlatform(proj.platform || '');
     setFormHighlight(proj.highlight || '');
@@ -1404,9 +1487,6 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       trimmedRole = parts.join(', ');
     }
 
-    const cleanMedia = formMediaPhotos.map((p) => p.trim()).filter(Boolean);
-    const primaryPoster = cleanMedia[0] || formImageUrl.trim() || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
-
     const normalizeSocialUrl = (urlStr: string, platformType: 'x' | 'instagram') => {
       const trimmed = urlStr.trim();
       if (!trimmed) return undefined;
@@ -1423,6 +1503,15 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
     const isBrand = formCategory === 'owned_brands' || formCategory === 'partner_brands';
 
+    const cleanMedia = formMediaPhotos.map((p) => p.trim()).filter(Boolean);
+    const bannerToSave = isBrand
+      ? (formBannerUrl.trim() || formImageUrl.trim() || undefined)
+      : undefined;
+
+    const primaryPoster = isBrand
+      ? (bannerToSave || (cleanMedia[0] || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80'))
+      : (cleanMedia[0] || formImageUrl.trim() || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80');
+
     const projectToSave: CareerProject = {
       id: editingProject ? editingProject.id : `proj-${formCategory}-${Date.now()}`,
       title: formTitle.trim(),
@@ -1431,6 +1520,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       category: formCategory,
       artist: formArtist,
       avatarUrl: formAvatarUrl.trim() || undefined,
+      bannerUrl: bannerToSave,
       role: !isBrand ? (trimmedRole || undefined) : undefined,
       jimmyRole: !isBrand ? (trimmedJimmy || undefined) : undefined,
       seaRole: !isBrand ? (trimmedSea || undefined) : undefined,
@@ -2856,6 +2946,21 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         ...(proj.extraLinks || [])
                       ];
 
+                const brandMediaList = isBrand
+                  ? (proj.mediaPhotos && proj.mediaPhotos.length > 0)
+                    ? proj.mediaPhotos.filter(
+                        (p) =>
+                          p &&
+                          p.trim() !== (proj.bannerUrl || '').trim() &&
+                          p.trim() !== (proj.imageUrl || '').trim()
+                      )
+                    : []
+                  : [];
+                const showMediaList = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
+                  ? proj.mediaPhotos.filter(Boolean)
+                  : [proj.imageUrl].filter(Boolean);
+                const mediaList = isBrand ? brandMediaList : showMediaList;
+
                 return (
                   <div
                     key={proj.id}
@@ -2864,18 +2969,15 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     <div>
                       {/* Poster / Cover Image (Supports Multi-Photo Gallery, Whole Photo View, Direct Click to Expand) */}
                       {(() => {
-                        const mediaList = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
-                          ? proj.mediaPhotos.filter(Boolean)
-                          : [proj.imageUrl];
-                        const activeMediaIdx = (projectCardMediaIndex[proj.id] ?? 0) % mediaList.length;
-                        const activePhoto = mediaList[activeMediaIdx] || proj.imageUrl;
+                        const brandBannerPhoto = proj.bannerUrl || proj.imageUrl;
+                        const activeMediaIdx = (projectCardMediaIndex[proj.id] ?? 0) % (mediaList.length || 1);
+                        const activePhoto = isBrand ? brandBannerPhoto : (mediaList[activeMediaIdx] || proj.imageUrl);
                         const isContain = proj.mediaFit === 'contain' || projectPosterAspect === 'contain';
                         const focalPos = proj.mediaPosition || `center ${proj.mediaOffsetY ?? 50}%`;
 
                         // Aspect ratio calculation:
-                        // For brands: sleek horizontal landscape banner (16:7 / 2.2:1, max-h 240px) matching Fan Clubs style
+                        // For brands: sleek horizontal landscape banner (16:9 / 2:1, max-h 260px) matching Fan Clubs style
                         // For television shows & movies: theatrical portrait poster (2:3 or 3:4) or 16:10 card
-                        const isBrand = proj.category === 'owned_brands' || proj.category === 'partner_brands';
                         const aspectClass = isBrand
                           ? 'aspect-[16/9] sm:aspect-[2/1] w-full max-h-[260px]'
                           : projectPosterAspect === 'poster'
@@ -2889,9 +2991,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             onClick={() =>
                               setLightboxImageUrl({
                                 url: activePhoto,
-                                title: `${primaryEnglishTitle} ${
-                                  mediaList.length > 1 ? `(Photo ${activeMediaIdx + 1} of ${mediaList.length})` : ''
-                                }`
+                                title: isBrand
+                                  ? `${primaryEnglishTitle} Official Banner`
+                                  : `${primaryEnglishTitle} ${
+                                      mediaList.length > 1 ? `(Photo ${activeMediaIdx + 1} of ${mediaList.length})` : ''
+                                    }`
                               })
                             }
                             className={`relative ${aspectClass} bg-slate-900 dark:bg-slate-950 overflow-hidden group cursor-pointer select-none transition-all`}
@@ -2929,9 +3033,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               </span>
                             </div>
 
-                            {/* Top Right Actions: Photo Counter + Expand */}
+                            {/* Top Right Actions: Photo Counter (for TV shows) + Expand */}
                             <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
-                              {mediaList.length > 1 && (
+                              {!isBrand && mediaList.length > 1 && (
                                 <span className="px-2 py-0.5 rounded-full text-[9.5px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20 shadow-xs pointer-events-none">
                                   📷 {activeMediaIdx + 1}/{mediaList.length}
                                 </span>
@@ -2940,17 +3044,20 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setLightboxImageUrl({ url: activePhoto, title: `${primaryEnglishTitle} (Photo ${activeMediaIdx + 1})` });
+                                  setLightboxImageUrl({
+                                    url: activePhoto,
+                                    title: isBrand ? `${primaryEnglishTitle} Official Banner` : `${primaryEnglishTitle} (Photo ${activeMediaIdx + 1})`
+                                  });
                                 }}
                                 className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-md cursor-pointer shadow-md"
-                                title="Expand Full Resolution"
+                                title={isBrand ? "Expand Banner in Full Resolution" : "Expand Full Resolution"}
                               >
                                 <Maximize2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
 
-                            {/* Carousel Controls for Multi-Photo Projects */}
-                            {mediaList.length > 1 && (
+                            {/* Carousel Controls for Multi-Photo TV Series & Movie Posters */}
+                            {!isBrand && mediaList.length > 1 && (
                               <>
                                 <button
                                   type="button"
@@ -3270,6 +3377,52 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               showToast={showToast}
                               accentColor={currentAccent.colorHex}
                             />
+                          </div>
+                        )}
+
+                        {/* Brand Media & Product Lookbook Gallery (Clickable Thumbnails with Lightbox) */}
+                        {isBrand && brandMediaList.length > 0 && (
+                          <div className="pt-2">
+                            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/60 to-indigo-50/60 dark:from-purple-950/40 dark:to-indigo-950/30 border border-purple-200/70 dark:border-purple-900/60 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className={`font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5 ${typo.meta}`}>
+                                  <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                  <span>Brand Media &amp; Product Gallery</span>
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                  📷 {brandMediaList.length} {brandMediaList.length === 1 ? 'photo' : 'photos'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                {brandMediaList.map((photo, pIdx) => (
+                                  <div
+                                    key={pIdx}
+                                    onClick={() =>
+                                      setLightboxImageUrl({
+                                        url: photo,
+                                        title: `${primaryEnglishTitle} — Brand Media (${pIdx + 1} of ${brandMediaList.length})`
+                                      })
+                                    }
+                                    className="group/media relative aspect-square rounded-xl overflow-hidden bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs hover:border-purple-400 hover:shadow-xs transition-all"
+                                    title="Click to view full photo"
+                                  >
+                                    <img
+                                      src={photo}
+                                      alt={`${primaryEnglishTitle} media ${pIdx + 1}`}
+                                      className="w-full h-full object-cover group-hover/media:scale-105 transition-transform duration-200"
+                                      loading="lazy"
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover/media:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover/media:opacity-100">
+                                      <Maximize2 className="w-4 h-4 text-white drop-shadow-md" />
+                                    </div>
+                                    <span className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/70 text-white text-[8px] font-mono pointer-events-none">
+                                      #{pIdx + 1}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -3644,6 +3797,15 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 className="hidden"
               />
 
+              {/* Hidden Banner File Input */}
+              <input
+                type="file"
+                ref={bannerFileInputRef}
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handleBannerFileUpload}
+                className="hidden"
+              />
+
               {/* Category & Artist Selection */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -3652,7 +3814,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   </label>
                   <select
                     value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value as ProjectCategory)}
+                    onChange={(e) => {
+                      const nextCat = e.target.value as ProjectCategory;
+                      const wasBrand = formCategory === 'owned_brands' || formCategory === 'partner_brands';
+                      const isNowBrand = nextCat === 'owned_brands' || nextCat === 'partner_brands';
+                      setFormCategory(nextCat);
+                      if (!wasBrand && isNowBrand) {
+                        // When selecting a brand venture, media gallery must start completely empty
+                        setFormMediaPhotos([]);
+                        if (!formBannerUrl && formImageUrl && !formImageUrl.includes('photo-1536440136628')) {
+                          setFormBannerUrl(formImageUrl);
+                        }
+                      } else if (wasBrand && !isNowBrand) {
+                        if (formMediaPhotos.length === 0) {
+                          const fallback = formBannerUrl || formImageUrl || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
+                          setFormMediaPhotos([fallback]);
+                          setFormImageUrl(fallback);
+                        }
+                      }
+                    }}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
                   >
                     <option value="shows">📺 Shows & Series</option>
@@ -4115,22 +4295,642 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
               )}
 
               {/* ============================================================== */}
-              {/* MULTI-PHOTO MEDIA COLLECTION, AUTO-FIT & FRAMING ADJUSTMENTS   */}
               {/* ============================================================== */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-4">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                      <span>{isBrandProject ? 'Brand Header Banner & Photos' : 'Project Photos & Media'} ({formMediaPhotos.length})</span>
-                    </label>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                      Multi-Photo Enabled
-                    </span>
+              {/* MEDIA & BANNER SECTIONS: DEDICATED FOR BRANDS VS SHOWS / MOVIES */}
+              {/* ============================================================== */}
+              {isBrandProject ? (
+                <>
+                  {/* ============================================================== */}
+                  {/* SECTION 1: DEDICATED BRAND HEADER BANNER (COVER)              */}
+                  {/* ============================================================== */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-purple-50/70 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-purple-950/40 border border-purple-200/90 dark:border-purple-800/70 space-y-3.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-black text-[#1A3668] dark:text-white flex items-center gap-1.5 uppercase tracking-wide">
+                          <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                          <span>Brand Header Banner</span>
+                        </label>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                          📐 Landscape Top Banner
+                        </span>
+                      </div>
+                      <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400">
+                        Top banner image across the card
+                      </span>
+                    </div>
+
+                    {/* Banner Media Sizing (Cover/Contain) & Vertical Framing */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-slate-800 shadow-2xs">
+                      {/* Fit Style: Auto-Fit (Contain) vs Fill Area (Cover) */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-[#1A3668] dark:text-slate-300 flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <Maximize2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                            <span>Banner Sizing &amp; Auto-Fit</span>
+                          </span>
+                          <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                            {formMediaFit === 'contain' ? '⚡ Auto-Fit (100% visible)' : '🖼️ Fill Area'}
+                          </span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setFormMediaFit('cover')}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
+                              formMediaFit === 'cover'
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            Fill Area (Cover)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormMediaFit('contain')}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
+                              formMediaFit === 'contain'
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                            }`}
+                            title="Shows the entire banner image without cropping"
+                          >
+                            Auto-Fit (Contain)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Vertical Framing / Offset Adjustment */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-[#1A3668] dark:text-slate-300">
+                          <span className="flex items-center gap-1">
+                            <Sliders className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                            <span>Banner Focal Position</span>
+                          </span>
+                          <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400">
+                            {formMediaOffsetY}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400 font-bold shrink-0">Top</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={formMediaOffsetY}
+                            onChange={(e) => setFormMediaOffsetY(Number(e.target.value))}
+                            className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                          />
+                          <span className="text-[10px] text-slate-400 font-bold shrink-0">Bottom</span>
+                        </div>
+                        <div className="flex items-center justify-end gap-1 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setFormMediaOffsetY(15)}
+                            className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                              formMediaOffsetY === 15 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                            }`}
+                          >
+                            Top 15%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormMediaOffsetY(50)}
+                            className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                              formMediaOffsetY === 50 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                            }`}
+                          >
+                            Center 50%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormMediaOffsetY(85)}
+                            className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                              formMediaOffsetY === 85 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                            }`}
+                          >
+                            Bottom 85%
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Live Banner Preview Box */}
+                    {(() => {
+                      const currentBannerPhoto = formBannerUrl || formImageUrl;
+
+                      return (
+                        <div className="relative rounded-2xl overflow-hidden border border-purple-200 dark:border-slate-700 bg-slate-900 shadow-sm">
+                          {currentBannerPhoto && !bannerLoadError ? (
+                            <div className="relative w-full aspect-[16/7] sm:aspect-[2.2/1] max-h-[220px] overflow-hidden bg-slate-950 flex items-center justify-center group">
+                              {/* Ambient Blurred Backdrop when Auto-Fit (contain) is active */}
+                              {formMediaFit === 'contain' && (
+                                <div
+                                  className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-35 scale-110 pointer-events-none"
+                                  style={{
+                                    backgroundImage: `url(${currentBannerPhoto})`
+                                  }}
+                                />
+                              )}
+
+                              <img
+                                src={currentBannerPhoto}
+                                alt={formTitle || 'Brand Banner Preview'}
+                                onError={() => setBannerLoadError(true)}
+                                onLoad={() => setBannerLoadError(false)}
+                                style={{
+                                  objectPosition: `center ${formMediaOffsetY}%`
+                                }}
+                                className={`w-full h-full relative z-10 transition-transform duration-300 ${
+                                  formMediaFit === 'contain' ? 'object-contain' : 'object-cover group-hover:scale-105'
+                                }`}
+                              />
+                              <div className="absolute bottom-0 inset-x-0 h-24 z-20 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+
+                              {/* Top Badges (Category & Artist) */}
+                              <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider backdrop-blur-md ${getCategoryBadgeStyle(formCategory)}`}>
+                                  {getCategoryIcon(formCategory)}
+                                  <span>{getCategoryBadge(formCategory)}</span>
+                                </span>
+
+                                {(() => {
+                                  const artistInfo = getArtistLabel(formArtist);
+                                  return (
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
+                                      <span>{artistInfo.emoji}</span>
+                                      <span>{artistInfo.label}</span>
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Top Right Action: Lightbox */}
+                              <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setLightboxImageUrl({ url: currentBannerPhoto, title: formTitle ? `${formTitle} Banner` : 'Brand Banner Preview' })}
+                                  className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
+                                  title="View Full Resolution Banner in Lightbox"
+                                >
+                                  <Maximize2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Bottom Overlay with Real-time Title, Avatar, Status */}
+                              <div className="absolute bottom-3 inset-x-3 z-30 space-y-1.5 pointer-events-none">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-200 bg-purple-950/70 px-2 py-0.5 rounded-full border border-purple-500/40">
+                                    {formCategory === 'owned_brands' ? '👑 Owned Brand' : '🤝 Partner Brand'}
+                                  </span>
+                                  {(() => {
+                                    const statusObj = getStatusBadge(formStatus, formCategory);
+                                    return (
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
+                                        {statusObj.label}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {formAvatarUrl && (
+                                    <img
+                                      src={formAvatarUrl}
+                                      alt="Brand avatar"
+                                      className="w-7 h-7 rounded-full object-cover border-2 border-white/80 shadow-xs shrink-0"
+                                    />
+                                  )}
+                                  <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
+                                    <span>{formTitle || 'Brand Title'}</span>
+                                    {formThaiTitle && formThaiTitle.trim().length > 0 && (
+                                      <>
+                                        <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
+                                        <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formThaiTitle.trim()}</span>
+                                      </>
+                                    )}
+                                  </h4>
+                                </div>
+                              </div>
+                            </div>
+                          ) : bannerLoadError ? (
+                            <div className="p-8 text-center flex flex-col items-center justify-center gap-2 bg-rose-50/10 text-slate-300">
+                              <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl">
+                                ⚠️
+                              </div>
+                              <p className="text-xs font-bold text-rose-400">
+                                Unable to load banner image from URL
+                              </p>
+                              <p className="text-[11px] text-slate-400 max-w-sm">
+                                The link provided might be restricted or invalid. You can upload an image directly from your computer or phone below.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => bannerFileInputRef.current?.click()}
+                                className="mt-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 cursor-pointer"
+                              >
+                                Upload Banner File Instead
+                              </button>
+                            </div>
+                          ) : (
+                            <div
+                              onClick={() => bannerFileInputRef.current?.click()}
+                              className="p-8 text-center flex flex-col items-center justify-center gap-2.5 cursor-pointer hover:bg-slate-800/80 transition-colors"
+                            >
+                              <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                                <ImageIcon className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-200">
+                                  No brand header banner selected yet
+                                </p>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                  Upload a horizontal landscape banner or paste a banner image URL below
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Banner Upload & URL Controls */}
+                    <div className="space-y-2">
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isUploadingBanner}
+                          onClick={() => bannerFileInputRef.current?.click()}
+                          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold cursor-pointer transition-all shrink-0 disabled:opacity-50 shadow-xs"
+                        >
+                          {isUploadingBanner ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Uploading Banner...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>Upload Banner (Device)</span>
+                            </>
+                          )}
+                        </button>
+
+                        <div className="flex-1 flex gap-1.5">
+                          <input
+                            type="url"
+                            value={formBannerUrl}
+                            onChange={(e) => {
+                              setFormBannerUrl(e.target.value);
+                              setFormImageUrl(e.target.value);
+                              setBannerLoadError(false);
+                            }}
+                            placeholder="Or paste brand header banner image URL..."
+                            className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder-slate-400"
+                          />
+                          {formBannerUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormBannerUrl('');
+                                setFormImageUrl('');
+                              }}
+                              className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
+                              title="Clear banner URL"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Sample Brand Banners Quick Presets */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-purple-500" />
+                          <span>Quick Sample Banners:</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const u = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1600&auto=format&fit=crop&q=80';
+                            setFormBannerUrl(u);
+                            setFormImageUrl(u);
+                            setBannerLoadError(false);
+                          }}
+                          className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          🏬 Boutique Store
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const u = 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1600&auto=format&fit=crop&q=80';
+                            setFormBannerUrl(u);
+                            setFormImageUrl(u);
+                            setBannerLoadError(false);
+                          }}
+                          className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          🛍️ Apparel Banner
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const u = 'https://images.unsplash.com/photo-1513094735237-8f2714d57c13?w=1600&auto=format&fit=crop&q=80';
+                            setFormBannerUrl(u);
+                            setFormImageUrl(u);
+                            setBannerLoadError(false);
+                          }}
+                          className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          ✨ Lifestyle Studio
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Ratio Toggles for Shows vs Landscape Banner Badge for Brands */}
-                  {!isBrandProject ? (
+                  {/* ============================================================== */}
+                  {/* SECTION 2: BRAND MEDIA GALLERY & CAMPAIGN LOOKBOOK             */}
+                  {/* ============================================================== */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-black text-[#1A3668] dark:text-white flex items-center gap-1.5 uppercase tracking-wide">
+                          <Layers className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                          <span>Brand Media &amp; Lookbook Gallery ({formMediaPhotos.length})</span>
+                        </label>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          ✨ Separate from Banner
+                        </span>
+                      </div>
+                      <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400">
+                        Product photos, lookbook shots &amp; campaign images
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-[#526586] dark:text-slate-400 leading-relaxed">
+                      Add campaign photos, product shots, lookbooks, or event pictures. These will display in a dedicated, interactive photo gallery inside the brand card body below the overview and synopsis.
+                    </p>
+
+                    {/* Media Thumbnails Strip */}
+                    {formMediaPhotos.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-[#526586] dark:text-slate-400">
+                          <span>Media Items in Gallery ({formMediaPhotos.length})</span>
+                          <span className="text-[10px] text-slate-400">Click a thumbnail to view full resolution</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                          {formMediaPhotos.map((photo, idx) => (
+                            <div
+                              key={idx}
+                              className="relative p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-purple-300 transition-all flex flex-col justify-between group shadow-2xs"
+                            >
+                              <div
+                                onClick={() => setLightboxImageUrl({ url: photo, title: `Brand Media Photo #${idx + 1}` })}
+                                className="relative aspect-square rounded-lg overflow-hidden bg-slate-950 mb-1.5 cursor-pointer"
+                              >
+                                <img
+                                  src={photo}
+                                  alt={`Brand Media ${idx + 1}`}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                />
+                                <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[9px] font-mono">
+                                  #{idx + 1}
+                                </span>
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                  <Maximize2 className="w-4 h-4 text-white drop-shadow-md" />
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-1 pt-0.5">
+                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                  Photo #{idx + 1}
+                                </span>
+
+                                <div className="flex items-center gap-1">
+                                  {idx > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveMediaPhoto(idx, idx - 1);
+                                      }}
+                                      className="p-1 rounded text-slate-400 hover:text-purple-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                      title="Move earlier"
+                                    >
+                                      <ArrowUp className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  {idx < formMediaPhotos.length - 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveMediaPhoto(idx, idx + 1);
+                                      }}
+                                      className="p-1 rounded text-slate-400 hover:text-purple-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                      title="Move later"
+                                    >
+                                      <ArrowDown className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveMediaPhoto(idx);
+                                    }}
+                                    className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                    title="Delete this media photo"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => posterFileInputRef.current?.click()}
+                        className="p-6 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-center flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-purple-400 transition-colors"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/80 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                          <Layers className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                            No brand media photos added yet (Optional)
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Click to upload lookbook photos, or paste image URLs below
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Media Upload & Multi-URL Input Controls */}
+                    <div className="space-y-3">
+                      {/* Upload Device Files Button */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={isUploadingPoster}
+                          onClick={() => posterFileInputRef.current?.click()}
+                          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold cursor-pointer transition-all disabled:opacity-50 shadow-2xs"
+                        >
+                          {isUploadingPoster ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Compressing &amp; Adding...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>Upload Photos from Device (Multiple)</span>
+                            </>
+                          )}
+                        </button>
+                        <span className="text-[10.5px] font-semibold text-slate-400">
+                          Supports JPG, PNG, WEBP, GIF
+                        </span>
+                      </div>
+
+                      {/* Multi-URL Input Box with Live Detection Counter */}
+                      {(() => {
+                        const urlMatches = newMediaUrlInput.match(/(https?:\/\/[^\s"',<>[\]]+|data:image\/[^\s"',<>[\]]+)/gi) || [];
+                        const detectedCount = urlMatches.length > 0
+                          ? urlMatches.length
+                          : newMediaUrlInput.split(/[\n\r,\s;]+/).filter(Boolean).length;
+
+                        return (
+                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-purple-200/90 dark:border-slate-700 shadow-2xs space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <label className="text-[11px] font-bold text-[#1A3668] dark:text-slate-200 flex items-center gap-1.5">
+                                <Link2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                <span>Paste Image URLs (Add Multiple URLs at Once)</span>
+                              </label>
+                              {detectedCount > 0 && (
+                                <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                  ✨ {detectedCount} {detectedCount === 1 ? 'URL detected' : 'URLs detected ready to add'}
+                                </span>
+                              )}
+                            </div>
+
+                            <textarea
+                              rows={2}
+                              value={newMediaUrlInput}
+                              onChange={(e) => setNewMediaUrlInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddMediaUrl(newMediaUrlInput);
+                                }
+                              }}
+                              placeholder="Paste one or multiple image URLs here...&#10;URLs can be separated by new line, space, or comma (e.g. https://.../pic1.jpg https://.../pic2.jpg)"
+                              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5 text-xs font-medium text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder-slate-400 font-mono transition-all leading-relaxed"
+                            />
+
+                            <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                              <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                                💡 Tip: Paste multiple links at once (separated by Enter, commas, or spaces).
+                              </p>
+                              <div className="flex items-center gap-2">
+                                {newMediaUrlInput && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setNewMediaUrlInput('')}
+                                    className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer font-bold px-2 py-1"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddMediaUrl(newMediaUrlInput)}
+                                  disabled={!newMediaUrlInput.trim()}
+                                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>
+                                    {detectedCount > 1
+                                      ? `Add All ${detectedCount} Photos at Once`
+                                      : detectedCount === 1
+                                      ? 'Add Photo'
+                                      : 'Add Media'}
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Brand Media Quick Presets */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-purple-500" />
+                          <span>Quick Add Samples:</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&auto=format&fit=crop&q=80')}
+                          className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          👕 Lookbook
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&auto=format&fit=crop&q=80')}
+                          className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          🛍️ Merch &amp; Store
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80')}
+                          className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          📸 Campaign Photoshoot
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAddMediaUrl(
+                              [
+                                'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&auto=format&fit=crop&q=80',
+                                'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&auto=format&fit=crop&q=80',
+                                'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80'
+                              ].join('\n')
+                            )
+                          }
+                          className="text-[10.5px] font-bold px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/80 border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 cursor-pointer shadow-2xs"
+                          title="Adds 3 lookbook photos at once as a multi-URL demo"
+                        >
+                          ✨ Batch Add 3 Photos at Once
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* ============================================================== */
+                /* SECTION 3: TV SHOWS, MOVIES & MUSIC VIDEOS THEATRICAL POSTERS  */
+                /* ============================================================== */
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-[#1A3668] dark:text-white flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>Project Photos &amp; Media ({formMediaPhotos.length})</span>
+                      </label>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        Multi-Photo Enabled
+                      </span>
+                    </div>
+
+                    {/* Ratio Toggles for Shows vs 16:10 Card */}
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] font-bold text-slate-400 mr-0.5">Ratio:</span>
                       <button
@@ -4158,489 +4958,519 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         2:3 Poster
                       </button>
                     </div>
-                  ) : (
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      📐 Landscape Banner (16:7 / 2.2:1)
-                    </span>
-                  )}
-                </div>
-
-                {/* Media Fit (Auto Fit vs Fill Area) & Vertical Adjustment Slider */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                  {/* Fit Style: Auto-Fit (Contain) vs Fill Area (Cover) */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-[#1A3668] dark:text-slate-300 flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <Maximize2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                        <span>Media Sizing & Auto-Fit</span>
-                      </span>
-                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
-                        {formMediaFit === 'contain' ? '⚡ Auto-Fit (100% visible)' : '🖼️ Fill Area'}
-                      </span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setFormMediaFit('cover')}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
-                          formMediaFit === 'cover'
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        Fill Area (Cover)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormMediaFit('contain')}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
-                          formMediaFit === 'contain'
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                        }`}
-                        title="Shows the entire poster/media without cropping any heads, text, or borders"
-                      >
-                        Auto-Fit (Contain)
-                      </button>
-                    </div>
                   </div>
 
-                  {/* Vertical Framing / Offset Adjustment */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-[#1A3668] dark:text-slate-300">
-                      <span className="flex items-center gap-1">
-                        <Sliders className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                        <span>Framing Focal Adjustment</span>
-                      </span>
-                      <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400">
-                        {formMediaOffsetY}%
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 font-bold shrink-0">Top</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={formMediaOffsetY}
-                        onChange={(e) => setFormMediaOffsetY(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                      />
-                      <span className="text-[10px] text-slate-400 font-bold shrink-0">Bottom</span>
-                    </div>
-                    <div className="flex items-center justify-end gap-1 pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setFormMediaOffsetY(15)}
-                        className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                          formMediaOffsetY === 15 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
-                        }`}
-                      >
-                        Top 15%
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormMediaOffsetY(50)}
-                        className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                          formMediaOffsetY === 50 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
-                        }`}
-                      >
-                        Center 50%
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormMediaOffsetY(85)}
-                        className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                          formMediaOffsetY === 85 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
-                        }`}
-                      >
-                        Bottom 85%
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Live Card Preview Box */}
-                {(() => {
-                  const currentPreviewPhoto =
-                    formMediaPhotos[formActiveMediaIndex] ||
-                    formMediaPhotos[0] ||
-                    formImageUrl;
-
-                  return (
-                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 shadow-md">
-                      {currentPreviewPhoto && !posterLoadError ? (
-                        <div
-                          className={`relative w-full ${
-                            isBrandProject
-                              ? 'aspect-[16/7] sm:aspect-[2.2/1] max-h-[220px]'
-                              : posterPreviewAspect === 'card'
-                              ? 'aspect-[16/10]'
-                              : 'aspect-[2/3] max-h-[360px]'
-                          } overflow-hidden bg-slate-950 flex items-center justify-center group`}
+                  {/* Media Fit (Auto Fit vs Fill Area) & Vertical Adjustment Slider */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                    {/* Fit Style: Auto-Fit (Contain) vs Fill Area (Cover) */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-[#1A3668] dark:text-slate-300 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Maximize2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                          <span>Media Sizing &amp; Auto-Fit</span>
+                        </span>
+                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-extrabold uppercase">
+                          {formMediaFit === 'contain' ? '⚡ Auto-Fit (100% visible)' : '🖼️ Fill Area'}
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setFormMediaFit('cover')}
+                          className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
+                            formMediaFit === 'cover'
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                              : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                          }`}
                         >
-                          {/* Ambient Blurred Backdrop when Auto-Fit (contain) is active */}
-                          {formMediaFit === 'contain' && (
-                            <div
-                              className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-35 scale-110 pointer-events-none"
-                              style={{
-                                backgroundImage: `url(${currentPreviewPhoto})`
-                              }}
-                            />
-                          )}
+                          Fill Area (Cover)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormMediaFit('contain')}
+                          className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border cursor-pointer ${
+                            formMediaFit === 'contain'
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                              : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                          }`}
+                          title="Shows the entire poster/media without cropping any heads, text, or borders"
+                        >
+                          Auto-Fit (Contain)
+                        </button>
+                      </div>
+                    </div>
 
-                          <img
-                            src={currentPreviewPhoto}
-                            alt={formTitle || 'Project Poster Preview'}
-                            onError={() => setPosterLoadError(true)}
-                            onLoad={() => setPosterLoadError(false)}
-                            style={{
-                              objectPosition: `center ${formMediaOffsetY}%`
-                            }}
-                            className={`w-full h-full relative z-10 transition-transform duration-300 ${
-                              formMediaFit === 'contain' ? 'object-contain' : 'object-cover group-hover:scale-105'
-                            }`}
-                          />
-                          <div className="absolute bottom-0 inset-x-0 h-24 z-20 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                    {/* Vertical Framing / Offset Adjustment */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-[#1A3668] dark:text-slate-300">
+                        <span className="flex items-center gap-1">
+                          <Sliders className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                          <span>Framing Focal Adjustment</span>
+                        </span>
+                        <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400">
+                          {formMediaOffsetY}%
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-bold shrink-0">Top</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={formMediaOffsetY}
+                          onChange={(e) => setFormMediaOffsetY(Number(e.target.value))}
+                          className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        />
+                        <span className="text-[10px] text-slate-400 font-bold shrink-0">Bottom</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-1 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setFormMediaOffsetY(15)}
+                          className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                            formMediaOffsetY === 15 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                          }`}
+                        >
+                          Top 15%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormMediaOffsetY(50)}
+                          className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                            formMediaOffsetY === 50 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                          }`}
+                        >
+                          Center 50%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormMediaOffsetY(85)}
+                          className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                            formMediaOffsetY === 85 ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600'
+                          }`}
+                        >
+                          Bottom 85%
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
-                          {/* Top Badges (Category & Artist) */}
-                          <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider backdrop-blur-md ${getCategoryBadgeStyle(formCategory)}`}>
-                              {getCategoryIcon(formCategory)}
-                              <span>{getCategoryBadge(formCategory)}</span>
-                            </span>
+                  {/* Live Card Preview Box */}
+                  {(() => {
+                    const currentPreviewPhoto =
+                      formMediaPhotos[formActiveMediaIndex] ||
+                      formMediaPhotos[0] ||
+                      formImageUrl;
 
-                            {(() => {
-                              const artistInfo = getArtistLabel(formArtist);
-                              return (
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
-                                  <span>{artistInfo.emoji}</span>
-                                  <span>{artistInfo.label}</span>
-                                </span>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Top Right Actions: Lightbox + Photo Counter */}
-                          <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
-                            {formMediaPhotos.length > 1 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20">
-                                📷 {formActiveMediaIndex + 1} / {formMediaPhotos.length}
-                              </span>
+                    return (
+                      <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 shadow-md">
+                        {currentPreviewPhoto && !posterLoadError ? (
+                          <div
+                            className={`relative w-full ${
+                              posterPreviewAspect === 'card'
+                                ? 'aspect-[16/10]'
+                                : 'aspect-[2/3] max-h-[360px]'
+                            } overflow-hidden bg-slate-950 flex items-center justify-center group`}
+                          >
+                            {/* Ambient Blurred Backdrop when Auto-Fit (contain) is active */}
+                            {formMediaFit === 'contain' && (
+                              <div
+                                className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-35 scale-110 pointer-events-none"
+                                style={{
+                                  backgroundImage: `url(${currentPreviewPhoto})`
+                                }}
+                              />
                             )}
-                            <button
-                              type="button"
-                              onClick={() => setLightboxImageUrl({ url: currentPreviewPhoto, title: formTitle || 'Poster Preview' })}
-                              className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
-                              title="View Full Resolution in Lightbox"
-                            >
-                              <Maximize2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
 
-                          {/* Carousel Navigation Arrows if multiple photos */}
-                          {formMediaPhotos.length > 1 && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setFormActiveMediaIndex((prev) => (prev - 1 + formMediaPhotos.length) % formMediaPhotos.length);
-                                }}
-                                className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
-                                title="Previous Media Photo"
-                              >
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setFormActiveMediaIndex((prev) => (prev + 1) % formMediaPhotos.length);
-                                }}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
-                                title="Next Media Photo"
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
+                            <img
+                              src={currentPreviewPhoto}
+                              alt={formTitle || 'Project Poster Preview'}
+                              onError={() => setPosterLoadError(true)}
+                              onLoad={() => setPosterLoadError(false)}
+                              style={{
+                                objectPosition: `center ${formMediaOffsetY}%`
+                              }}
+                              className={`w-full h-full relative z-10 transition-transform duration-300 ${
+                                formMediaFit === 'contain' ? 'object-contain' : 'object-cover group-hover:scale-105'
+                              }`}
+                            />
+                            <div className="absolute bottom-0 inset-x-0 h-24 z-20 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
 
-                          {/* Bottom Overlay with Real-time Title, Status, and Year */}
-                          <div className="absolute bottom-3 inset-x-3 z-30 space-y-1.5 pointer-events-none">
-                            <div className="flex items-center justify-between gap-2">
-                              {!isBrandProject ? (
-                                <span className="text-[11px] font-bold text-white/90 drop-shadow-xs">
-                                  {formYear || 'Year'}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-black uppercase tracking-wider text-purple-200 bg-purple-950/70 px-2 py-0.5 rounded-full border border-purple-500/40">
-                                  {formCategory === 'owned_brands' ? '👑 Owned Brand' : '🤝 Partner Brand'}
-                                </span>
-                              )}
+                            {/* Top Badges (Category & Artist) */}
+                            <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider backdrop-blur-md ${getCategoryBadgeStyle(formCategory)}`}>
+                                {getCategoryIcon(formCategory)}
+                                <span>{getCategoryBadge(formCategory)}</span>
+                              </span>
+
                               {(() => {
-                                const statusObj = getStatusBadge(formStatus, formCategory);
+                                const artistInfo = getArtistLabel(formArtist);
                                 return (
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
-                                    {statusObj.label}
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
+                                    <span>{artistInfo.emoji}</span>
+                                    <span>{artistInfo.label}</span>
                                   </span>
                                 );
                               })()}
                             </div>
-                            <div className="flex items-center gap-2 min-w-0">
-                              {formAvatarUrl && (
-                                <img
-                                  src={formAvatarUrl}
-                                  alt="Brand avatar"
-                                  className="w-7 h-7 rounded-full object-cover border-2 border-white/80 shadow-xs shrink-0"
-                                />
+
+                            {/* Top Right Actions: Lightbox + Photo Counter */}
+                            <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+                              {formMediaPhotos.length > 1 && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20">
+                                  📷 {formActiveMediaIndex + 1} / {formMediaPhotos.length}
+                                </span>
                               )}
-                              <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
-                                <span>{formTitle || 'Your Project Title Here'}</span>
-                                {formThaiTitle && formThaiTitle.trim().length > 0 && (
-                                  <>
-                                    <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
-                                    <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formThaiTitle.trim()}</span>
-                                  </>
-                                )}
-                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => setLightboxImageUrl({ url: currentPreviewPhoto, title: formTitle || 'Poster Preview' })}
+                                className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
+                                title="View Full Resolution in Lightbox"
+                              >
+                                <Maximize2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Carousel Navigation Arrows if multiple photos */}
+                            {formMediaPhotos.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFormActiveMediaIndex((prev) => (prev - 1 + formMediaPhotos.length) % formMediaPhotos.length);
+                                  }}
+                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
+                                  title="Previous Media Photo"
+                                >
+                                  <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFormActiveMediaIndex((prev) => (prev + 1) % formMediaPhotos.length);
+                                  }}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
+                                  title="Next Media Photo"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+
+                            {/* Bottom Overlay with Real-time Title, Status, and Year */}
+                            <div className="absolute bottom-3 inset-x-3 z-30 space-y-1.5 pointer-events-none">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-bold text-white/90 drop-shadow-xs">
+                                  {formYear || 'Year'}
+                                </span>
+                                {(() => {
+                                  const statusObj = getStatusBadge(formStatus, formCategory);
+                                  return (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
+                                      {statusObj.label}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
+                                  <span>{formTitle || 'Your Project Title Here'}</span>
+                                  {formThaiTitle && formThaiTitle.trim().length > 0 && (
+                                    <>
+                                      <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
+                                      <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formThaiTitle.trim()}</span>
+                                    </>
+                                  )}
+                                </h4>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ) : posterLoadError ? (
-                        <div className="p-8 text-center flex flex-col items-center justify-center gap-2 bg-rose-50/10 text-slate-300">
-                          <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl">
-                            ⚠️
+                        ) : posterLoadError ? (
+                          <div className="p-8 text-center flex flex-col items-center justify-center gap-2 bg-rose-50/10 text-slate-300">
+                            <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl">
+                              ⚠️
+                            </div>
+                            <p className="text-xs font-bold text-rose-400">
+                              Unable to load image from URL
+                            </p>
+                            <p className="text-[11px] text-slate-400 max-w-sm">
+                              The link provided might be restricted, expired, or invalid. You can upload an image directly from your computer or phone below.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => posterFileInputRef.current?.click()}
+                              className="mt-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 cursor-pointer"
+                            >
+                              Upload Local File Instead
+                            </button>
                           </div>
-                          <p className="text-xs font-bold text-rose-400">
-                            Unable to load image from URL
-                          </p>
-                          <p className="text-[11px] text-slate-400 max-w-sm">
-                            The link provided might be restricted, expired, or invalid. You can upload an image directly from your computer or phone below.
-                          </p>
-                          <button
-                            type="button"
+                        ) : (
+                          <div
                             onClick={() => posterFileInputRef.current?.click()}
-                            className="mt-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 cursor-pointer"
+                            className="p-8 text-center flex flex-col items-center justify-center gap-2.5 cursor-pointer hover:bg-slate-800/80 transition-colors"
                           >
-                            Upload Local File Instead
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          onClick={() => posterFileInputRef.current?.click()}
-                          className="p-8 text-center flex flex-col items-center justify-center gap-2.5 cursor-pointer hover:bg-slate-800/80 transition-colors"
-                        >
-                          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
-                            <ImageIcon className="w-6 h-6" />
+                            <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                              <ImageIcon className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-200">
+                                No poster image selected yet
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Upload a photo from your device or paste an image URL below
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-200">
-                              No poster image selected yet
-                            </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              Upload a photo from your device or paste an image URL below
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                        )}
+                      </div>
+                    );
+                  })()}
 
-                {/* Thumbnails Collection Manager (Active Photos Carousel) */}
-                {formMediaPhotos.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold text-[#526586] dark:text-slate-400">
-                      <span>Media Photos Strip ({formMediaPhotos.length})</span>
-                      <span className="text-[10px] text-slate-400">
-                        ⭐ Main cover is photo #1
+                  {/* Thumbnails Collection Manager (Active Photos Carousel) */}
+                  {formMediaPhotos.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs font-bold text-[#526586] dark:text-slate-400">
+                        <span>Media Photos Strip ({formMediaPhotos.length})</span>
+                        <span className="text-[10px] text-slate-400">
+                          ⭐ Main cover is photo #1
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto pr-1">
+                        {formMediaPhotos.map((photo, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setFormActiveMediaIndex(idx);
+                              setFormImageUrl(photo);
+                              setPosterLoadError(false);
+                            }}
+                            className={`relative p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                              formActiveMediaIndex === idx
+                                ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-500 ring-2 ring-purple-400/50'
+                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                            }`}
+                          >
+                            <div className="relative aspect-[16/10] rounded-lg overflow-hidden bg-slate-950 mb-1.5">
+                              <img
+                                src={photo}
+                                alt={`Media ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                              {idx === 0 && (
+                                <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-black uppercase shadow-xs">
+                                  Primary
+                                </span>
+                              )}
+                              <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-white text-[8.5px] font-mono">
+                                #{idx + 1}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-1 pt-0.5">
+                              {idx !== 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSetPrimaryMedia(idx);
+                                  }}
+                                  className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                                  title="Make this the main cover poster"
+                                >
+                                  Set Main
+                                </button>
+                              ) : (
+                                <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                                  Cover
+                                </span>
+                              )}
+
+                              <div className="flex items-center gap-1">
+                                {idx > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveMediaPhoto(idx, idx - 1);
+                                    }}
+                                    className="p-1 rounded text-slate-400 hover:text-purple-600 cursor-pointer"
+                                    title="Move earlier"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {idx < formMediaPhotos.length - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveMediaPhoto(idx, idx + 1);
+                                    }}
+                                    className="p-1 rounded text-slate-400 hover:text-purple-600 cursor-pointer"
+                                    title="Move later"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveMediaPhoto(idx);
+                                  }}
+                                  className="p-1 rounded text-rose-500 hover:text-rose-700 cursor-pointer"
+                                  title="Delete this photo"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Row: Upload Button + Multi-URL Input */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        disabled={isUploadingPoster}
+                        onClick={() => posterFileInputRef.current?.click()}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold cursor-pointer transition-all disabled:opacity-50 shadow-2xs"
+                      >
+                        {isUploadingPoster ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Compressing &amp; Adding...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Upload From Device (Multiple Photos)</span>
+                          </>
+                        )}
+                      </button>
+                      <span className="text-[10.5px] font-semibold text-slate-400">
+                        Supports JPG, PNG, WEBP, GIF
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto pr-1">
-                      {formMediaPhotos.map((photo, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => {
-                            setFormActiveMediaIndex(idx);
-                            setFormImageUrl(photo);
-                            setPosterLoadError(false);
-                          }}
-                          className={`relative p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                            formActiveMediaIndex === idx
-                              ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-500 ring-2 ring-purple-400/50'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-purple-300'
-                          }`}
-                        >
-                          <div className="relative aspect-[16/10] rounded-lg overflow-hidden bg-slate-950 mb-1.5">
-                            <img
-                              src={photo}
-                              alt={`Media ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                            {idx === 0 && (
-                              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-black uppercase shadow-xs">
-                                Primary
+                    {/* Multi-URL Input Box with Live Detection Counter */}
+                    {(() => {
+                      const urlMatches = newMediaUrlInput.match(/(https?:\/\/[^\s"',<>[\]]+|data:image\/[^\s"',<>[\]]+)/gi) || [];
+                      const detectedCount = urlMatches.length > 0
+                        ? urlMatches.length
+                        : newMediaUrlInput.split(/[\n\r,\s;]+/).filter(Boolean).length;
+
+                      return (
+                        <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-purple-200/90 dark:border-slate-700 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <label className="text-[11px] font-bold text-[#1A3668] dark:text-slate-200 flex items-center gap-1.5">
+                              <Link2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                              <span>Paste Poster URLs (Add Multiple URLs at Once)</span>
+                            </label>
+                            {detectedCount > 0 && (
+                              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                ✨ {detectedCount} {detectedCount === 1 ? 'URL detected' : 'URLs detected ready to add'}
                               </span>
                             )}
-                            <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-white text-[8.5px] font-mono">
-                              #{idx + 1}
-                            </span>
                           </div>
 
-                          <div className="flex items-center justify-between gap-1 pt-0.5">
-                            {idx !== 0 ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSetPrimaryMedia(idx);
-                                }}
-                                className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
-                                title="Make this the main cover poster"
-                              >
-                                Set Main
-                              </button>
-                            ) : (
-                              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
-                                Cover
-                              </span>
-                            )}
+                          <textarea
+                            rows={2}
+                            value={newMediaUrlInput}
+                            onChange={(e) => setNewMediaUrlInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddMediaUrl(newMediaUrlInput);
+                              }
+                            }}
+                            placeholder="Paste one or multiple poster URLs here...&#10;URLs can be separated by new line, space, or comma (e.g. https://.../poster1.jpg https://.../poster2.jpg)"
+                            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5 text-xs font-medium text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder-slate-400 font-mono transition-all leading-relaxed"
+                          />
 
-                            <div className="flex items-center gap-1">
-                              {idx > 0 && (
+                          <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                            <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                              💡 Tip: Paste multiple links at once (separated by Enter, commas, or spaces).
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {newMediaUrlInput && (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleMoveMediaPhoto(idx, idx - 1);
-                                  }}
-                                  className="p-1 rounded text-slate-400 hover:text-purple-600 cursor-pointer"
-                                  title="Move earlier"
+                                  onClick={() => setNewMediaUrlInput('')}
+                                  className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer font-bold px-2 py-1"
                                 >
-                                  <ArrowUp className="w-3 h-3" />
-                                </button>
-                              )}
-                              {idx < formMediaPhotos.length - 1 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleMoveMediaPhoto(idx, idx + 1);
-                                  }}
-                                  className="p-1 rounded text-slate-400 hover:text-purple-600 cursor-pointer"
-                                  title="Move later"
-                                >
-                                  <ArrowDown className="w-3 h-3" />
+                                  Clear
                                 </button>
                               )}
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRemoveMediaPhoto(idx);
-                                }}
-                                className="p-1 rounded text-rose-500 hover:text-rose-700 cursor-pointer"
-                                title="Delete this photo"
+                                onClick={() => handleAddMediaUrl(newMediaUrlInput)}
+                                disabled={!newMediaUrlInput.trim()}
+                                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>
+                                  {detectedCount > 1
+                                    ? `Add All ${detectedCount} Posters at Once`
+                                    : detectedCount === 1
+                                    ? 'Add Poster'
+                                    : 'Add Media'}
+                                </span>
                               </button>
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      );
+                    })()}
 
-                {/* Hidden File Input for Device Multiple Upload */}
-                <input
-                  ref={posterFileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  multiple
-                  onChange={handlePosterFileUpload}
-                  className="hidden"
-                />
-
-                {/* Action Row: Upload Button + URL Input */}
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isUploadingPoster}
-                      onClick={() => posterFileInputRef.current?.click()}
-                      className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-950/80 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold cursor-pointer transition-all shrink-0 disabled:opacity-50"
-                    >
-                      {isUploadingPoster ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Compressing & Adding...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Upload From Device (Multiple)</span>
-                        </>
-                      )}
-                    </button>
-
-                    <div className="flex-1 flex gap-1.5">
-                      <input
-                        type="url"
-                        value={newMediaUrlInput}
-                        onChange={(e) => setNewMediaUrlInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddMediaUrl(newMediaUrlInput);
-                          }
-                        }}
-                        placeholder="Or paste photo URL (comma/newline separated for multiple)..."
-                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400 placeholder-slate-400"
-                      />
+                    {/* Sample Posters Quick Presets */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-purple-500" />
+                        <span>Add Sample Posters:</span>
+                      </span>
                       <button
                         type="button"
-                        onClick={() => handleAddMediaUrl(newMediaUrlInput)}
-                        disabled={!newMediaUrlInput.trim()}
-                        className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer shrink-0 shadow-xs"
+                        onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80')}
+                        className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                       >
-                        + Add
+                        🎬 Cinema Sunset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80')}
+                        className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      >
+                        🎭 Theater Spotlight
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80')}
+                        className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      >
+                        ✨ Concert &amp; Stage
                       </button>
                     </div>
                   </div>
-
-                  {/* Sample Posters Quick Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-purple-500" />
-                      <span>Add Sample Posters:</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80')}
-                      className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                      🎬 Cinema Sunset
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80')}
-                      className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                      🎭 Theater Spotlight
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddMediaUrl('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80')}
-                      className="text-[10.5px] font-semibold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                      ✨ Concert & Stage
-                    </button>
-                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Hidden File Input for Device Multiple Poster Upload */}
+              <input
+                ref={posterFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                onChange={handlePosterFileUpload}
+                className="hidden"
+              />
 
               {/* MULTIPLE WHERE TO WATCH & OFFICIAL LINKS BUILDER */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 space-y-3">
