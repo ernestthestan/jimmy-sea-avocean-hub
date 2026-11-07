@@ -1497,7 +1497,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       case 'partner_brands':
         return <Sparkles className="w-3.5 h-3.5" />;
       case 'owned_brands':
-        return <Crown className="w-3.5 h-3.5" />;
+        return <Crown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />;
     }
   };
 
@@ -1513,6 +1513,23 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         return 'Partner Brand';
       case 'owned_brands':
         return 'Owned Brand';
+    }
+  };
+
+  const getCategoryBadgeStyle = (category: ProjectCategory) => {
+    switch (category) {
+      case 'owned_brands':
+        return 'bg-gradient-to-r from-amber-200/90 via-yellow-100 to-amber-200/90 dark:from-amber-950/90 dark:via-yellow-950/80 dark:to-amber-900/90 text-amber-950 dark:text-amber-100 border-2 border-amber-400 dark:border-amber-500 shadow-xs font-black tracking-wider';
+      case 'partner_brands':
+        return 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold';
+      case 'shows':
+        return 'bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-bold';
+      case 'movies':
+        return 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold';
+      case 'music_videos':
+        return 'bg-pink-100 dark:bg-pink-950/80 text-pink-800 dark:text-pink-300 border border-pink-200 dark:border-pink-800 font-bold';
+      default:
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 font-bold';
     }
   };
 
@@ -2969,10 +2986,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         );
                       })()}
 
-                      {/* Brand Header: Display Picture + Badges Row placed cleanly below the banner (no negative margin, no covering the banner) */}
+                      {/* Brand Header: Display Picture + Badges Row placed cleanly below the banner (sized like Fan Clubs avatar, no negative margin, no covering the banner) */}
                       {isBrand && (
-                        <div className="px-5 sm:px-6 pt-3.5 pb-0.5 flex items-center gap-3.5 relative z-20">
-                          {/* Clickable Display Picture */}
+                        <div className="px-5 sm:px-6 pt-4 pb-1 flex items-center gap-4 relative z-20">
+                          {/* Clickable Display Picture (Matching Fan Clubs standard size: w-20 h-20 sm:w-24 sm:h-24) */}
                           <div
                             onClick={(e) => {
                               if (proj.avatarUrl) {
@@ -2991,25 +3008,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 <img
                                   src={proj.avatarUrl}
                                   alt={`${primaryEnglishTitle} display photo`}
-                                  className="w-13 h-13 sm:w-15 sm:h-15 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-sm object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200"
+                                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200"
                                   onError={(e) => {
                                     (e.target as HTMLElement).style.display = 'none';
                                   }}
                                 />
                                 <div className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/avatar:opacity-100">
-                                  <Maximize2 className="w-3.5 h-3.5 text-white drop-shadow-md" />
+                                  <Maximize2 className="w-4 h-4 text-white drop-shadow-md" />
                                 </div>
                               </>
                             ) : (
-                              <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-sm bg-gradient-to-tr from-amber-500 via-purple-600 to-indigo-600 flex items-center justify-center text-white text-lg sm:text-xl font-black">
+                              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md bg-gradient-to-tr from-amber-500 via-purple-600 to-indigo-600 flex items-center justify-center text-white text-2xl sm:text-3xl font-black">
                                 {proj.category === 'owned_brands' ? '👑' : '🤝'}
                               </div>
                             )}
                           </div>
 
                           {/* Badges beside the avatar */}
-                          <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs shrink-0">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10.5px] uppercase tracking-wider shrink-0 ${getCategoryBadgeStyle(proj.category)}`}>
                               {getCategoryIcon(proj.category)}
                               <span>{getCategoryBadge(proj.category)}</span>
                             </span>
@@ -3032,7 +3049,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         {!isBrand && (
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider shadow-2xs ${getCategoryBadgeStyle(proj.category)}`}>
                                 {getCategoryIcon(proj.category)}
                                 <span>{getCategoryBadge(proj.category)}</span>
                               </span>
@@ -3456,16 +3473,16 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   title: 'Owned Brands & Personal Ventures',
                   emoji: '👑',
                   subtitle: 'Founder ventures, official business lines & personal merchandise',
-                  accentBorder: 'border-emerald-400/50 dark:border-emerald-700/60',
-                  badgeBg: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  accentBorder: 'border-amber-400/60 dark:border-amber-500/60',
+                  badgeBg: 'bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-950/90 dark:to-yellow-950/80 text-amber-950 dark:text-amber-200 border-2 border-amber-400 dark:border-amber-600 font-black'
                 },
                 {
                   id: 'partner_brands',
                   title: 'Partner Brands & Endorsements',
                   emoji: '🤝',
                   subtitle: 'Commercial endorsements, brand ambassador campaigns & official partnerships',
-                  accentBorder: 'border-amber-400/50 dark:border-amber-700/60',
-                  badgeBg: 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                  accentBorder: 'border-indigo-400/50 dark:border-indigo-700/60',
+                  badgeBg: 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
                 }
               ];
 
@@ -3676,8 +3693,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-14 h-14 rounded-full border-2 border-purple-300 dark:border-purple-700 shadow-sm overflow-hidden bg-white dark:bg-slate-800 shrink-0 flex items-center justify-center">
+                  <div className="flex items-center gap-4">
+                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-purple-300 dark:border-purple-700 shadow-md overflow-hidden bg-white dark:bg-slate-800 shrink-0 flex items-center justify-center">
                       {formAvatarUrl ? (
                         <img
                           src={formAvatarUrl}
@@ -3686,7 +3703,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
                         />
                       ) : (
-                        <span className="text-2xl select-none">
+                        <span className="text-3xl select-none">
                           {formCategory === 'owned_brands' ? '👑' : '🤝'}
                         </span>
                       )}
@@ -4288,7 +4305,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                           {/* Top Badges (Category & Artist) */}
                           <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/20">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider backdrop-blur-md ${getCategoryBadgeStyle(formCategory)}`}>
                               {getCategoryIcon(formCategory)}
                               <span>{getCategoryBadge(formCategory)}</span>
                             </span>
