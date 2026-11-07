@@ -732,6 +732,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const [formThaiTitle, setFormThaiTitle] = useState<string>('');
   const [formEnglishTitle, setFormEnglishTitle] = useState<string>('');
   const [formCategory, setFormCategory] = useState<ProjectCategory>('shows');
+  const isBrandProject = formCategory === 'owned_brands' || formCategory === 'partner_brands';
   const [formArtist, setFormArtist] = useState<ProjectArtist>('jimmysea');
   const [formRole, setFormRole] = useState<string>('');
   const [formJimmyRole, setFormJimmyRole] = useState<string>('');
@@ -772,6 +773,9 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormCustomWebsites((prev) => prev.filter((_, i) => i !== idx));
   };
   const posterFileInputRef = useRef<HTMLInputElement | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [formAvatarUrl, setFormAvatarUrl] = useState<string>('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const [isUploadingPoster, setIsUploadingPoster] = useState<boolean>(false);
   const [posterLoadError, setPosterLoadError] = useState<boolean>(false);
   const [posterPreviewAspect, setPosterPreviewAspect] = useState<'card' | 'poster'>('card');
@@ -828,6 +832,33 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       setIsUploadingPoster(false);
       if (posterFileInputRef.current) {
         posterFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingAvatar(true);
+    try {
+      const compressed = await compressImageFile(file, 512, 512, 0.85);
+      setFormAvatarUrl(compressed);
+      showToast('Brand display photo uploaded successfully!');
+    } catch (err) {
+      console.warn('Avatar compression fallback:', err);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const res = (ev.target?.result as string) || '';
+        if (res) {
+          setFormAvatarUrl(res);
+          showToast('Brand display photo uploaded successfully!');
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarFileInputRef.current) {
+        avatarFileInputRef.current.value = '';
       }
     }
   };
@@ -1094,15 +1125,22 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormTitle('');
     setFormThaiTitle('');
     setFormEnglishTitle('');
-    setFormCategory('shows');
-    setFormArtist('jimmysea');
+    setFormAvatarUrl('');
+    const initialCategory: ProjectCategory =
+      selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands'
+        ? selectedCategory
+        : selectedCategory !== 'all'
+        ? (selectedCategory as ProjectCategory)
+        : 'shows';
+    setFormCategory(initialCategory);
+    setFormArtist(initialCategory === 'owned_brands' ? 'avocean' : 'jimmysea');
     setFormRole('');
     setFormJimmyRole('');
     setFormSeaRole('');
     setFormDirector('');
     setFormYear('2023–2024');
     setFormFilmedPeriod('');
-    setFormStatus('released');
+    setFormStatus(initialCategory === 'owned_brands' || initialCategory === 'partner_brands' ? 'active' : 'released');
     setFormDescription('');
     const sampleCover = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80';
     setFormImageUrl(sampleCover);
@@ -1152,6 +1190,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormTitle(resolvedTitle);
     setFormThaiTitle(resolvedThai);
     setFormEnglishTitle(proj.englishTitle || resolvedTitle);
+    setFormAvatarUrl(proj.avatarUrl || '');
     setFormCategory(proj.category);
     setFormArtist(proj.artist);
 
@@ -1331,6 +1370,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       .map((w) => ({ label: w.label.trim() || 'Official Website', url: w.url.trim() }))
       .filter((w) => w.url.length > 0);
 
+    const isBrand = formCategory === 'owned_brands' || formCategory === 'partner_brands';
+
     const projectToSave: CareerProject = {
       id: editingProject ? editingProject.id : `proj-${formCategory}-${Date.now()}`,
       title: formTitle.trim(),
@@ -1338,12 +1379,13 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       englishTitle: formTitle.trim(),
       category: formCategory,
       artist: formArtist,
-      role: trimmedRole || undefined,
-      jimmyRole: trimmedJimmy || undefined,
-      seaRole: trimmedSea || undefined,
-      director: formDirector.trim() || undefined,
-      year: formYear.trim() || undefined,
-      filmedPeriod: formFilmedPeriod.trim() || undefined,
+      avatarUrl: formAvatarUrl.trim() || undefined,
+      role: !isBrand ? (trimmedRole || undefined) : undefined,
+      jimmyRole: !isBrand ? (trimmedJimmy || undefined) : undefined,
+      seaRole: !isBrand ? (trimmedSea || undefined) : undefined,
+      director: !isBrand ? (formDirector.trim() || undefined) : undefined,
+      year: !isBrand ? (formYear.trim() || undefined) : undefined,
+      filmedPeriod: !isBrand ? (formFilmedPeriod.trim() || undefined) : undefined,
       status: formStatus,
       description: formDescription.trim(),
       imageUrl: primaryPoster,
@@ -1353,7 +1395,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       mediaOffsetY: formMediaOffsetY,
       titleSize: formTitleSize,
       fontSize: formFontSize,
-      platform: formPlatform.trim() || undefined,
+      platform: !isBrand ? (formPlatform.trim() || undefined) : undefined,
       primaryLink: validWatchLinks[0]?.url || undefined,
       extraLinks: validWatchLinks.length > 1 ? validWatchLinks.slice(1) : undefined,
       watchLinks: validWatchLinks.length > 0 ? validWatchLinks : undefined,
@@ -1361,7 +1403,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       instagramUrl: normalizeSocialUrl(formInstagramUrl, 'instagram'),
       officialWebsiteUrl: formOfficialWebsiteUrl.trim() || undefined,
       customWebsites: validCustomWebsites.length > 0 ? validCustomWebsites : undefined,
-      highlight: formHighlight.trim() || undefined,
+      highlight: !isBrand ? (formHighlight.trim() || undefined) : undefined,
       tags: tagsArray.length > 0 ? tagsArray : undefined,
       updatedAt: new Date().toISOString()
     };
@@ -1423,7 +1465,20 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     }
   };
 
-  const getStatusBadge = (status: ProjectStatus) => {
+  const getStatusBadge = (status: ProjectStatus, category?: ProjectCategory) => {
+    const isBrand = category === 'owned_brands' || category === 'partner_brands';
+    if (isBrand) {
+      switch (status) {
+        case 'active':
+        case 'ongoing':
+          return { label: 'Active', color: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
+        case 'upcoming':
+          return { label: 'Upcoming', color: 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800' };
+        case 'released':
+        default:
+          return { label: 'Non-Active', color: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700' };
+      }
+    }
     switch (status) {
       case 'upcoming':
         return { label: 'Upcoming', color: 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800' };
@@ -2231,47 +2286,61 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             </nav>
 
             {/* Release Status Quick Filter in Sidebar */}
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 px-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 block mb-1.5">
-                Release Status
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:flex-col md:landscape:flex md:landscape:flex-col gap-1.5 w-full">
-                {[
-                  { id: 'all', label: 'All Projects', emoji: '✨', count: filteredProjects.length },
-                  { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
-                  { id: 'airing', label: 'Airing', emoji: '📺', count: airingProjects.length },
-                  { id: 'past', label: 'Past Projects', emoji: '🎬', count: pastProjects.length },
-                ].map((st) => {
-                  const isSel = selectedStatus === st.id;
-                  return (
-                    <button
-                      key={st.id}
-                      type="button"
-                      onClick={() => setSelectedStatus(st.id as any)}
-                      className={`inline-flex items-center justify-between gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-left ${
-                        isSel
-                          ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
-                          : 'bg-slate-100/80 lg:bg-transparent dark:bg-slate-800/80 lg:dark:bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
-                      } w-full`}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span>{st.emoji}</span>
-                        <span className="truncate">{st.label}</span>
-                      </div>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${
-                          isSel
-                            ? 'bg-white/20 text-white'
-                            : 'bg-white lg:bg-slate-100 dark:bg-slate-700 lg:dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                        }`}
-                      >
-                        {st.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {(() => {
+              const isViewingBrands = selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands';
+              const statusItems = isViewingBrands
+                ? [
+                    { id: 'all', label: 'All Brands', emoji: '👑', count: filteredProjects.length },
+                    { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
+                    { id: 'airing', label: 'Active', emoji: '🟢', count: airingProjects.length },
+                    { id: 'past', label: 'Non-Active', emoji: '⚪', count: pastProjects.length },
+                  ]
+                : [
+                    { id: 'all', label: 'All Projects', emoji: '✨', count: filteredProjects.length },
+                    { id: 'upcoming', label: 'Upcoming', emoji: '🕒', count: upcomingProjects.length },
+                    { id: 'airing', label: 'Airing', emoji: '📺', count: airingProjects.length },
+                    { id: 'past', label: 'Past Projects', emoji: '🎬', count: pastProjects.length },
+                  ];
+
+              return (
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 block mb-1.5">
+                    {isViewingBrands ? 'Brand Status' : 'Release Status'}
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:flex-col md:landscape:flex md:landscape:flex-col gap-1.5 w-full">
+                    {statusItems.map((st) => {
+                      const isSel = selectedStatus === st.id;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => setSelectedStatus(st.id as any)}
+                          className={`inline-flex items-center justify-between gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-left ${
+                            isSel
+                              ? 'bg-[#1A3668] dark:bg-purple-600 text-white shadow-xs'
+                              : 'bg-slate-100/80 lg:bg-transparent dark:bg-slate-800/80 lg:dark:bg-transparent text-[#526586] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                          } w-full`}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span>{st.emoji}</span>
+                            <span className="truncate">{st.label}</span>
+                          </div>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${
+                              isSel
+                                ? 'bg-white/20 text-white'
+                                : 'bg-white lg:bg-slate-100 dark:bg-slate-700 lg:dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            {st.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Language Selector for Descriptions */}
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 px-2">
@@ -2327,92 +2396,99 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           </div>
 
           {/* Status Navigation Tabs (Upcoming, Airing, Past Projects): Wraps naturally without sliders */}
-          <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 pl-1 shrink-0">
-                Status:
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedStatus('all')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedStatus === 'all'
-                    ? 'bg-purple-600 text-white shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-purple-600'
-                }`}
-              >
-                <span>✨ All Works</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  selectedStatus === 'all' ? 'bg-white/20 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                }`}>
-                  {filteredProjects.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedStatus('upcoming')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedStatus === 'upcoming'
-                    ? 'bg-amber-500 text-white shadow-xs'
-                    : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200/60 dark:border-amber-900/50'
-                }`}
-              >
-                <span>🕒 Upcoming</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  selectedStatus === 'upcoming' ? 'bg-white/25 text-white' : 'bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200'
-                }`}>
-                  {upcomingProjects.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedStatus('airing')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedStatus === 'airing'
-                    ? 'bg-sky-500 text-white shadow-xs'
-                    : 'bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200/60 dark:border-sky-900/50'
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span>📺 Airing</span>
-                  {airingProjects.length > 0 && (
-                    <span className="flex h-2 w-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+          {(() => {
+            const isViewingBrands = selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands';
+            return (
+              <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 pl-1 shrink-0">
+                    Status:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('all')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      selectedStatus === 'all'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-purple-600'
+                    }`}
+                  >
+                    <span>{isViewingBrands ? '👑 All Brands' : '✨ All Works'}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      selectedStatus === 'all' ? 'bg-white/20 text-white' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}>
+                      {filteredProjects.length}
                     </span>
-                  )}
-                </span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  selectedStatus === 'airing' ? 'bg-white/25 text-white' : 'bg-sky-200/80 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200'
-                }`}>
-                  {airingProjects.length}
-                </span>
-              </button>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => setSelectedStatus('past')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedStatus === 'past'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-900/50'
-                }`}
-              >
-                <span>🎬 Past Projects</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  selectedStatus === 'past' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200'
-                }`}>
-                  {pastProjects.length}
-                </span>
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('upcoming')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      selectedStatus === 'upcoming'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200/60 dark:border-amber-900/50'
+                    }`}
+                  >
+                    <span>🕒 Upcoming</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      selectedStatus === 'upcoming' ? 'bg-white/25 text-white' : 'bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200'
+                    }`}>
+                      {upcomingProjects.length}
+                    </span>
+                  </button>
 
-            <div className="text-[11px] font-semibold text-slate-400 px-1 hidden sm:block">
-              Organized: Upcoming → Airing → Past Projects
-            </div>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('airing')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      selectedStatus === 'airing'
+                        ? 'bg-sky-500 text-white shadow-xs'
+                        : 'bg-sky-50/70 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200/60 dark:border-sky-900/50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{isViewingBrands ? '🟢 Active' : '📺 Airing'}</span>
+                      {airingProjects.length > 0 && (
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                        </span>
+                      )}
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      selectedStatus === 'airing' ? 'bg-white/25 text-white' : 'bg-sky-200/80 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200'
+                    }`}>
+                      {airingProjects.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('past')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      selectedStatus === 'past'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-900/50'
+                    }`}
+                  >
+                    <span>{isViewingBrands ? '⚪ Non-Active' : '🎬 Past Projects'}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      selectedStatus === 'past' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200'
+                    }`}>
+                      {pastProjects.length}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] font-semibold text-slate-400 px-1 hidden sm:block">
+                  {isViewingBrands
+                    ? 'Organized: Upcoming → Active → Non-Active Brands'
+                    : 'Organized: Upcoming → Airing → Past Projects'}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Projects View Controls: Poster Display Ratio & Global Font Size */}
           <div className="bg-white/95 dark:bg-slate-900/90 rounded-2xl shadow-xs px-3 sm:px-4 py-2.5 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -2610,7 +2686,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             (() => {
               const renderProjectCard = (proj: CareerProject) => {
                 const artistInfo = getArtistLabel(proj.artist);
-                const statusInfo = getStatusBadge(proj.status);
+                const isBrand = proj.category === 'owned_brands' || proj.category === 'partner_brands';
+                const statusInfo = getStatusBadge(proj.status, proj.category);
                 const cardLang = projectCardLangs[proj.id] || targetLang || 'en';
                 const isTranslating = !!translatingIds[proj.id];
                 const cachedFullTrans = projectCardTranslations[proj.id]?.[cardLang];
@@ -2794,7 +2871,42 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                       {/* Card Content Body */}
                       <div className="p-5 space-y-3">
-                        {/* Badges Row: Category, Artist & Status (Moved above translation picker) */}
+                        {/* Display Picture / Avatar (Just like Fan Clubs) */}
+                        {proj.avatarUrl && (
+                          <div className="flex items-center gap-3.5 pt-0.5 pb-1">
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLightboxImageUrl({
+                                  url: proj.avatarUrl!,
+                                  title: `${primaryEnglishTitle} Display Photo`
+                                });
+                              }}
+                              className="relative shrink-0 cursor-pointer group/avatar"
+                              title="Click to view full display photo"
+                            >
+                              <img
+                                src={proj.avatarUrl}
+                                alt={`${primaryEnglishTitle} display photo`}
+                                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-md object-cover bg-white dark:bg-slate-800 group-hover/avatar:scale-105 transition-transform duration-200"
+                                onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                              />
+                              <div className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/avatar:opacity-100">
+                                <Maximize2 className="w-3.5 h-3.5 text-white drop-shadow-md" />
+                              </div>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 block">
+                                {proj.category === 'owned_brands' ? '👑 Owned Brand' : proj.category === 'partner_brands' ? '🤝 Partner Brand' : 'Project'}
+                              </span>
+                              <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate block">
+                                {artistInfo.label}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Badges Row: Category, Artist & Status */}
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 shadow-2xs">
@@ -2908,8 +3020,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           </div>
                         </div>
 
-                        {/* Dedicated Jimmy & Sea Character Names & Roles */}
-                        {(displayJimmyRole || displaySeaRole || displayRole) && (
+                        {/* Dedicated Jimmy & Sea Character Names & Roles (Only for shows & movies, not brands) */}
+                        {!isBrand && (displayJimmyRole || displaySeaRole || displayRole) && (
                           <div className="flex flex-wrap items-center gap-2 pt-0.5">
                             {displayJimmyRole && (
                               <div className={`inline-flex items-center gap-1.5 rounded-xl font-bold bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 shadow-2xs ${typo.badges}`}>
@@ -2962,24 +3074,24 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           )}
                         </div>
 
-                        {/* Director (for TV Series & Movies) */}
-                        {displayDirector && (
+                        {/* Director (for TV Series & Movies, not brands) */}
+                        {!isBrand && displayDirector && (
                           <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 ${typo.meta}`}>
                             <Clapperboard className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
                             <span>Directed by <strong className="text-[#1A3668] dark:text-white font-bold">{displayDirector}</strong></span>
                           </div>
                         )}
 
-                        {/* Award / Highlight Chip */}
-                        {displayHighlight && (
+                        {/* Award / Highlight Chip (not for brands) */}
+                        {!isBrand && displayHighlight && (
                           <div className={`p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-900 dark:text-amber-200 font-bold flex items-center gap-2 ${typo.meta}`}>
                             <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                             <span className="leading-tight">{displayHighlight}</span>
                           </div>
                         )}
 
-                        {/* Release / On-Air Period and Filmed Month / Year (Above Description / Synopsis) */}
-                        {(proj.year || displayFilmedPeriod) && (
+                        {/* Release / On-Air Period and Filmed Month / Year (Above Description / Synopsis, not for brands) */}
+                        {!isBrand && (proj.year || displayFilmedPeriod) && (
                           <div className="flex flex-wrap items-center gap-2 pt-0.5">
                             {proj.year && (
                               <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700/70 ${typo.meta}`}>
@@ -3181,6 +3293,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               );
 
+              const isViewingBrands = selectedCategory === 'owned_brands' || selectedCategory === 'partner_brands';
+
               return (
                 <div className="space-y-8">
                   {/* 1. UPCOMING SECTION */}
@@ -3195,14 +3309,16 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                                  Upcoming
+                                  {isViewingBrands ? 'Upcoming Brand Launches' : 'Upcoming'}
                                 </h3>
                                 <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                                  {upcomingProjects.length} {upcomingProjects.length === 1 ? 'project' : 'projects'}
+                                  {upcomingProjects.length} {upcomingProjects.length === 1 ? (isViewingBrands ? 'brand' : 'project') : (isViewingBrands ? 'brands' : 'projects')}
                                 </span>
                               </div>
                               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                Anticipated future premieres, announced works &amp; upcoming releases
+                                {isViewingBrands
+                                  ? 'Anticipated upcoming brand collaborations, launches & announced ventures'
+                                  : 'Anticipated future premieres, announced works & upcoming releases'}
                               </p>
                             </div>
                           </div>
@@ -3212,45 +3328,53 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     ) : selectedStatus === 'upcoming' ? (
                       <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-amber-300/80 dark:border-amber-800/80 flex flex-col items-center justify-center gap-2">
                         <div className="text-3xl">🕒</div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Upcoming Projects Found</h4>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          {isViewingBrands ? 'No Upcoming Brands Found' : 'No Upcoming Projects Found'}
+                        </h4>
                         <p className="text-xs text-slate-500 max-w-sm">
-                          No upcoming projects match your selected filters. Click &quot;+ Add Project&quot; above to announce upcoming works.
+                          {isViewingBrands
+                            ? 'No upcoming brands match your selected filters. Click "+ Add Project" above to announce upcoming brand ventures.'
+                            : 'No upcoming projects match your selected filters. Click "+ Add Project" above to announce upcoming works.'}
                         </p>
                         <button
                           type="button"
                           onClick={() => setSelectedStatus('all')}
                           className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
                         >
-                          View All Projects
+                          {isViewingBrands ? 'View All Brands' : 'View All Projects'}
                         </button>
                       </div>
                     ) : null
                   )}
 
-                  {/* 2. AIRING SECTION */}
+                  {/* 2. AIRING / ACTIVE BRANDS SECTION */}
                   {(selectedStatus === 'all' || selectedStatus === 'airing') && (
                     airingProjects.length > 0 ? (
                       <section className="space-y-4 pt-1">
-                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-sky-400/40 dark:border-sky-700/50">
+                        <div className={`flex items-center justify-between gap-3 pb-2.5 border-b-2 ${isViewingBrands ? 'border-emerald-400/40 dark:border-emerald-700/50' : 'border-sky-400/40 dark:border-sky-700/50'}`}>
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-2xl bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 flex items-center justify-center text-lg shadow-2xs border border-sky-200/60 dark:border-sky-800">
-                              📺
+                            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-lg shadow-2xs border ${isViewingBrands ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800' : 'bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 border-sky-200/60 dark:border-sky-800'}`}>
+                              {isViewingBrands ? '🟢' : '📺'}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                                  <span>Airing</span>
-                                  <span className="flex h-2.5 w-2.5 relative">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
-                                  </span>
+                                  <span>{isViewingBrands ? 'Active Brands' : 'Airing'}</span>
+                                  {!isViewingBrands && (
+                                    <span className="flex h-2.5 w-2.5 relative">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
+                                    </span>
+                                  )}
                                 </h3>
-                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-                                  {airingProjects.length} {airingProjects.length === 1 ? 'project' : 'projects'}
+                                <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${isViewingBrands ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-sky-100 dark:bg-sky-950/80 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800'}`}>
+                                  {airingProjects.length} {airingProjects.length === 1 ? (isViewingBrands ? 'brand' : 'project') : (isViewingBrands ? 'brands' : 'projects')}
                                 </span>
                               </div>
                               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                Currently broadcasting series, on-air episodes &amp; active campaigns
+                                {isViewingBrands
+                                  ? 'Currently operating brand ventures, active endorsements & live official business lines'
+                                  : 'Currently broadcasting series, on-air episodes & active campaigns'}
                               </p>
                             </div>
                           </div>
@@ -3259,42 +3383,48 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       </section>
                     ) : selectedStatus === 'airing' ? (
                       <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-sky-300/80 dark:border-sky-800/80 flex flex-col items-center justify-center gap-2">
-                        <div className="text-3xl">📺</div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Currently Airing Projects Found</h4>
+                        <div className="text-3xl">{isViewingBrands ? '🟢' : '📺'}</div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          {isViewingBrands ? 'No Active Brands Found' : 'No Currently Airing Projects Found'}
+                        </h4>
                         <p className="text-xs text-slate-500 max-w-sm">
-                          No active or on-air series match your selected filters.
+                          {isViewingBrands
+                            ? 'No active brands match your selected filters.'
+                            : 'No active or on-air series match your selected filters.'}
                         </p>
                         <button
                           type="button"
                           onClick={() => setSelectedStatus('all')}
                           className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
                         >
-                          View All Projects
+                          {isViewingBrands ? 'View All Brands' : 'View All Projects'}
                         </button>
                       </div>
                     ) : null
                   )}
 
-                  {/* 3. PAST PROJECTS SECTION */}
+                  {/* 3. PAST / NON-ACTIVE SECTION */}
                   {(selectedStatus === 'all' || selectedStatus === 'past') && (
                     pastProjects.length > 0 ? (
                       <section className="space-y-4 pt-1">
-                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-emerald-400/40 dark:border-emerald-700/50">
+                        <div className="flex items-center justify-between gap-3 pb-2.5 border-b-2 border-slate-300/60 dark:border-slate-700/60">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-lg shadow-2xs border border-emerald-200/60 dark:border-emerald-800">
-                              🎬
+                            <div className="w-9 h-9 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-lg shadow-2xs border border-slate-200/80 dark:border-slate-700">
+                              {isViewingBrands ? '⚪' : '🎬'}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                                  Past Projects
+                                  {isViewingBrands ? 'Non-Active Brands' : 'Past Projects'}
                                 </h3>
-                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                  {pastProjects.length} {pastProjects.length === 1 ? 'project' : 'projects'}
+                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  {pastProjects.length} {pastProjects.length === 1 ? (isViewingBrands ? 'brand' : 'project') : (isViewingBrands ? 'brands' : 'projects')}
                                 </span>
                               </div>
                               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                Concluded series, released filmography, past music videos &amp; brand archives
+                                {isViewingBrands
+                                  ? 'Concluded partnerships, completed brand endorsements & archived ventures'
+                                  : 'Concluded series, released filmography, past music videos & brand archives'}
                               </p>
                             </div>
                           </div>
@@ -3302,18 +3432,22 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         {renderProjectGrid(pastProjects)}
                       </section>
                     ) : selectedStatus === 'past' ? (
-                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-emerald-300/80 dark:border-emerald-800/80 flex flex-col items-center justify-center gap-2">
-                        <div className="text-3xl">🎬</div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Past Projects Found</h4>
+                      <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-8 text-center border border-dashed border-slate-300/80 dark:border-slate-700/80 flex flex-col items-center justify-center gap-2">
+                        <div className="text-3xl">{isViewingBrands ? '⚪' : '🎬'}</div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          {isViewingBrands ? 'No Non-Active Brands Found' : 'No Past Projects Found'}
+                        </h4>
                         <p className="text-xs text-slate-500 max-w-sm">
-                          No concluded or past projects match your selected filters.
+                          {isViewingBrands
+                            ? 'No non-active brands match your selected filters.'
+                            : 'No concluded or past projects match your selected filters.'}
                         </p>
                         <button
                           type="button"
                           onClick={() => setSelectedStatus('all')}
                           className="mt-2 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 cursor-pointer shadow-xs"
                         >
-                          View All Projects
+                          {isViewingBrands ? 'View All Brands' : 'View All Projects'}
                         </button>
                       </div>
                     ) : null
@@ -3364,6 +3498,15 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             </div>
 
             <form onSubmit={handleSaveForm} className="space-y-4">
+              {/* Hidden Avatar File Input */}
+              <input
+                type="file"
+                ref={avatarFileInputRef}
+                accept="image/*"
+                onChange={handleAvatarFileUpload}
+                className="hidden"
+              />
+
               {/* Category & Artist Selection */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -3399,6 +3542,76 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* BRAND DISPLAY PHOTO / LOGO (Just like Fan Clubs profile avatar) */}
+              {(formCategory === 'owned_brands' || formCategory === 'partner_brands') && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/70 to-indigo-50/70 dark:from-purple-950/40 dark:to-indigo-950/30 border border-purple-200/80 dark:border-purple-800/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Brand Display Photo / Logo</span>
+                    </label>
+                    <span className="text-[10.5px] text-purple-600 dark:text-purple-400 font-semibold">
+                      ✨ Logo & Profile Avatar
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-14 h-14 rounded-full border-2 border-purple-300 dark:border-purple-700 shadow-sm overflow-hidden bg-white dark:bg-slate-800 shrink-0 flex items-center justify-center">
+                      {formAvatarUrl ? (
+                        <img
+                          src={formAvatarUrl}
+                          alt="Brand Logo"
+                          className="w-full h-full object-cover"
+                          onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                        />
+                      ) : (
+                        <span className="text-2xl select-none">
+                          {formCategory === 'owned_brands' ? '👑' : '🤝'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex-1 space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="url"
+                          value={formAvatarUrl}
+                          onChange={(e) => setFormAvatarUrl(e.target.value)}
+                          placeholder="https://... (brand logo / profile picture URL)"
+                          className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => avatarFileInputRef.current?.click()}
+                          disabled={isUploadingAvatar}
+                          className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors shadow-2xs disabled:opacity-50"
+                        >
+                          {isUploadingAvatar ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isUploadingAvatar ? 'Uploading...' : 'Upload'}</span>
+                        </button>
+                        {formAvatarUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setFormAvatarUrl('')}
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
+                            title="Remove display photo"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Upload a square or circle logo from your computer/phone, or paste an image URL.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Title & Optional Thai Script Title */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3494,206 +3707,230 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 </div>
               </div>
 
-              {/* DEDICATED CHARACTER NAMES & BILLING FOR JIMMY AND SEA */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50/80 to-sky-50/60 dark:from-purple-950/40 dark:to-sky-950/30 border border-purple-200/90 dark:border-purple-800/70 space-y-3.5">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>Jimmy &amp; Sea Character Names &amp; Billing</span>
-                  </span>
-                  <span className="text-[10.5px] font-semibold text-purple-700 dark:text-purple-300">
-                    Displayed on Project Cards
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
-                      <span>🥑 Jimmy&apos;s Character Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formJimmyRole}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormJimmyRole(val);
-                        // If combined role is empty or follows standard pattern, auto-sync
-                        if (!formRole || formRole.includes('Jimmy as') || formRole.includes('Sea as')) {
-                          const parts: string[] = [];
-                          if (val.trim()) parts.push(val.toLowerCase().startsWith('jimmy as') ? val.trim() : `Jimmy as ${val.trim()}`);
-                          if (formSeaRole.trim()) parts.push(formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole.trim() : `Sea as ${formSeaRole.trim()}`);
-                          setFormRole(parts.join(', '));
-                        }
-                      }}
-                      placeholder="e.g. Pongpeun (or Mork, Puen, Wai)"
-                      className="w-full rounded-xl border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">Character played by Jimmy in this project</p>
+              {/* DEDICATED CHARACTER NAMES & BILLING FOR JIMMY AND SEA (Hidden for Brands) */}
+              {!isBrandProject && (
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50/80 to-sky-50/60 dark:from-purple-950/40 dark:to-sky-950/30 border border-purple-200/90 dark:border-purple-800/70 space-y-3.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Jimmy &amp; Sea Character Names &amp; Billing</span>
+                    </span>
+                    <span className="text-[10.5px] font-semibold text-purple-700 dark:text-purple-300">
+                      Displayed on Project Cards
+                    </span>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
-                      <span>🌊 Sea&apos;s Character Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formSeaRole}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormSeaRole(val);
-                        // If combined role is empty or follows standard pattern, auto-sync
-                        if (!formRole || formRole.includes('Jimmy as') || formRole.includes('Sea as')) {
-                          const parts: string[] = [];
-                          if (formJimmyRole.trim()) parts.push(formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole.trim() : `Jimmy as ${formJimmyRole.trim()}`);
-                          if (val.trim()) parts.push(val.toLowerCase().startsWith('sea as') ? val.trim() : `Sea as ${val.trim()}`);
-                          setFormRole(parts.join(', '));
-                        }
-                      }}
-                      placeholder="e.g. Pepper (or Day, Talay, Pangpond)"
-                      className="w-full rounded-xl border border-sky-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-sky-500"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">Character played by Sea in this project</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                        <span>🥑 Jimmy&apos;s Character Name</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formJimmyRole}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormJimmyRole(val);
+                          // If combined role is empty or follows standard pattern, auto-sync
+                          if (!formRole || formRole.includes('Jimmy as') || formRole.includes('Sea as')) {
+                            const parts: string[] = [];
+                            if (val.trim()) parts.push(val.toLowerCase().startsWith('jimmy as') ? val.trim() : `Jimmy as ${val.trim()}`);
+                            if (formSeaRole.trim()) parts.push(formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole.trim() : `Sea as ${val.trim()}`);
+                            setFormRole(parts.join(', '));
+                          }
+                        }}
+                        placeholder="e.g. Pongpeun (or Mork, Puen, Wai)"
+                        className="w-full rounded-xl border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Character played by Jimmy in this project</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                        <span>🌊 Sea&apos;s Character Name</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formSeaRole}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormSeaRole(val);
+                          // If combined role is empty or follows standard pattern, auto-sync
+                          if (!formRole || formRole.includes('Jimmy as') || formRole.includes('Sea as')) {
+                            const parts: string[] = [];
+                            if (formJimmyRole.trim()) parts.push(formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole.trim() : `Jimmy as ${formJimmyRole.trim()}`);
+                            if (val.trim()) parts.push(val.toLowerCase().startsWith('sea as') ? val.trim() : `Sea as ${val.trim()}`);
+                            setFormRole(parts.join(', '));
+                          }
+                        }}
+                        placeholder="e.g. Pepper (or Day, Talay, Pangpond)"
+                        className="w-full rounded-xl border border-sky-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Character played by Sea in this project</p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Combined Character Billing Headline (e.g. Jimmy as Pongpeun, Sea as Pepper) */}
-                <div className="pt-2 border-t border-purple-200/60 dark:border-purple-900/40 space-y-2">
-                  <div className="flex items-center justify-between flex-wrap gap-1.5">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Full Character Billing Headline
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const parts: string[] = [];
-                        if (formJimmyRole.trim()) {
-                          parts.push(formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole.trim() : `Jimmy as ${formJimmyRole.trim()}`);
-                        }
-                        if (formSeaRole.trim()) {
-                          parts.push(formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole.trim() : `Sea as ${formSeaRole.trim()}`);
-                        }
-                        setFormRole(parts.join(', '));
-                      }}
-                      className="text-[10.5px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
-                    >
-                      ✨ Auto-Format: &quot;Jimmy as ..., Sea as ...&quot;
-                    </button>
-                  </div>
-
-                  <input
-                    type="text"
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value)}
-                    placeholder="e.g. Jimmy as Pongpeun, Sea as Pepper"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
-                  />
-
-                  {/* Character Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] font-bold text-slate-400">Quick Presets:</span>
-                    {[
-                      { j: 'Pongpeun', s: 'Pepper', label: 'Jimmy as Pongpeun, Sea as Pepper' },
-                      { j: 'Mork (Mork Methas)', s: 'Day (Day Wachirawit)', label: 'Jimmy as Mork, Sea as Day' },
-                      { j: 'Tun / Puen', s: 'Talay / Tess', label: 'Jimmy as Puen, Sea as Talay' }
-                    ].map((pre, pIdx) => (
+                  {/* Combined Character Billing Headline (e.g. Jimmy as Pongpeun, Sea as Pepper) */}
+                  <div className="pt-2 border-t border-purple-200/60 dark:border-purple-900/40 space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-1.5">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Full Character Billing Headline
+                      </label>
                       <button
-                        key={pIdx}
                         type="button"
                         onClick={() => {
-                          setFormJimmyRole(pre.j);
-                          setFormSeaRole(pre.s);
-                          setFormRole(pre.label);
+                          const parts: string[] = [];
+                          if (formJimmyRole.trim()) {
+                            parts.push(formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole.trim() : `Jimmy as ${formJimmyRole.trim()}`);
+                          }
+                          if (formSeaRole.trim()) {
+                            parts.push(formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole.trim() : `Sea as ${formSeaRole.trim()}`);
+                          }
+                          setFormRole(parts.join(', '));
                         }}
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 text-slate-600 dark:text-slate-300 hover:text-purple-600 cursor-pointer transition-colors"
+                        className="text-[10.5px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
                       >
-                        {pre.label}
+                        ✨ Auto-Format: &quot;Jimmy as ..., Sea as ...&quot;
                       </button>
-                    ))}
-                  </div>
+                    </div>
 
-                  {/* Live Character Badge Preview */}
-                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60 flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-[10.5px] font-bold text-slate-400">Live Preview on Card:</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {formJimmyRole.trim() && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-[13px] font-bold bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border border-purple-200 dark:border-purple-800 shadow-2xs">
-                          <span>🥑</span>
-                          <span>{formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole : `Jimmy as ${formJimmyRole}`}</span>
-                        </span>
-                      )}
-                      {formSeaRole.trim() && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-[13px] font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-200 border border-sky-200 dark:border-sky-800 shadow-2xs">
-                          <span>🌊</span>
-                          <span>{formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole : `Sea as ${formSeaRole}`}</span>
-                        </span>
-                      )}
-                      {!formJimmyRole.trim() && !formSeaRole.trim() && (
-                        <span className="text-xs italic text-slate-400">
-                          {formRole.trim() || 'Enter character names above to preview badges'}
-                        </span>
-                      )}
+                    <input
+                      type="text"
+                      value={formRole}
+                      onChange={(e) => setFormRole(e.target.value)}
+                      placeholder="e.g. Jimmy as Pongpeun, Sea as Pepper"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+
+                    {/* Character Presets */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <span className="text-[10px] font-bold text-slate-400">Quick Presets:</span>
+                      {[
+                        { j: 'Pongpeun', s: 'Pepper', label: 'Jimmy as Pongpeun, Sea as Pepper' },
+                        { j: 'Mork (Mork Methas)', s: 'Day (Day Wachirawit)', label: 'Jimmy as Mork, Sea as Day' },
+                        { j: 'Tun / Puen', s: 'Talay / Tess', label: 'Jimmy as Puen, Sea as Talay' }
+                      ].map((pre, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => {
+                            setFormJimmyRole(pre.j);
+                            setFormSeaRole(pre.s);
+                            setFormRole(pre.label);
+                          }}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 text-slate-600 dark:text-slate-300 hover:text-purple-600 cursor-pointer transition-colors"
+                        >
+                          {pre.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Live Character Badge Preview */}
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60 flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-[10.5px] font-bold text-slate-400">Live Preview on Card:</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {formJimmyRole.trim() && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-[13px] font-bold bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border border-purple-200 dark:border-purple-800 shadow-2xs">
+                            <span>🥑</span>
+                            <span>{formJimmyRole.toLowerCase().startsWith('jimmy as') ? formJimmyRole : `Jimmy as ${formJimmyRole}`}</span>
+                          </span>
+                        )}
+                        {formSeaRole.trim() && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-[13px] font-bold bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-200 border border-sky-200 dark:border-sky-800 shadow-2xs">
+                            <span>🌊</span>
+                            <span>{formSeaRole.toLowerCase().startsWith('sea as') ? formSeaRole : `Sea as ${formSeaRole}`}</span>
+                          </span>
+                        )}
+                        {!formJimmyRole.trim() && !formSeaRole.trim() && (
+                          <span className="text-xs italic text-slate-400">
+                            {formRole.trim() || 'Enter character names above to preview badges'}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Year / Era (Multi-year, Dec to Jan, etc.) & Filmed Month/Year */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Status and Release / Filmed Period: Streamlined for Brands vs Shows */}
+              {isBrandProject ? (
                 <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Release / On-Air Period
-                  </label>
-                  <input
-                    type="text"
-                    value={formYear}
-                    onChange={(e) => setFormYear(e.target.value)}
-                    placeholder="e.g. 2024–2025 or Dec 2023 – Jan 2024"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Filmed Month / Year
-                  </label>
-                  <input
-                    type="text"
-                    value={formFilmedPeriod}
-                    onChange={(e) => setFormFilmedPeriod(e.target.value)}
-                    placeholder="e.g. January – April 2023"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Status
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1 flex items-center justify-between">
+                    <span>Brand Status</span>
+                    <span className="text-[10.5px] font-bold text-purple-600 dark:text-purple-400">
+                      Active or Non-Active Venture
+                    </span>
                   </label>
                   <select
-                    value={formStatus === 'active' ? 'ongoing' : formStatus}
+                    value={formStatus === 'released' ? 'released' : formStatus === 'upcoming' ? 'upcoming' : 'active'}
                     onChange={(e) => setFormStatus(e.target.value as ProjectStatus)}
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    className="w-full rounded-xl border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
                   >
-                    <option value="upcoming">🕒 Upcoming</option>
-                    <option value="ongoing">📺 Airing</option>
-                    <option value="released">🎬 Past Projects</option>
+                    <option value="active">🟢 Active (Current Brand / In Business)</option>
+                    <option value="released">⚪ Non-Active (Past / Concluded / Inactive)</option>
+                    <option value="upcoming">🕒 Upcoming Launch</option>
                   </select>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      Release / On-Air Period
+                    </label>
+                    <input
+                      type="text"
+                      value={formYear}
+                      onChange={(e) => setFormYear(e.target.value)}
+                      placeholder="e.g. 2024–2025 or Dec 2023 – Jan 2024"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
 
-              {/* Highlight Note */}
-              <div>
-                <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                  Highlight / Award / Key Feature
-                </label>
-                <input
-                  type="text"
-                  value={formHighlight}
-                  onChange={(e) => setFormHighlight(e.target.value)}
-                  placeholder="e.g. ⭐ Asian Television Awards Nominee · Debut BL Pairing"
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      Filmed Month / Year
+                    </label>
+                    <input
+                      type="text"
+                      value={formFilmedPeriod}
+                      onChange={(e) => setFormFilmedPeriod(e.target.value)}
+                      placeholder="e.g. January – April 2023"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      Status
+                    </label>
+                    <select
+                      value={formStatus === 'active' ? 'ongoing' : formStatus}
+                      onChange={(e) => setFormStatus(e.target.value as ProjectStatus)}
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    >
+                      <option value="upcoming">🕒 Upcoming</option>
+                      <option value="ongoing">📺 Airing</option>
+                      <option value="released">🎬 Past Projects</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Highlight Note (Hidden for Brands) */}
+              {!isBrandProject && (
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                    Highlight / Award / Key Feature
+                  </label>
+                  <input
+                    type="text"
+                    value={formHighlight}
+                    onChange={(e) => setFormHighlight(e.target.value)}
+                    placeholder="e.g. ⭐ Asian Television Awards Nominee · Debut BL Pairing"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              )}
 
               {/* Description */}
               <div>
@@ -3709,34 +3946,36 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 />
               </div>
 
-              {/* Director & Platform / Network */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Director (TV Series / Movies)
-                  </label>
-                  <input
-                    type="text"
-                    value={formDirector}
-                    onChange={(e) => setFormDirector(e.target.value)}
-                    placeholder="e.g. Aof Noppharnach or X Nuttapong"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
+              {/* Director & Platform / Network (Hidden for Brands) */}
+              {!isBrandProject && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      Director (TV Series / Movies)
+                    </label>
+                    <input
+                      type="text"
+                      value={formDirector}
+                      onChange={(e) => setFormDirector(e.target.value)}
+                      placeholder="e.g. Aof Noppharnach or X Nuttapong"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Platform / Network / Company
-                  </label>
-                  <input
-                    type="text"
-                    value={formPlatform}
-                    onChange={(e) => setFormPlatform(e.target.value)}
-                    placeholder="e.g. GMMTV / YouTube, Clinic BKK, Sunbather"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
-                  />
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                      Platform / Network / Company
+                    </label>
+                    <input
+                      type="text"
+                      value={formPlatform}
+                      onChange={(e) => setFormPlatform(e.target.value)}
+                      placeholder="e.g. GMMTV / YouTube, Clinic BKK, Sunbather"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* ============================================================== */}
               {/* MULTI-PHOTO MEDIA COLLECTION, AUTO-FIT & FRAMING ADJUSTMENTS   */}
@@ -3983,11 +4222,17 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           {/* Bottom Overlay with Real-time Title, Status, and Year */}
                           <div className="absolute bottom-3 inset-x-3 z-30 space-y-1.5 pointer-events-none">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-bold text-white/90 drop-shadow-xs">
-                                {formYear || 'Year'}
-                              </span>
+                              {!isBrandProject ? (
+                                <span className="text-[11px] font-bold text-white/90 drop-shadow-xs">
+                                  {formYear || 'Year'}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-black uppercase tracking-wider text-purple-200 bg-purple-950/70 px-2 py-0.5 rounded-full border border-purple-500/40">
+                                  {formCategory === 'owned_brands' ? '👑 Owned Brand' : '🤝 Partner Brand'}
+                                </span>
+                              )}
                               {(() => {
-                                const statusObj = getStatusBadge(formStatus);
+                                const statusObj = getStatusBadge(formStatus, formCategory);
                                 return (
                                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
                                     {statusObj.label}
@@ -3995,15 +4240,24 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 );
                               })()}
                             </div>
-                            <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
-                              <span>{formTitle || 'Your Project Title Here'}</span>
-                              {formThaiTitle && formThaiTitle.trim().length > 0 && (
-                                <>
-                                  <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
-                                  <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formThaiTitle.trim()}</span>
-                                </>
+                            <div className="flex items-center gap-2 min-w-0">
+                              {formAvatarUrl && (
+                                <img
+                                  src={formAvatarUrl}
+                                  alt="Brand avatar"
+                                  className="w-7 h-7 rounded-full object-cover border-2 border-white/80 shadow-xs shrink-0"
+                                />
                               )}
-                            </h4>
+                              <h4 className="text-sm sm:text-base font-black text-white line-clamp-1 drop-shadow-md flex items-center gap-1.5 flex-wrap">
+                                <span>{formTitle || 'Your Project Title Here'}</span>
+                                {formThaiTitle && formThaiTitle.trim().length > 0 && (
+                                  <>
+                                    <span className="text-purple-300 font-bold select-none text-[0.85em]">•</span>
+                                    <span className="text-[0.95em] sm:text-[1em] font-bold text-slate-100 font-thai tracking-normal">{formThaiTitle.trim()}</span>
+                                  </>
+                                )}
+                              </h4>
+                            </div>
                           </div>
                         </div>
                       ) : posterLoadError ? (

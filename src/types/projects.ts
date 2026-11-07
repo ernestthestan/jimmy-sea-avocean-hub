@@ -32,6 +32,7 @@ export interface CareerProject {
   status: ProjectStatus;
   description: string;
   imageUrl: string;
+  avatarUrl?: string; // Brand Logo / Display Photo URL (like fan club profile avatar)
   mediaPhotos?: string[]; // Multiple photo/media collection (posters, character visuals, stills)
   mediaFit?: 'cover' | 'contain' | 'auto'; // Auto-fit (contain uncropped) vs cinematic crop (cover)
   mediaPosition?: string; // Adjustable framing focal position (e.g. 'center 25%')
