@@ -63,6 +63,7 @@ import type {
   ClubCategory
 } from '../types/fanhub';
 import type { ScheduleEvent, AccentChoice } from '../App';
+import type { AdminAccount } from '../lib/firestoreSync';
 import { POPULAR_FAN_COUNTRIES } from '../data/countriesList';
 import { POPULAR_CURRENCIES } from '../data/currencies';
 import {
@@ -369,6 +370,12 @@ interface FanHubProps {
   foodProjects: FoodSupportProject[];
   canEdit: boolean;
   isOwner: boolean;
+  canEditClub?: (club: FanClub) => boolean;
+  canEditFoodProject?: (project: FoodSupportProject) => boolean;
+  canAddClub?: boolean;
+  canAddFoodProject?: boolean;
+  isFanClubAdmin?: boolean;
+  currentAccount?: AdminAccount | null;
   events: ScheduleEvent[];
   currentAccent: {
     colorHex: string;
@@ -391,6 +398,12 @@ export const FanHub: React.FC<FanHubProps> = ({
   foodProjects,
   canEdit,
   isOwner,
+  canEditClub,
+  canEditFoodProject,
+  canAddClub,
+  canAddFoodProject,
+  isFanClubAdmin = false,
+  currentAccount = null,
   events,
   currentAccent,
   containerWidthClass,
@@ -1339,6 +1352,51 @@ export const FanHub: React.FC<FanHubProps> = ({
       {/* ============================================================== */}
       {hubTab === 'directory' && (
         <div className="flex flex-col gap-5">
+          {/* Fan Club Admin Status Banner */}
+          {isFanClubAdmin && (
+            <div className="p-4 rounded-[22px] bg-gradient-to-r from-amber-500/15 via-purple-500/10 to-blue-500/10 border border-amber-300/60 dark:border-amber-600/40 shadow-xs flex items-center justify-between gap-3 flex-wrap animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                  🌟
+                </div>
+                <div>
+                  <div className="text-xs sm:text-sm font-extrabold text-[#1A3668] dark:text-white flex items-center gap-1.5 flex-wrap">
+                    <span>Logged in as Fan Club Admin:</span>
+                    <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border border-amber-300/80 dark:border-amber-700">
+                      {currentAccount?.assignedClubName || 'Assigned Fan Club'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
+                    You have permission to edit details and add/update organized events for your specific fan club.
+                  </div>
+                </div>
+              </div>
+
+              {currentAccount?.assignedClubName && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const matched = fanClubs.find(
+                      (c) =>
+                        (currentAccount.assignedClubId && c.id === currentAccount.assignedClubId) ||
+                        (c.name && c.name.trim().toLowerCase() === currentAccount.assignedClubName?.trim().toLowerCase())
+                    );
+                    if (matched) {
+                      setEditingClub(matched);
+                      setIsClubModalOpen(true);
+                    } else {
+                      showToast(`Could not find "${currentAccount.assignedClubName}" in directory.`);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all shrink-0"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit My Fan Club</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Controls Bar: Search, Actor Filter, Country Filter, + Add Club */}
           <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-4 shadow-sm border border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Search Input */}
@@ -1385,8 +1443,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                 </option>
               </select>
 
-              {/* Add Club Button (Admin / Owner) */}
-              {canEdit && (
+              {/* Add Club Button (Owner or authorized admin) */}
+              {(canAddClub !== undefined ? canAddClub : isOwner) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1562,38 +1620,42 @@ export const FanHub: React.FC<FanHubProps> = ({
                             )}
 
                             {/* Top-Right Admin Buttons on Banner */}
-                            {canEdit && (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className="absolute top-3 right-3 z-20 flex items-center gap-0.5 bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/25 shadow-sm"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingClub(club);
-                                    setIsClubModalOpen(true);
-                                  }}
-                                  className="p-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/20 cursor-pointer transition-colors"
-                                  title="Edit fan club"
+                            {(() => {
+                              const canEditThisClub = isOwner || (canEditClub ? canEditClub(club) : canEdit);
+                              if (!canEditThisClub) return null;
+                              return (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute top-3 right-3 z-20 flex items-center gap-0.5 bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/25 shadow-sm"
                                 >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                {isOwner && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (window.confirm(`Delete "${club.name}" from fan club directory?`)) {
-                                        onDeleteFanClub(club.id);
-                                      }
+                                      setEditingClub(club);
+                                      setIsClubModalOpen(true);
                                     }}
-                                    className="p-1.5 rounded-full text-rose-300 hover:text-rose-100 hover:bg-rose-500/30 cursor-pointer transition-colors"
-                                    title="Delete fan club"
+                                    className="p-1.5 rounded-full text-white/90 hover:text-white hover:bg-white/20 cursor-pointer transition-colors"
+                                    title="Edit fan club"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Edit2 className="w-3.5 h-3.5" />
                                   </button>
-                                )}
-                              </div>
-                            )}
+                                  {isOwner && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (window.confirm(`Delete "${club.name}" from fan club directory?`)) {
+                                          onDeleteFanClub(club.id);
+                                        }
+                                      }}
+                                      className="p-1.5 rounded-full text-rose-300 hover:text-rose-100 hover:bg-rose-500/30 cursor-pointer transition-colors"
+                                      title="Delete fan club"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {/* AVATAR + PILLS ROW (Avatar is clickable to open in Lightbox, positioned cleanly below the banner) */}
@@ -1636,6 +1698,14 @@ export const FanHub: React.FC<FanHubProps> = ({
 
                         {/* Pills positioned beside avatar in yellow circled area */}
                         <div className="flex items-center gap-1.5 flex-wrap pb-1.5 min-w-0 flex-1">
+                          {/* If Fan Club Admin is assigned to this club, show gold badge */}
+                          {canEditClub && canEditClub(club) && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-amber-300 text-amber-950 shadow-2xs border border-amber-300 shrink-0">
+                              <span>🌟</span>
+                              <span>Your Assigned Club</span>
+                            </span>
+                          )}
+
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0">
                             <CountryFlagImage
                               countryCode={club.countryCode}
@@ -2226,8 +2296,8 @@ export const FanHub: React.FC<FanHubProps> = ({
               </div>
 
 
-              {/* Add Project Button (Admin / Owner) */}
-              {canEdit && (
+              {/* Add Project Button (Owner or authorized admin) */}
+              {(canAddFoodProject !== undefined ? canAddFoodProject : isOwner) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2285,6 +2355,7 @@ export const FanHub: React.FC<FanHubProps> = ({
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5">
               {filteredProjects.map((proj) => {
+                const canEditThisFoodProj = isOwner || (canEditFoodProject ? canEditFoodProject(proj) : canEdit);
                 const percent = Math.min(100, Math.round((proj.currentAmount / Math.max(1, proj.targetAmount)) * 100));
 
                 const statusBadge =
@@ -2510,7 +2581,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                         <div className="flex items-center justify-between text-xs font-bold gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5">
                             <span className="text-slate-500 dark:text-slate-400">Project Goal:</span>
-                            {canEdit && editingAmountProjId !== proj.id && (
+                            {canEditThisFoodProj && editingAmountProjId !== proj.id && (
                               <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hidden sm:inline">
                                 (Click amount to type)
                               </span>
@@ -2551,7 +2622,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                               </div>
                             ) : (
                               <div className="flex items-center gap-1">
-                                {canEdit ? (
+                                {canEditThisFoodProj ? (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -2693,7 +2764,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                       </div>
 
                       {/* Admin Controls */}
-                      {canEdit && (
+                      {canEditThisFoodProj && (
                         <div className="flex items-center gap-1.5">
                           {proj.status === 'open' && (
                             <button

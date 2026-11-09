@@ -670,10 +670,17 @@ export async function deleteFoodProjectFromFirestore(projectId: string): Promise
  * 7. ADMIN & OWNER ACCOUNTS MANAGEMENT (Email + Password)
  * Stored in Firestore in collection 'admin_accounts'
  */
+export type AdminCategory = 'general' | 'fanclub';
+
 export interface AdminAccount {
   id: string; // Normalized email
   email: string;
   role: 'owner' | 'admin';
+  adminCategory?: AdminCategory; // 'general': Calendar, Career Projects, Messages; 'fanclub': Assigned Fan Club & Events only
+  assignedClubId?: string; // ID of specific fan club if adminCategory === 'fanclub'
+  assignedClubName?: string; // Display name of specific fan club
+  assignedFoodProjectId?: string; // ID of specific food support project if applicable
+  assignedFoodProjectTitle?: string; // Title of food support project
   status?: 'approved' | 'pending' | 'rejected';
   password: string;
   displayName: string;
@@ -697,6 +704,7 @@ export const DEFAULT_ACCOUNTS: Record<string, AdminAccount> = {
     id: 'ernestthestan@gmail.com',
     email: 'ernestthestan@gmail.com',
     role: 'owner',
+    adminCategory: 'general',
     status: 'approved',
     password: 'ErnestTheStan05!',
     displayName: 'Ernest (Hub Owner)',
@@ -731,14 +739,19 @@ export async function ensureDefaultAdminAccounts(): Promise<void> {
 }
 
 /**
- * Register a new Admin account using their own email, name, and chosen password/passcode.
+ * Register a new Admin account using their own email, name, chosen password, and assigned scope.
  * Account starts in 'pending' status until explicitly approved by the Hub Owner.
  */
 export async function registerAdminAccount(
   rawEmail: string,
   rawPass: string,
   rawDisplayName: string,
-  authPasscode?: string
+  authPasscode?: string,
+  adminCategory: AdminCategory = 'general',
+  assignedClubId?: string,
+  assignedClubName?: string,
+  assignedFoodProjectId?: string,
+  assignedFoodProjectTitle?: string
 ): Promise<{ success: boolean; account?: AdminAccount; error?: string }> {
   const email = normalizeAccountEmail(rawEmail);
   const pass = rawPass.trim();
@@ -803,6 +816,11 @@ export async function registerAdminAccount(
     id: email,
     email,
     role: 'admin',
+    adminCategory,
+    assignedClubId: assignedClubId || undefined,
+    assignedClubName: assignedClubName || undefined,
+    assignedFoodProjectId: assignedFoodProjectId || undefined,
+    assignedFoodProjectTitle: assignedFoodProjectTitle || undefined,
     status: 'pending', // Requires Owner Approval!
     password: pass,
     displayName,
@@ -830,22 +848,34 @@ export async function registerAdminAccount(
   } catch {}
 
   // Record audit log entry
+  const scopeDetail =
+    adminCategory === 'fanclub'
+      ? `Fan Club Admin (Assigned: ${assignedClubName || assignedClubId || 'Fan Club'})`
+      : 'General Admin (Calendar, Career Projects, Messages)';
+
   await recordAuditLog({
     userEmail: email,
     role: 'admin',
     actionType: 'create_admin',
-    details: `New admin request submitted (pending Owner approval): "${displayName}" (${email})`
+    details: `New admin request submitted (pending Owner approval): "${displayName}" (${email}) - ${scopeDetail}`
   });
 
   return { success: true, account: newAccount };
 }
 
 /**
- * Approve a pending Admin account (Owner only)
+ * Approve a pending Admin account (Owner only) with optional category/scope adjustment
  */
 export async function approveAdminAccount(
   rawEmail: string,
-  ownerEmail: string
+  ownerEmail: string,
+  overrides?: {
+    adminCategory?: AdminCategory;
+    assignedClubId?: string;
+    assignedClubName?: string;
+    assignedFoodProjectId?: string;
+    assignedFoodProjectTitle?: string;
+  }
 ): Promise<{ success: boolean; error?: string }> {
   const email = normalizeAccountEmail(rawEmail);
   const nowIso = new Date().toISOString();
@@ -853,12 +883,22 @@ export async function approveAdminAccount(
   try {
     if (!isQuotaExceeded) {
       const accRef = doc(db, 'admin_accounts', email);
-      await updateDoc(accRef, {
+      const updateData: Record<string, any> = {
         status: 'approved',
         approvedAt: nowIso,
         approvedBy: ownerEmail,
         updatedAt: nowIso
-      });
+      };
+
+      if (overrides) {
+        if (overrides.adminCategory !== undefined) updateData.adminCategory = overrides.adminCategory;
+        if (overrides.assignedClubId !== undefined) updateData.assignedClubId = overrides.assignedClubId;
+        if (overrides.assignedClubName !== undefined) updateData.assignedClubName = overrides.assignedClubName;
+        if (overrides.assignedFoodProjectId !== undefined) updateData.assignedFoodProjectId = overrides.assignedFoodProjectId;
+        if (overrides.assignedFoodProjectTitle !== undefined) updateData.assignedFoodProjectTitle = overrides.assignedFoodProjectTitle;
+      }
+
+      await updateDoc(accRef, updateData);
     }
   } catch (err: any) {
     console.warn('Could not approve admin account in Firestore:', err);
@@ -869,10 +909,137 @@ export async function approveAdminAccount(
     userEmail: ownerEmail,
     role: 'owner',
     actionType: 'approve_admin',
-    details: `Owner approved admin account: ${email}`
+    details: `Owner approved admin account: ${email}${overrides?.adminCategory ? ` (${overrides.adminCategory})` : ''}`
   });
 
   return { success: true };
+}
+
+/**
+ * Update an existing admin's category, assigned fan club or display details (Owner only)
+ */
+export async function updateAdminAccountScope(
+  rawEmail: string,
+  ownerEmail: string,
+  updates: {
+    adminCategory: AdminCategory;
+    assignedClubId?: string;
+    assignedClubName?: string;
+    assignedFoodProjectId?: string;
+    assignedFoodProjectTitle?: string;
+    displayName?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const email = normalizeAccountEmail(rawEmail);
+  const nowIso = new Date().toISOString();
+
+  if (email === 'ernestthestan@gmail.com') {
+    return { success: false, error: 'Cannot modify scope of the Hub Owner account.' };
+  }
+
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      const updatePayload: Record<string, any> = {
+        adminCategory: updates.adminCategory,
+        assignedClubId: updates.adminCategory === 'fanclub' ? (updates.assignedClubId || '') : '',
+        assignedClubName: updates.adminCategory === 'fanclub' ? (updates.assignedClubName || '') : '',
+        assignedFoodProjectId: updates.adminCategory === 'fanclub' ? (updates.assignedFoodProjectId || '') : '',
+        assignedFoodProjectTitle: updates.adminCategory === 'fanclub' ? (updates.assignedFoodProjectTitle || '') : '',
+        updatedAt: nowIso
+      };
+      if (updates.displayName) {
+        updatePayload.displayName = updates.displayName.trim();
+      }
+
+      await updateDoc(accRef, updatePayload);
+    }
+  } catch (err: any) {
+    console.warn('Could not update admin scope in Firestore:', err);
+    return { success: false, error: err?.message || 'Could not update admin account scope' };
+  }
+
+  await recordAuditLog({
+    userEmail: ownerEmail,
+    role: 'owner',
+    actionType: 'settings_update',
+    details: `Owner updated admin scope for ${email}: Category=${updates.adminCategory}, Club=${updates.assignedClubName || 'None'}`
+  });
+
+  return { success: true };
+}
+
+/**
+ * Create an admin account directly by the Owner (pre-approved, bypassing registration request)
+ */
+export async function createAdminAccountDirectly(
+  accountData: {
+    email: string;
+    password: string;
+    displayName: string;
+    adminCategory: AdminCategory;
+    assignedClubId?: string;
+    assignedClubName?: string;
+    assignedFoodProjectId?: string;
+    assignedFoodProjectTitle?: string;
+  },
+  ownerEmail: string
+): Promise<{ success: boolean; account?: AdminAccount; error?: string }> {
+  const email = normalizeAccountEmail(accountData.email);
+  const pass = accountData.password.trim();
+  const displayName = accountData.displayName.trim() || email.split('@')[0];
+
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    return { success: false, error: 'Please enter a valid email address.' };
+  }
+  if (!pass || pass.length < 6) {
+    return { success: false, error: 'Password / passcode must be at least 6 characters.' };
+  }
+  if (email === 'ernestthestan@gmail.com') {
+    return { success: false, error: 'This email is reserved for Hub Owner.' };
+  }
+
+  const nowIso = new Date().toISOString();
+  const newAccount: AdminAccount = {
+    id: email,
+    email,
+    role: 'admin',
+    adminCategory: accountData.adminCategory,
+    assignedClubId: accountData.assignedClubId || undefined,
+    assignedClubName: accountData.assignedClubName || undefined,
+    assignedFoodProjectId: accountData.assignedFoodProjectId || undefined,
+    assignedFoodProjectTitle: accountData.assignedFoodProjectTitle || undefined,
+    status: 'approved',
+    password: pass,
+    displayName,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    approvedAt: nowIso,
+    approvedBy: ownerEmail
+  };
+
+  try {
+    if (!isQuotaExceeded) {
+      const accRef = doc(db, 'admin_accounts', email);
+      await setDoc(accRef, sanitizeForFirestore(newAccount));
+    }
+  } catch (err: any) {
+    console.warn('Could not save direct admin account:', err);
+    return { success: false, error: err?.message || 'Could not save account to Firestore' };
+  }
+
+  try {
+    localStorage.setItem(`avocean_pwd_${email}`, pass);
+  } catch {}
+
+  await recordAuditLog({
+    userEmail: ownerEmail,
+    role: 'owner',
+    actionType: 'create_admin',
+    details: `Owner directly created approved admin account: "${displayName}" (${email}) - ${accountData.adminCategory}`
+  });
+
+  return { success: true, account: newAccount };
 }
 
 /**

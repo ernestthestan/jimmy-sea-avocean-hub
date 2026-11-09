@@ -136,6 +136,30 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["name", "countryName"]
+    },
+    "AdminAccount": {
+      "title": "AdminAccount",
+      "description": "Admin or Owner account with role and assigned scope category (General vs Fan Club Admin)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "adminCategory": { "type": "string" },
+        "assignedClubId": { "type": "string" },
+        "assignedClubName": { "type": "string" },
+        "assignedFoodProjectId": { "type": "string" },
+        "assignedFoodProjectTitle": { "type": "string" },
+        "status": { "type": "string" },
+        "displayName": { "type": "string" },
+        "password": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "approvedAt": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role", "password"]
     }
   },
   "firestore": {
@@ -162,6 +186,10 @@
     "/stats/global": {
       "schema": "SiteStats",
       "description": "Total visits and site stats"
+    },
+    "/admin_accounts/{accountId}": {
+      "schema": "AdminAccount",
+      "description": "Admin and Owner accounts with scope categories and permissions"
     }
   }
 }

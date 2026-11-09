@@ -7,6 +7,7 @@ import {
   Calendar as CalendarIcon,
   List as ListIcon,
   Plus,
+  Edit2,
   Edit3,
   Trash2,
   MapPin,
@@ -108,6 +109,8 @@ import {
   approveAdminAccount,
   rejectAdminAccount,
   deleteAdminAccount,
+  updateAdminAccountScope,
+  createAdminAccountDirectly,
   subscribeToAdminAccounts,
   updateAdminAccountPassword,
   recordAuditLog,
@@ -115,6 +118,7 @@ import {
   getBangkokDateKey,
   type LiveStats,
   type AdminAccount,
+  type AdminCategory,
   type AuditLogEntry
 } from './lib/firestoreSync';
 import {
@@ -1481,7 +1485,6 @@ export default function App() {
 
   const isOwner = userRole === 'owner';
   const isAdmin = userRole === 'admin';
-  const canEditEvents = isOwner || isAdmin;
 
   // Current Logged-in User Account State (Email & Password Auth)
   const [currentAccount, setCurrentAccount] = useState<AdminAccount | null>(() => {
@@ -1492,6 +1495,37 @@ export default function App() {
       return null;
     }
   });
+
+  // Admin Scope Category & Granular RBAC Permissions
+  const adminCategory: AdminCategory = currentAccount?.adminCategory || 'general';
+  const isGeneralAdmin = isAdmin && adminCategory === 'general';
+  const isFanClubAdmin = isAdmin && adminCategory === 'fanclub';
+
+  // Master Permissions
+  const canEditEvents = isOwner || isGeneralAdmin; // Calendar schedule events
+  const canEditProjects = isOwner || isGeneralAdmin; // Career projects (shows, movies, music videos, brands)
+  const canEditMessages = isOwner || isGeneralAdmin; // Fan messages moderation
+  const canEditSettings = isOwner; // Hub banner, greeting & metadata (Owner only)
+  const canManageAdmins = isOwner; // Manage registered admin accounts (Owner only)
+
+  // Fan Club permission helper: Owner or assigned Fan Club Admin
+  const canEditClub = (club: FanClub) => {
+    if (isOwner) return true;
+    if (!isFanClubAdmin) return false;
+    if (currentAccount?.assignedClubId && club.id === currentAccount.assignedClubId) return true;
+    if (currentAccount?.assignedClubName && club.name?.trim().toLowerCase() === currentAccount.assignedClubName.trim().toLowerCase()) return true;
+    return false;
+  };
+
+  // Food Support permission helper: Owner or assigned Admin
+  const canEditFoodProject = (project: FoodSupportProject) => {
+    if (isOwner) return true;
+    if (!isFanClubAdmin) return false;
+    if (currentAccount?.assignedFoodProjectId && project.id === currentAccount.assignedFoodProjectId) return true;
+    if (currentAccount?.assignedFoodProjectTitle && project.title?.trim().toLowerCase() === currentAccount.assignedFoodProjectTitle.trim().toLowerCase()) return true;
+    if (currentAccount?.assignedClubName && (project.organizerName?.toLowerCase().includes(currentAccount.assignedClubName.toLowerCase()) || project.title?.toLowerCase().includes(currentAccount.assignedClubName.toLowerCase()))) return true;
+    return false;
+  };
 
   const currentUserEmail = currentAccount?.email || (userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'visitor');
 
@@ -1505,7 +1539,11 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState<boolean>(false);
   const [showLoginPassword, setShowLoginPassword] = useState<boolean>(false);
 
-  // Admin Account Creation (Register with own email and passcodes)
+  // Admin Account Creation (Register with own email, passcode & category)
+  const [regCategory, setRegCategory] = useState<AdminCategory>('general');
+  const [regAssignedClubId, setRegAssignedClubId] = useState<string>('');
+  const [regAssignedClubName, setRegAssignedClubName] = useState<string>('');
+  const [regCustomClubName, setRegCustomClubName] = useState<string>('');
   const [regEmailInput, setRegEmailInput] = useState<string>('');
   const [regDisplayNameInput, setRegDisplayNameInput] = useState<string>('');
   const [regPasswordInput, setRegPasswordInput] = useState<string>('');
@@ -1519,6 +1557,23 @@ export default function App() {
   // Registered Admin Accounts List (Real-time Firestore sync)
   const [registeredAdmins, setRegisteredAdmins] = useState<AdminAccount[]>([]);
   const [adminAccountsModalOpen, setAdminAccountsModalOpen] = useState<boolean>(false);
+  const [adminTabFilter, setAdminTabFilter] = useState<'all' | 'general' | 'fanclub' | 'pending'>('all');
+  const [adminSearchQuery, setAdminSearchQuery] = useState<string>('');
+  const [editingAdminScope, setEditingAdminScope] = useState<AdminAccount | null>(null);
+  const [scopeCategoryEdit, setScopeCategoryEdit] = useState<AdminCategory>('general');
+  const [scopeClubIdEdit, setScopeClubIdEdit] = useState<string>('');
+  const [scopeClubNameEdit, setScopeClubNameEdit] = useState<string>('');
+  const [scopeCustomClubName, setScopeCustomClubName] = useState<string>('');
+  const [isDirectCreateOpen, setIsDirectCreateOpen] = useState<boolean>(false);
+  const [directEmail, setDirectEmail] = useState<string>('');
+  const [directPassword, setDirectPassword] = useState<string>('');
+  const [directDisplayName, setDirectDisplayName] = useState<string>('');
+  const [directCategory, setDirectCategory] = useState<AdminCategory>('general');
+  const [directClubId, setDirectClubId] = useState<string>('');
+  const [directClubName, setDirectClubName] = useState<string>('');
+  const [directCustomClubName, setDirectCustomClubName] = useState<string>('');
+  const [directError, setDirectError] = useState<string>('');
+  const [directLoading, setDirectLoading] = useState<boolean>(false);
 
   // Change Password Modal State (Admins can change default Avocean2026 to their own; Owner can change ErnestTheStan05!)
   const [changePasswordModalOpen, setChangePasswordModalOpen] = useState<boolean>(false);
@@ -2724,12 +2779,16 @@ export default function App() {
     setRegPasswordInput('');
     setRegConfirmPasswordInput('');
     setRegAdminPasscodeInput('');
+    setRegCategory('general');
+    setRegAssignedClubId('');
+    setRegAssignedClubName('');
+    setRegCustomClubName('');
     setShowRegPassword(false);
     setShowRegAuthCode(false);
     setLoginModalOpen(true);
   };
 
-  // Submit Admin Account Registration (with own email and passcodes, pending Owner approval)
+  // Submit Admin Account Registration (with own email, passcode, and selected category)
   const handleRegisterAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
@@ -2747,13 +2806,26 @@ export default function App() {
       return;
     }
 
+    const assignedName =
+      regCategory === 'fanclub'
+        ? (regCustomClubName.trim() || regAssignedClubName.trim())
+        : '';
+
+    if (regCategory === 'fanclub' && !assignedName) {
+      setRegError('Please select or specify the fan club you are requesting admin access for.');
+      return;
+    }
+
     setRegLoading(true);
     try {
       const res = await registerAdminAccount(
         regEmailInput,
         regPasswordInput,
         regDisplayNameInput,
-        regAdminPasscodeInput
+        regAdminPasscodeInput,
+        regCategory,
+        regAssignedClubId || undefined,
+        assignedName || undefined
       );
 
       if (res.success && res.account) {
@@ -2763,9 +2835,18 @@ export default function App() {
         setRegPasswordInput('');
         setRegConfirmPasswordInput('');
         setRegAdminPasscodeInput('');
+        setRegCategory('general');
+        setRegAssignedClubId('');
+        setRegAssignedClubName('');
+        setRegCustomClubName('');
         setRegError('');
 
-        showToast(`🎉 Admin request submitted for ${res.account.displayName}! Your account is pending approval by the Hub Owner (Ernest). You will be able to log in once approved.`);
+        const categoryLabel =
+          regCategory === 'fanclub'
+            ? `Fan Club Admin (${assignedName})`
+            : 'General Admin';
+
+        showToast(`🎉 Request submitted for ${res.account.displayName} (${categoryLabel})! Awaiting approval by Hub Owner (Ernest).`);
       } else {
         setRegError(res.error || 'Could not submit admin request. Please check your details.');
       }
@@ -2776,11 +2857,18 @@ export default function App() {
     }
   };
 
-  // Approve Admin Account (Owner only)
-  const handleApproveAdmin = async (emailToApprove: string) => {
+  // Approve Admin Account (Owner only) with optional category/scope
+  const handleApproveAdmin = async (
+    emailToApprove: string,
+    overrides?: {
+      adminCategory?: AdminCategory;
+      assignedClubId?: string;
+      assignedClubName?: string;
+    }
+  ) => {
     if (!isOwner) return;
     try {
-      const res = await approveAdminAccount(emailToApprove, currentUserEmail);
+      const res = await approveAdminAccount(emailToApprove, currentUserEmail, overrides);
       if (res.success) {
         showToast(`✅ Approved admin access for ${emailToApprove}! They can now log in.`);
       } else {
@@ -2788,6 +2876,94 @@ export default function App() {
       }
     } catch (err: any) {
       showToast(err?.message || 'Error approving admin account.');
+    }
+  };
+
+  // Update existing Admin Account Scope / Category (Owner only)
+  const handleSaveAdminScope = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isOwner || !editingAdminScope) return;
+
+    const assignedName =
+      scopeCategoryEdit === 'fanclub'
+        ? (scopeCustomClubName.trim() || scopeClubNameEdit.trim())
+        : '';
+
+    try {
+      const res = await updateAdminAccountScope(editingAdminScope.email, currentUserEmail, {
+        adminCategory: scopeCategoryEdit,
+        assignedClubId: scopeCategoryEdit === 'fanclub' ? scopeClubIdEdit : '',
+        assignedClubName: assignedName
+      });
+
+      if (res.success) {
+        showToast(`✅ Updated scope for ${editingAdminScope.email}: ${scopeCategoryEdit === 'fanclub' ? `Fan Club Admin (${assignedName})` : 'General Admin'}`);
+        setEditingAdminScope(null);
+      } else {
+        showToast(res.error || 'Could not update admin scope.');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error updating admin scope.');
+    }
+  };
+
+  // Create Admin Account Directly (Owner only, pre-approved without needing auth code)
+  const handleDirectCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isOwner) return;
+    setDirectError('');
+
+    if (!directEmail.trim() || !directEmail.includes('@')) {
+      setDirectError('Please enter a valid email address.');
+      return;
+    }
+    if (directPassword.length < 6) {
+      setDirectError('Password must be at least 6 characters.');
+      return;
+    }
+
+    const assignedName =
+      directCategory === 'fanclub'
+        ? (directCustomClubName.trim() || directClubName.trim())
+        : '';
+
+    if (directCategory === 'fanclub' && !assignedName) {
+      setDirectError('Please select or enter the assigned fan club name.');
+      return;
+    }
+
+    setDirectLoading(true);
+    try {
+      const res = await createAdminAccountDirectly(
+        {
+          email: directEmail,
+          password: directPassword,
+          displayName: directDisplayName.trim() || directEmail.split('@')[0],
+          adminCategory: directCategory,
+          assignedClubId: directCategory === 'fanclub' ? directClubId : undefined,
+          assignedClubName: assignedName || undefined
+        },
+        currentUserEmail
+      );
+
+      if (res.success && res.account) {
+        showToast(`🎉 Created approved ${directCategory === 'fanclub' ? `Fan Club Admin (${assignedName})` : 'General Admin'} for ${res.account.displayName}!`);
+        setIsDirectCreateOpen(false);
+        setDirectEmail('');
+        setDirectPassword('');
+        setDirectDisplayName('');
+        setDirectCategory('general');
+        setDirectClubId('');
+        setDirectClubName('');
+        setDirectCustomClubName('');
+        setDirectError('');
+      } else {
+        setDirectError(res.error || 'Could not create admin account.');
+      }
+    } catch (err: any) {
+      setDirectError(err?.message || 'Error creating admin account.');
+    } finally {
+      setDirectLoading(false);
     }
   };
 
@@ -5057,8 +5233,8 @@ export default function App() {
               </button>
             )}
 
-            {/* Visitor Logins (shown when not logged in) */}
-            {!canEditEvents && (
+            {/* Visitor Logins vs Logged-in Account Badge */}
+            {!(isOwner || isAdmin) ? (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openLoginModal('admin')}
@@ -5079,12 +5255,35 @@ export default function App() {
                   <span>Owner Login</span>
                 </button>
               </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                {isOwner ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800 text-xs font-bold shadow-2xs">
+                    <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                    <span>👑 Hub Owner (Ernest)</span>
+                  </span>
+                ) : isFanClubAdmin ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-xs font-bold shadow-2xs">
+                    <span>🌟</span>
+                    <span className="truncate max-w-[170px] sm:max-w-[220px]">
+                      Fan Club Admin · {currentAccount?.assignedClubName || currentAccount?.displayName || 'Assigned Club'}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 text-xs font-bold shadow-2xs">
+                    <Shield className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="truncate max-w-[150px] sm:max-w-[200px]">
+                      🛡️ General Admin · {currentAccount?.displayName || 'Admin'}
+                    </span>
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>
 
-        {/* ROW 2: DEDICATED ADMIN & OWNER ACTION BAR (Appears only when Admin or Owner is logged in) */}
-        {canEditEvents && (
+        {/* ROW 2: DEDICATED ADMIN & OWNER ACTION BAR (Appears for Owner, General Admin, or Fan Club Admin) */}
+        {(isOwner || isAdmin) && (
           <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-purple-200/50 dark:border-slate-700/60">
             {/* Left Tools: Management & Hub Controls */}
             <div className="flex items-center gap-2 flex-wrap">
@@ -5148,8 +5347,52 @@ export default function App() {
                     )}
                   </button>
                 </>
+              ) : isFanClubAdmin ? (
+                <>
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
+                    <span>🌟 Fan Club Admin:</span>
+                    <span className="font-extrabold text-amber-700 dark:text-amber-300">
+                      {currentAccount?.assignedClubName || 'Assigned Club'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('fanhub');
+                      setFanHubSubTab('directory');
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-xs cursor-pointer transition-all active:scale-95"
+                    title="Go directly to your assigned fan club"
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Go to My Fan Club</span>
+                  </button>
+
+                  <button
+                    onClick={() => openChangePasswordModal()}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="Change Your Password"
+                  >
+                    <Key className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Password</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAuditModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
+                    title="View Log In & Activity Audit History"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Activity History</span>
+                  </button>
+                </>
               ) : (
                 <>
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-800">
+                    <Shield className="w-3.5 h-3.5 text-blue-600" />
+                    <span>General Admin (Calendar, Career Projects & Messages)</span>
+                  </div>
+
                   <button
                     onClick={() => setAuditModalOpen(true)}
                     className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all"
@@ -5171,21 +5414,23 @@ export default function App() {
               )}
             </div>
 
-            {/* Right Tools: Primary Action "+ Add Event" & Logout Button */}
+            {/* Right Tools: "+ Add Event" (Only for Owner or General Admin) & Logout */}
             <div className="flex items-center gap-2 flex-wrap ml-auto">
-              <button
-                onClick={() => openAddEventModal(selectedDateStr)}
-                style={{ backgroundColor: currentAccent.colorHex }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-1.5 rounded-full text-white shadow-xs transition-all cursor-pointer active:scale-95 hover:opacity-90"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Add Event</span>
-              </button>
+              {canEditEvents && (
+                <button
+                  onClick={() => openAddEventModal(selectedDateStr)}
+                  style={{ backgroundColor: currentAccent.colorHex }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-1.5 rounded-full text-white shadow-xs transition-all cursor-pointer active:scale-95 hover:opacity-90"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Add Event</span>
+                </button>
+              )}
 
               <button
                 onClick={handleLogout}
                 className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-colors"
-                title={isOwner ? 'Exit Owner Mode' : 'Exit Admin Mode'}
+                title={isOwner ? 'Exit Owner Mode' : isFanClubAdmin ? 'Exit Fan Club Admin Mode' : 'Exit Admin Mode'}
               >
                 {isOwner ? <Lock className="w-3.5 h-3.5" /> : <LogOut className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">Logout</span>
@@ -6001,7 +6246,7 @@ export default function App() {
           projects={careerProjects}
           actorProfiles={actorProfiles}
           onSaveActorProfiles={handleSaveActorProfiles}
-          canEdit={canEditEvents}
+          canEdit={canEditProjects}
           isOwner={isOwner}
           currentAccent={currentAccent}
           containerWidthClass={containerWidthClass}
@@ -6021,7 +6266,7 @@ export default function App() {
         <AppreciationWall
           messages={fanMessages}
           allMessages={fanMessages}
-          canEdit={canEditEvents}
+          canEdit={canEditMessages}
           isOwner={isOwner}
           currentAccent={currentAccent}
           containerWidthClass={containerWidthClass}
@@ -6041,8 +6286,14 @@ export default function App() {
         <FanHub
           fanClubs={fanClubs}
           foodProjects={foodProjects}
-          canEdit={canEditEvents}
+          canEdit={isOwner || isFanClubAdmin}
           isOwner={isOwner}
+          canEditClub={canEditClub}
+          canEditFoodProject={canEditFoodProject}
+          canAddClub={isOwner}
+          canAddFoodProject={isOwner}
+          isFanClubAdmin={isFanClubAdmin}
+          currentAccount={currentAccount}
           events={events}
           currentAccent={currentAccent}
           containerWidthClass={containerWidthClass}
@@ -8458,6 +8709,94 @@ export default function App() {
             ) : (
               /* CREATE ADMIN ACCOUNT REGISTRATION FORM */
               <form onSubmit={handleRegisterAdmin} className="space-y-3">
+                {/* Admin Category Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1.5">
+                    Admin Category / Role Type <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRegCategory('general')}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        regCategory === 'general'
+                          ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-400 dark:border-blue-600 ring-2 ring-blue-400/30'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-[#1A3668] dark:text-white">
+                        <span>🛡️</span>
+                        <span>General Admin</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                        Can edit calendar events, career projects & messages.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRegCategory('fanclub')}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        regCategory === 'fanclub'
+                          ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/30'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-200">
+                        <span>🌟</span>
+                        <span>Fan Club Admin</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                        Can only edit your assigned fan club & its events.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* If Fan Club Admin, select or specify Fan Club */}
+                {regCategory === 'fanclub' && (
+                  <div className="p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 space-y-2 animate-in fade-in duration-150">
+                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                      Select Your Fan Club <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={regAssignedClubId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setRegAssignedClubId(id);
+                        if (id === 'custom') {
+                          setRegAssignedClubName('');
+                        } else {
+                          const found = fanClubs.find((c) => c.id === id);
+                          if (found) {
+                            setRegAssignedClubName(found.name);
+                            setRegCustomClubName('');
+                          }
+                        }
+                      }}
+                      className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none cursor-pointer"
+                    >
+                      <option value="">-- Choose from existing Fan Clubs --</option>
+                      {fanClubs.map((club) => (
+                        <option key={club.id} value={club.id}>
+                          {club.countryName ? `${club.countryName}: ` : ''}{club.name}
+                        </option>
+                      ))}
+                      <option value="custom">✍️ Other / New Fan Club Name</option>
+                    </select>
+
+                    {(regAssignedClubId === 'custom' || (!regAssignedClubId && fanClubs.length === 0)) && (
+                      <input
+                        type="text"
+                        value={regCustomClubName}
+                        onChange={(e) => setRegCustomClubName(e.target.value)}
+                        placeholder="Type your official fan club name"
+                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                      />
+                    )}
+                  </div>
+                )}
+
                 {/* Admin's Own Email Address */}
                 <div>
                   <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
@@ -8756,7 +9095,7 @@ export default function App() {
       {/* ============================================================== */}
       {adminAccountsModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg p-6 max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
@@ -8765,83 +9104,498 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
-                    Registered Admin Accounts
+                    Admin Team Management
                   </h3>
                   <p className="text-xs font-semibold text-[#607494] dark:text-slate-400">
-                    Admins authorized to add & edit calendar events
+                    Separate General Admins (Schedule/Projects) and Fan Club Admins (Club-only)
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setAdminAccountsModalOpen(false)}
+                onClick={() => {
+                  setAdminAccountsModalOpen(false);
+                  setIsDirectCreateOpen(false);
+                  setEditingAdminScope(null);
+                }}
                 className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* List of Admins (Pending Requests & Approved Admins) */}
-            <div className="flex-1 overflow-y-auto py-3 space-y-4 min-h-[160px] max-h-[60vh] pr-1">
+            {/* Filter Tabs & Search Bar */}
+            {(() => {
+              const nonOwner = registeredAdmins.filter((acc) => acc.role !== 'owner');
+              const pendingCount = nonOwner.filter((acc) => acc.status === 'pending').length;
+              const generalCount = nonOwner.filter((acc) => (acc.adminCategory === 'general' || !acc.adminCategory) && acc.status !== 'pending' && acc.status !== 'rejected').length;
+              const fanClubCount = nonOwner.filter((acc) => acc.adminCategory === 'fanclub' && acc.status !== 'pending' && acc.status !== 'rejected').length;
+
+              return (
+                <div className="pt-3 pb-2 space-y-2.5">
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setAdminTabFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                        adminTabFilter === 'all'
+                          ? 'bg-[#1A3668] text-white shadow-2xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      All Admins ({nonOwner.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminTabFilter('general')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                        adminTabFilter === 'general'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>🛡️ General Admins</span>
+                      <span className="opacity-80">({generalCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminTabFilter('fanclub')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                        adminTabFilter === 'fanclub'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>🌟 Fan Club Admins</span>
+                      <span className="opacity-80">({fanClubCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminTabFilter('pending')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                        adminTabFilter === 'pending'
+                          ? 'bg-amber-500 text-white shadow-2xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>⏳ Pending</span>
+                      {pendingCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[9.5px] font-black animate-pulse">
+                          {pendingCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Search and Direct Create Toggle */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={adminSearchQuery}
+                        onChange={(e) => setAdminSearchQuery(e.target.value)}
+                        placeholder="Search by name, email, or assigned fan club..."
+                        className="w-full pl-9 pr-7 py-2 rounded-xl text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#1A3668] dark:text-white focus:outline-none"
+                      />
+                      {adminSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setAdminSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsDirectCreateOpen(!isDirectCreateOpen)}
+                      className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                        isDirectCreateOpen
+                          ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{isDirectCreateOpen ? 'Close Form' : '+ Add Admin Directly'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Direct Create Admin Form (Owner only) */}
+            {isDirectCreateOpen && (
+              <form onSubmit={handleDirectCreateAdmin} className="p-4 mb-3 rounded-2xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 space-y-3 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Create Pre-Approved Admin Account Directly</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsDirectCreateOpen(false)}
+                    className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Category Radio */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDirectCategory('general')}
+                    className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                      directCategory === 'general'
+                        ? 'bg-white dark:bg-slate-900 border-blue-500 shadow-xs ring-2 ring-blue-400/20'
+                        : 'bg-blue-100/40 dark:bg-blue-900/20 border-transparent text-slate-500'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold text-[#1A3668] dark:text-white">🛡️ General Admin</span>
+                    <span className="text-[10px] text-slate-500 block">Calendar, Career Projects, Messages</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDirectCategory('fanclub')}
+                    className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                      directCategory === 'fanclub'
+                        ? 'bg-white dark:bg-slate-900 border-amber-500 shadow-xs ring-2 ring-amber-400/20'
+                        : 'bg-blue-100/40 dark:bg-blue-900/20 border-transparent text-slate-500'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold text-amber-900 dark:text-amber-200">🌟 Fan Club Admin</span>
+                    <span className="text-[10px] text-slate-500 block">Edit specific fan club & events only</span>
+                  </button>
+                </div>
+
+                {/* If Fan Club Admin, select club */}
+                {directCategory === 'fanclub' && (
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                      Assign Fan Club <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={directClubId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setDirectClubId(id);
+                        if (id === 'custom') {
+                          setDirectClubName('');
+                        } else {
+                          const found = fanClubs.find((c) => c.id === id);
+                          if (found) {
+                            setDirectClubName(found.name);
+                            setDirectCustomClubName('');
+                          }
+                        }
+                      }}
+                      className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                    >
+                      <option value="">-- Choose Fan Club to Assign --</option>
+                      {fanClubs.map((club) => (
+                        <option key={club.id} value={club.id}>
+                          {club.countryName ? `${club.countryName}: ` : ''}{club.name}
+                        </option>
+                      ))}
+                      <option value="custom">✍️ Other / New Fan Club Name</option>
+                    </select>
+
+                    {(directClubId === 'custom' || (!directClubId && fanClubs.length === 0)) && (
+                      <input
+                        type="text"
+                        value={directCustomClubName}
+                        onChange={(e) => setDirectCustomClubName(e.target.value)}
+                        placeholder="Type assigned fan club name"
+                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                      />
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    type="email"
+                    required
+                    value={directEmail}
+                    onChange={(e) => setDirectEmail(e.target.value)}
+                    placeholder="Admin Email (e.g. name@gmail.com)"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={directDisplayName}
+                    onChange={(e) => setDirectDisplayName(e.target.value)}
+                    placeholder="Display Name (e.g. PH Team Lead)"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <input
+                    type="password"
+                    required
+                    value={directPassword}
+                    onChange={(e) => setDirectPassword(e.target.value)}
+                    placeholder="Assign Password / Passcode (min 6 chars)"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                  />
+                </div>
+
+                {directError && (
+                  <div className="p-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold">
+                    {directError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsDirectCreateOpen(false)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={directLoading}
+                    className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    {directLoading ? 'Creating...' : 'Create Admin Account'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Scope Edit Inline Subform */}
+            {editingAdminScope && (
+              <form onSubmit={handleSaveAdminScope} className="p-4 mb-3 rounded-2xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 space-y-3 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                      Edit Scope & Permissions for: <span className="font-extrabold">{editingAdminScope.displayName || editingAdminScope.email}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Switch this admin between General Admin and Fan Club Admin
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingAdminScope(null)}
+                    className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Category Radio */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScopeCategoryEdit('general')}
+                    className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                      scopeCategoryEdit === 'general'
+                        ? 'bg-white dark:bg-slate-900 border-blue-500 shadow-xs ring-2 ring-blue-400/20'
+                        : 'bg-amber-100/40 dark:bg-amber-900/20 border-transparent text-slate-500'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold text-[#1A3668] dark:text-white">🛡️ General Admin</span>
+                    <span className="text-[10px] text-slate-500 block">Edit Calendar Events, Career Projects & Messages</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScopeCategoryEdit('fanclub')}
+                    className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                      scopeCategoryEdit === 'fanclub'
+                        ? 'bg-white dark:bg-slate-900 border-amber-500 shadow-xs ring-2 ring-amber-400/20'
+                        : 'bg-amber-100/40 dark:bg-amber-900/20 border-transparent text-slate-500'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold text-amber-900 dark:text-amber-200">🌟 Fan Club Admin</span>
+                    <span className="text-[10px] text-slate-500 block">Edit specific assigned fan club only</span>
+                  </button>
+                </div>
+
+                {/* If Fan Club Admin, select assigned club */}
+                {scopeCategoryEdit === 'fanclub' && (
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                      Assign Fan Club
+                    </label>
+                    <select
+                      value={scopeClubIdEdit}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setScopeClubIdEdit(id);
+                        if (id === 'custom') {
+                          setScopeClubNameEdit('');
+                        } else {
+                          const found = fanClubs.find((c) => c.id === id);
+                          if (found) {
+                            setScopeClubNameEdit(found.name);
+                            setScopeCustomClubName('');
+                          }
+                        }
+                      }}
+                      className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                    >
+                      <option value="">-- Choose Fan Club --</option>
+                      {fanClubs.map((club) => (
+                        <option key={club.id} value={club.id}>
+                          {club.countryName ? `${club.countryName}: ` : ''}{club.name}
+                        </option>
+                      ))}
+                      <option value="custom">✍️ Other / New Fan Club Name</option>
+                    </select>
+
+                    {(scopeClubIdEdit === 'custom' || (!scopeClubIdEdit && fanClubs.length === 0)) && (
+                      <input
+                        type="text"
+                        value={scopeCustomClubName}
+                        onChange={(e) => setScopeCustomClubName(e.target.value)}
+                        placeholder="Type assigned fan club name"
+                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                      />
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingAdminScope(null)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    Save Scope Changes
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* List of Admins (Filtered) */}
+            <div className="flex-1 overflow-y-auto py-2 space-y-3 min-h-[160px] max-h-[55vh] pr-1">
               {(() => {
                 const nonOwnerAdmins = registeredAdmins.filter((acc) => acc.role !== 'owner');
-                const pendingAdmins = nonOwnerAdmins.filter((acc) => acc.status === 'pending');
-                const approvedAdmins = nonOwnerAdmins.filter((acc) => acc.status !== 'pending' && acc.status !== 'rejected');
 
-                if (nonOwnerAdmins.length === 0) {
+                const filtered = nonOwnerAdmins.filter((acc) => {
+                  const isPending = acc.status === 'pending';
+                  const isFanClub = acc.adminCategory === 'fanclub';
+                  const isGeneral = !acc.adminCategory || acc.adminCategory === 'general';
+
+                  if (adminTabFilter === 'pending' && !isPending) return false;
+                  if (adminTabFilter === 'fanclub' && (isPending || !isFanClub)) return false;
+                  if (adminTabFilter === 'general' && (isPending || !isGeneral)) return false;
+
+                  if (adminSearchQuery.trim()) {
+                    const q = adminSearchQuery.toLowerCase();
+                    const name = (acc.displayName || '').toLowerCase();
+                    const email = acc.email.toLowerCase();
+                    const club = (acc.assignedClubName || '').toLowerCase();
+                    if (!name.includes(q) && !email.includes(q) && !club.includes(q)) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
                   return (
                     <div className="text-center py-8 px-4 text-slate-400 text-xs">
                       <Shield className="w-8 h-8 mx-auto mb-2 opacity-40 text-blue-500" />
-                      <p className="font-semibold text-slate-500 dark:text-slate-400">No admin accounts created yet.</p>
-                      <p className="mt-1 text-[11px]">Give trusted collaborators the private authorization code so they can request admin access.</p>
+                      <p className="font-semibold text-slate-500 dark:text-slate-400">
+                        {adminSearchQuery ? 'No matching admin accounts found.' : 'No admins in this category.'}
+                      </p>
+                      <p className="mt-1 text-[11px]">Click "+ Add Admin Directly" above to create an admin account immediately.</p>
                     </div>
                   );
                 }
 
                 return (
-                  <div className="space-y-4">
-                    {/* Section 1: Pending Owner Approval */}
-                    {pendingAdmins.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                            <span>Pending Owner Approval ({pendingAdmins.length})</span>
-                          </div>
-                          <span className="text-[10.5px] font-semibold text-amber-600 dark:text-amber-400">
-                            Action required
-                          </span>
-                        </div>
+                  <div className="space-y-2.5">
+                    {filtered.map((acc) => {
+                      const isPending = acc.status === 'pending';
+                      const isFanClub = acc.adminCategory === 'fanclub';
 
-                        <div className="space-y-2">
-                          {pendingAdmins.map((acc) => (
+                      return (
+                        <div
+                          key={acc.id}
+                          className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs ${
+                            isPending
+                              ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800'
+                              : isFanClub
+                              ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-900/60'
+                              : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
                             <div
-                              key={acc.id}
-                              className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/90 dark:border-amber-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                              className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs ${
+                                isPending
+                                  ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-700'
+                                  : isFanClub
+                                  ? 'bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-200'
+                                  : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                              }`}
                             >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
-                                  ⏳
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
-                                      {acc.displayName || acc.email.split('@')[0]}
+                              {isPending ? '⏳' : isFanClub ? '🌟' : '🛡️'}
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
+                                  {acc.displayName || acc.email.split('@')[0]}
+                                </span>
+
+                                {/* Scope / Category Badge */}
+                                {isPending ? (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200">
+                                    Pending Approval
+                                  </span>
+                                ) : isFanClub ? (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 flex items-center gap-1">
+                                    <span>🌟 Fan Club Admin:</span>
+                                    <span className="underline decoration-amber-400">
+                                      {acc.assignedClubName || 'Assigned Club'}
                                     </span>
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
-                                      Pending Approval
-                                    </span>
-                                  </div>
-                                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 truncate">
-                                    {acc.email}
-                                  </div>
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
-                                    Requested: {new Date(acc.createdAt).toLocaleDateString()}
-                                  </div>
-                                </div>
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                                    🛡️ General Admin
+                                  </span>
+                                )}
                               </div>
 
-                              {isOwner && (
-                                <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                                {acc.email}
+                              </div>
+
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {isPending
+                                  ? `Requested: ${new Date(acc.createdAt).toLocaleDateString()}`
+                                  : acc.lastLoginAt
+                                  ? `Last active: ${new Date(acc.lastLoginAt).toLocaleDateString()}`
+                                  : `Approved: ${new Date(acc.approvedAt || acc.createdAt).toLocaleDateString()}`}
+                                {isFanClub && acc.assignedClubName && (
+                                  <span className="ml-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                    • Assigned to {acc.assignedClubName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons for Hub Owner */}
+                          {isOwner && (
+                            <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                              {isPending ? (
+                                <>
                                   <button
                                     type="button"
                                     onClick={() => handleApproveAdmin(acc.email)}
@@ -8854,74 +9608,46 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => handleRejectAdmin(acc.email)}
-                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-bold border border-slate-200 dark:border-slate-700 cursor-pointer transition-all"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-bold border border-slate-200 dark:border-slate-700 cursor-pointer transition-all"
                                     title={`Decline admin request for ${acc.email}`}
                                   >
                                     <X className="w-3.5 h-3.5" />
                                     <span>Decline</span>
                                   </button>
-                                </div>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingAdminScope(acc);
+                                      setScopeCategoryEdit(acc.adminCategory || 'general');
+                                      setScopeClubIdEdit(acc.assignedClubId || '');
+                                      setScopeClubNameEdit(acc.assignedClubName || '');
+                                      setScopeCustomClubName('');
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/50 text-slate-700 dark:text-slate-300 hover:text-amber-700 border border-slate-200 dark:border-slate-700 text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                                    title="Edit admin category or reassign fan club"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5 text-amber-500" />
+                                    <span>Edit Scope</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAdmin(acc.email)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                    title={`Revoke admin access for ${acc.email}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
                               )}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    )}
-
-                    {/* Section 2: Approved Active Admins */}
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        Active Approved Admins ({approvedAdmins.length})
-                      </div>
-
-                      {approvedAdmins.length === 0 ? (
-                        <div className="py-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                          No approved admins yet. Approve pending requests above.
-                        </div>
-                      ) : (
-                        approvedAdmins.map((acc) => (
-                          <div
-                            key={acc.id}
-                            className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-3 shadow-2xs"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold text-xs shrink-0">
-                                🛡️
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-xs font-bold text-[#1A3668] dark:text-white truncate">
-                                    {acc.displayName || acc.email.split('@')[0]}
-                                  </span>
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                                    Approved Admin
-                                  </span>
-                                </div>
-                                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
-                                  {acc.email}
-                                </div>
-                                <div className="text-[10px] text-slate-400 mt-0.5">
-                                  {acc.lastLoginAt
-                                    ? `Last active: ${new Date(acc.lastLoginAt).toLocaleDateString()}`
-                                    : `Approved: ${new Date(acc.approvedAt || acc.createdAt).toLocaleDateString()}`}
-                                </div>
-                              </div>
-                            </div>
-
-                            {isOwner && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteAdmin(acc.email)}
-                                className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
-                                title={`Revoke admin access for ${acc.email}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
+                      );
+                    })}
                   </div>
                 );
               })()}
@@ -8938,13 +9664,17 @@ export default function App() {
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 cursor-pointer transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Register New Admin</span>
+                <span>Open Registration Form</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setAdminAccountsModalOpen(false)}
-                className="px-4 py-2 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-slate-700 hover:bg-slate-800 cursor-pointer shadow-xs"
+                onClick={() => {
+                  setAdminAccountsModalOpen(false);
+                  setIsDirectCreateOpen(false);
+                  setEditingAdminScope(null);
+                }}
+                className="px-5 py-2 rounded-full text-xs font-bold text-white bg-[#1A3668] dark:bg-slate-700 hover:bg-slate-800 cursor-pointer shadow-xs"
               >
                 Done
               </button>
