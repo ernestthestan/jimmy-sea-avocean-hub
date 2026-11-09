@@ -48,7 +48,7 @@ export type FanClubEventCategory =
   | 'birthday'
   | 'other';
 
-export type FanClubPhotoAspect = 'poster' | 'card' | 'square';
+export type FanClubPhotoAspect = 'poster' | 'card' | 'square' | 'auto' | 'full';
 export type FanClubPhotoSize = 'small' | 'medium' | 'large';
 
 export interface FanClubEvent {

@@ -1893,28 +1893,62 @@ export const FanHub: React.FC<FanHubProps> = ({
                                       : 'h-32 sm:h-38';
 
                                   if (allEvPhotos.length === 1) {
+                                    const isFullWidth = ev.photoAspect === 'full';
+                                    const isAuto = ev.photoAspect === 'auto';
+                                    const aspectValue =
+                                      ev.photoAspect === 'card'
+                                        ? '16/9'
+                                        : ev.photoAspect === 'square'
+                                        ? '1/1'
+                                        : isFullWidth || isAuto
+                                        ? undefined
+                                        : '3/4';
+
                                     return (
-                                      <div className="pt-1">
-                                        <div
-                                          onClick={() =>
-                                            openLightboxGallery(
-                                              [{ url: allEvPhotos[0], caption: `${club.name} — ${ev.title}` }],
-                                              0
-                                            )
-                                          }
-                                          className={`relative w-full ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs flex items-center justify-center`}
-                                        >
-                                          <img
-                                            src={allEvPhotos[0]}
-                                            alt={ev.title}
-                                            className={`w-full h-full object-cover group-hover/poster:scale-105 transition-transform duration-300 ${aspectStyle}`}
-                                            onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-                                          />
-                                          <div className="absolute inset-0 bg-black/20 group-hover/poster:bg-black/45 flex items-center justify-center transition-colors">
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 text-white text-[11px] font-bold backdrop-blur-xs">
-                                              <Maximize2 className="w-3 h-3" />
-                                              <span>View Graphic</span>
-                                            </span>
+                                      <div className="pt-1 space-y-1.5">
+                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                          <span className="flex items-center gap-1 text-purple-700 dark:text-purple-300 font-bold">
+                                            <ImageIcon className="w-3.5 h-3.5 text-purple-600" />
+                                            <span>Event Poster / Graphic</span>
+                                          </span>
+                                          <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1">
+                                            <Maximize2 className="w-3 h-3" />
+                                            <span>Click to enlarge</span>
+                                          </span>
+                                        </div>
+
+                                        <div className="flex gap-2 overflow-x-auto pb-1 pt-0.5 scrollbar-thin scroll-smooth">
+                                          <div
+                                            onClick={() =>
+                                              openLightboxGallery(
+                                                [{ url: allEvPhotos[0], caption: `${club.name} — ${ev.title}`, title: ev.title }],
+                                                0
+                                              )
+                                            }
+                                            className={`relative ${
+                                              isFullWidth ? `w-full ${sizeClass}` : `shrink-0 ${sizeClass}`
+                                            } rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs flex items-center justify-center`}
+                                            style={{
+                                              aspectRatio: aspectValue
+                                            }}
+                                            title="Click to view full event poster in gallery"
+                                          >
+                                            <img
+                                              src={allEvPhotos[0]}
+                                              alt={ev.title}
+                                              className={`${
+                                                isAuto
+                                                  ? 'h-full w-auto max-w-none object-contain'
+                                                  : 'w-full h-full object-cover'
+                                              } group-hover/poster:scale-105 transition-transform duration-300`}
+                                              onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                            />
+                                            <div className="absolute inset-0 bg-black/15 group-hover/poster:bg-black/40 flex items-center justify-center transition-colors">
+                                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 text-white text-[11px] font-bold backdrop-blur-xs opacity-0 group-hover/poster:opacity-100 transition-opacity">
+                                                <Maximize2 className="w-3 h-3" />
+                                                <span>View Graphic</span>
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -1958,35 +1992,46 @@ export const FanHub: React.FC<FanHubProps> = ({
                                         id={`ev-gallery-${club.id}-${ev.id || evIdx}`}
                                         className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin scroll-smooth"
                                       >
-                                        {allEvPhotos.map((photoUrl, pIdx) => (
-                                          <div
-                                            key={pIdx}
-                                            onClick={() =>
-                                              openLightboxGallery(
-                                                allEvPhotos.map((url, idx) => ({
-                                                  url,
-                                                  caption: `${club.name} — ${ev.title} (${idx + 1} of ${allEvPhotos.length})`,
-                                                  title: ev.title
-                                                })),
-                                                pIdx
-                                              )
-                                            }
-                                            className={`relative shrink-0 ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs`}
-                                            style={{
-                                              aspectRatio:
-                                                ev.photoAspect === 'card'
-                                                  ? '16/9'
-                                                  : ev.photoAspect === 'square'
-                                                  ? '1/1'
-                                                  : '3/4'
-                                            }}
-                                          >
-                                            <img
-                                              src={photoUrl}
-                                              alt={`${ev.title} photo ${pIdx + 1}`}
-                                              className="w-full h-full object-cover group-hover/poster:scale-105 transition-transform duration-300"
-                                              onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-                                            />
+                                        {allEvPhotos.map((photoUrl, pIdx) => {
+                                          const isAutoItem = ev.photoAspect === 'auto';
+                                          const itemAspectValue =
+                                            ev.photoAspect === 'card'
+                                              ? '16/9'
+                                              : ev.photoAspect === 'square'
+                                              ? '1/1'
+                                              : isAutoItem
+                                              ? undefined
+                                              : '3/4';
+
+                                          return (
+                                            <div
+                                              key={pIdx}
+                                              onClick={() =>
+                                                openLightboxGallery(
+                                                  allEvPhotos.map((url, idx) => ({
+                                                    url,
+                                                    caption: `${club.name} — ${ev.title} (${idx + 1} of ${allEvPhotos.length})`,
+                                                    title: ev.title
+                                                  })),
+                                                  pIdx
+                                                )
+                                              }
+                                              className={`relative shrink-0 ${sizeClass} rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 cursor-pointer group/poster bg-slate-950 shadow-2xs flex items-center justify-center`}
+                                              style={{
+                                                aspectRatio: itemAspectValue
+                                              }}
+                                              title={`Click to view photo ${pIdx + 1} in gallery`}
+                                            >
+                                              <img
+                                                src={photoUrl}
+                                                alt={`${ev.title} photo ${pIdx + 1}`}
+                                                className={`${
+                                                  isAutoItem
+                                                    ? 'h-full w-auto max-w-none object-contain'
+                                                    : 'w-full h-full object-cover'
+                                                } group-hover/poster:scale-105 transition-transform duration-300`}
+                                                onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                                              />
                                             <div className="absolute inset-0 bg-black/15 group-hover/poster:bg-black/40 flex items-center justify-center transition-colors">
                                               <span className="p-1 rounded-full bg-black/70 text-white text-[10px] opacity-0 group-hover/poster:opacity-100 transition-opacity">
                                                 <Maximize2 className="w-3 h-3" />
@@ -1996,7 +2041,8 @@ export const FanHub: React.FC<FanHubProps> = ({
                                               {pIdx + 1}/{allEvPhotos.length}
                                             </span>
                                           </div>
-                                        ))}
+                                        );
+                                      })}
                                       </div>
                                     </div>
                                   );
@@ -3529,9 +3575,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                                     }}
                                     className="rounded-lg border border-purple-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[11px] font-bold text-[#1A3668] dark:text-white"
                                   >
-                                    <option value="poster">3:4 Poster</option>
+                                    <option value="poster">3:4 Poster (Default)</option>
+                                    <option value="auto">✨ Auto Size (Natural)</option>
                                     <option value="card">16:9 Banner</option>
                                     <option value="square">1:1 Square</option>
+                                    <option value="full">Full Width Banner</option>
                                   </select>
                                 </div>
 
