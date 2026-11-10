@@ -5605,12 +5605,18 @@ export default function App() {
                     <img
                       src={activePhoto}
                       alt="Ambient banner backdrop"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://pbs.twimg.com/media/HVxDAeBaEAAxyyF?format=jpg&name=4096x4096';
+                      }}
                       className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-60 scale-125 saturate-150 pointer-events-none"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/20 to-black/30 pointer-events-none z-5" />
                     <img
                       src={activePhoto}
                       alt="Jimmy & Sea Hub Banner Artwork"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://pbs.twimg.com/media/HVxDAeBaEAAxyyF?format=jpg&name=4096x4096';
+                      }}
                       className="w-full h-full object-contain relative z-10 transition-opacity duration-300 drop-shadow-md"
                     />
                   </div>
@@ -5619,6 +5625,9 @@ export default function App() {
                   <img
                     src={activePhoto}
                     alt="Jimmy & Sea Hub Banner Artwork"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = 'https://pbs.twimg.com/media/HVxDAeBaEAAxyyF?format=jpg&name=4096x4096';
+                    }}
                     className="w-full h-full object-cover object-center group-hover:scale-[1.01] transition-transform duration-500"
                   />
                 )

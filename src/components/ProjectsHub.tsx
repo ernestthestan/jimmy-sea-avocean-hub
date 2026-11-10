@@ -102,6 +102,12 @@ export function detectProjectWatchPlatform(url: string): { platform: string; lab
   return null;
 }
 
+export function extractYouTubeThumbnail(url?: string): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+  return match ? `https://img.youtube.com/vi/${match[1]}/maxresdefault.jpg` : null;
+}
+
 interface ProjectsHubProps {
   projects: CareerProject[];
   actorProfiles?: Record<'jimmy' | 'avocean' | 'sea', ActorProfile>;
@@ -1380,24 +1386,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     setFormDescription(proj.description);
 
     let photos: string[] = [];
-    if (isBrandProjItem) {
-      if (proj.mediaPhotos && proj.mediaPhotos.length > 0) {
-        // Filter out any legacy banner photo so Brand Media & Lookbook Gallery starts completely empty
-        // unless distinct product/campaign photos have been explicitly added!
-        photos = proj.mediaPhotos.filter(
-          (p) =>
-            p &&
-            p.trim() !== (resolvedBanner || '').trim() &&
-            p.trim() !== (proj.bannerUrl || '').trim() &&
-            p.trim() !== (proj.imageUrl || '').trim()
-        );
-      } else {
-        photos = [];
-      }
-    } else {
-      photos = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
-        ? [...proj.mediaPhotos]
-        : (proj.imageUrl ? [proj.imageUrl] : []);
+    if (proj.mediaPhotos && proj.mediaPhotos.length > 0) {
+      photos = [...proj.mediaPhotos].filter(Boolean);
+    } else if (!isBrandProjItem && proj.imageUrl) {
+      photos = [proj.imageUrl];
     }
     setFormMediaPhotos(photos);
     setFormActiveMediaIndex(0);
@@ -1575,7 +1567,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       status: formStatus,
       description: formDescription.trim(),
       imageUrl: primaryPoster,
-      mediaPhotos: cleanMedia.length > 0 ? cleanMedia : undefined,
+      mediaPhotos: cleanMedia.length > 0 ? cleanMedia : (primaryPoster ? [primaryPoster] : undefined),
       mediaFit: formMediaFit,
       mediaPosition: `center ${formMediaOffsetY}%`,
       mediaOffsetY: formMediaOffsetY,
@@ -2995,12 +2987,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                 const brandMediaList = isBrand
                   ? (proj.mediaPhotos && proj.mediaPhotos.length > 0)
-                    ? proj.mediaPhotos.filter(
-                        (p) =>
-                          p &&
-                          p.trim() !== (proj.bannerUrl || '').trim() &&
-                          p.trim() !== (proj.imageUrl || '').trim()
-                      )
+                    ? proj.mediaPhotos.filter(Boolean)
                     : []
                   : [];
                 const showMediaList = (proj.mediaPhotos && proj.mediaPhotos.length > 0)
@@ -3018,7 +3005,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       {(() => {
                         const brandBannerPhoto = proj.bannerUrl || proj.imageUrl;
                         const activeMediaIdx = (projectCardMediaIndex[proj.id] ?? 0) % (mediaList.length || 1);
-                        const activePhoto = isBrand ? brandBannerPhoto : (mediaList[activeMediaIdx] || proj.imageUrl);
+                        const ytThumb = extractYouTubeThumbnail(proj.primaryLink || proj.watchLinks?.[0]?.url);
+                        const activePhoto = isBrand
+                          ? (brandBannerPhoto || ytThumb || '')
+                          : (mediaList[activeMediaIdx] || proj.imageUrl || ytThumb || '');
                         const isContain = proj.mediaFit === 'contain' || projectPosterAspect === 'contain';
                         const focalPos = proj.mediaPosition || `center ${proj.mediaOffsetY ?? 50}%`;
 
