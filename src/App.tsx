@@ -83,6 +83,7 @@ import {
   startDailyVisitsTracking,
   subscribeToEvents,
   saveEventToFirestore,
+  updateEventPosterFitInFirestore,
   deleteEventFromFirestore,
   subscribeToSettings,
   saveSettingsToFirestore,
@@ -222,6 +223,7 @@ export interface ScheduleEvent {
   registrationTimezone?: string; // e.g. BKK
   registrationUrl?: string; // Link to registration form or ticket platform
   registrationNotes?: string; // Guidelines or instructions
+  updatedAt?: string;
 }
 
 export interface UserReminder {
@@ -258,6 +260,7 @@ export interface AppSettings {
   bannerFit?: 'cover' | 'contain'; // Cover vs Contain
   bannerHeight?: 'compact' | 'medium' | 'tall' | 'auto'; // Customizable slot height
   bannerPreset: string;
+  calendarMediaFit?: 'contain' | 'cover'; // Global default calendar media fit
   websiteIcon?: string;
   ownerPin: string; // Master passcode: full control over banner, settings, members & events
   adminPin: string; // Helper passcode: can only add and edit calendar events
@@ -2011,12 +2014,39 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Ensure detailEvent is always valid and does not reference a deleted event
+  // Ensure detailEvent is always kept synchronized with latest data from Cloud Firestore across all devices
   useEffect(() => {
-    if (detailEvent && !events.some((e) => e.id === detailEvent.id)) {
-      setDetailEvent(events.length > 0 ? events[0] : null);
+    if (detailEvent) {
+      const fresh = events.find((e) => e.id === detailEvent.id);
+      if (fresh) {
+        if (
+          fresh.title !== detailEvent.title ||
+          fresh.date !== detailEvent.date ||
+          fresh.endDate !== detailEvent.endDate ||
+          fresh.time !== detailEvent.time ||
+          fresh.endTime !== detailEvent.endTime ||
+          fresh.timezone !== detailEvent.timezone ||
+          fresh.location !== detailEvent.location ||
+          fresh.locationUrl !== detailEvent.locationUrl ||
+          fresh.posterUrl !== detailEvent.posterUrl ||
+          JSON.stringify(fresh.posterUrls) !== JSON.stringify(detailEvent.posterUrls) ||
+          fresh.posterFit !== detailEvent.posterFit ||
+          fresh.description !== detailEvent.description ||
+          fresh.link !== detailEvent.link ||
+          fresh.category !== detailEvent.category ||
+          fresh.updatedAt !== detailEvent.updatedAt
+        ) {
+          setDetailEvent(fresh);
+        }
+      } else if (events.length > 0) {
+        setDetailEvent(events[0]);
+      } else {
+        setDetailEvent(null);
+      }
+    } else if (events.length > 0) {
+      setDetailEvent(events[0]);
     }
-  }, [events, detailEvent]);
+  }, [events]);
 
   // Real-Time Settings & Banner Sync from Firestore
   useEffect(() => {
@@ -3472,9 +3502,9 @@ export default function App() {
       // Auto-compress any base64 data URLs in the posters list
       const compressedPostersList: string[] = [];
       for (let p of finalPostersList) {
-        if (p.startsWith('data:image/') && p.length > 150 * 1024) {
+        if (p.startsWith('data:image/') && p.length > 70 * 1024) {
           try {
-            p = await compressDataUrl(p, 1100, 0.78);
+            p = await compressDataUrl(p, 900, 0.72);
           } catch (compErr) {
             console.warn('Poster auto-compression fallback:', compErr);
           }
@@ -3556,7 +3586,11 @@ export default function App() {
       const dt = parseDateKey(formDate);
       setCurrentMonthDate(new Date(dt.getFullYear(), dt.getMonth(), 1));
       setEventModalOpen(false);
-      showToast(editingEvent ? 'Event updated and saved to cloud!' : 'Event added to calendar and saved to cloud!');
+      showToast(
+        editingEvent
+          ? 'Event updated and synced to Cloud Firestore across all devices!'
+          : 'Event added to Cloud Firestore and synced across all devices!'
+      );
     } catch (err: any) {
       console.error('Could not save event to Firestore:', err);
       showToast(`Could not save event: ${err?.message || 'Please check your connection and try again.'}`);
@@ -4361,6 +4395,15 @@ export default function App() {
                 <span>{regInfo.statusLabel}</span>
               </span>
             )}
+            {ev.updatedAt && (
+              <span
+                className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/80 dark:border-emerald-800 inline-flex items-center gap-1 shadow-2xs"
+                title={`Live from Cloud Firestore: ${ev.updatedAt}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Cloud Synced</span>
+              </span>
+            )}
             {(ev.isAllDay || ev.time || ev.endTime) && (
               <span className={`text-xs font-bold flex items-center gap-1.5 flex-wrap ${
                 ev.isAllDay ? 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800' : 'text-[#334155] dark:text-slate-300'
@@ -4447,7 +4490,7 @@ export default function App() {
               {allPosters.length > 0 && (() => {
                 const currentIdx = (activePhotoIndexByEvent[ev.id] ?? 0) % allPosters.length;
                 const activePhotoUrl = allPosters[currentIdx] || allPosters[0];
-                const isFit = (eventPhotoFitOverrides[ev.id] ?? ev.posterFit ?? eventMediaFitPreference) === 'contain';
+                const isFit = (eventPhotoFitOverrides[ev.id] ?? ev.posterFit ?? settings.calendarMediaFit ?? eventMediaFitPreference) === 'contain';
 
                 return (
                   <div className="flex flex-col gap-2.5">
@@ -4458,28 +4501,26 @@ export default function App() {
                         photos: allPosters,
                         currentIndex: currentIdx
                       })}
-                      className={`w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none ${
+                      className={`w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 dark:border-slate-800 cursor-pointer group relative transition-all hover:shadow-md select-none bg-slate-950 flex items-center justify-center ${
                         isFit
-                          ? 'h-[250px] sm:h-[380px] md:h-[430px] landscape:h-[230px] md:landscape:h-[400px] bg-slate-950 flex items-center justify-center'
-                          : 'max-h-[270px] sm:max-h-[380px] md:max-h-[430px] landscape:max-h-[240px] md:landscape:max-h-[400px] bg-white dark:bg-slate-800'
+                          ? 'min-h-[260px] sm:min-h-[340px] md:min-h-[380px] max-h-[520px] sm:max-h-[600px] md:max-h-[660px]'
+                          : 'h-[280px] sm:h-[380px] md:h-[430px]'
                       }`}
                       title="Click to view full photo"
                     >
-                      {/* Ambient Blur Backdrop when Fit Mode is active so 100% of the poster is visible without awkward black bars */}
-                      {isFit && (
-                        <div
-                          className="absolute inset-0 bg-cover bg-center filter blur-2xl opacity-45 scale-125 saturate-150 pointer-events-none"
-                          style={{ backgroundImage: `url(${activePhotoUrl})` }}
-                        />
-                      )}
+                      {/* Ambient Blur Backdrop: Generates a soft matching colorful aura behind the poster so letterboxing looks intentional and beautiful */}
+                      <div
+                        className="absolute inset-0 bg-cover bg-center filter blur-2xl opacity-45 scale-125 saturate-150 pointer-events-none"
+                        style={{ backgroundImage: `url(${activePhotoUrl})` }}
+                      />
 
                       <img
                         src={activePhotoUrl}
                         alt={`${ev.title} - Photo ${currentIdx + 1}`}
-                        className={`w-full transition-transform duration-300 ${
+                        className={`transition-transform duration-300 ${
                           isFit
-                            ? 'h-full object-contain relative z-10 group-hover:scale-[1.01]'
-                            : 'max-h-[290px] sm:max-h-[430px] object-cover group-hover:scale-[1.02]'
+                            ? 'w-auto max-w-full h-auto max-h-[500px] sm:max-h-[580px] md:max-h-[640px] object-contain relative z-10 mx-auto group-hover:scale-[1.01]'
+                            : 'w-full h-full object-cover group-hover:scale-[1.02]'
                         }`}
                       />
 
@@ -4538,24 +4579,43 @@ export default function App() {
                       <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            const nextFit = isFit ? 'cover' : 'contain';
+                            const nextFit: 'contain' | 'cover' = isFit ? 'cover' : 'contain';
                             setEventPhotoFitOverrides((prev) => ({ ...prev, [ev.id]: nextFit }));
-                            showToast(nextFit === 'contain' ? 'Poster set to Fit (full uncropped poster)' : 'Poster set to Fill card');
+
+                            // Persist to Cloud Firestore for Admins and Owner so all devices see the change
+                            if (canEditEvents) {
+                              try {
+                                await updateEventPosterFitInFirestore(ev.id, nextFit);
+                                setEvents((prev) =>
+                                  prev.map((item) => (item.id === ev.id ? { ...item, posterFit: nextFit } : item))
+                                );
+                                showToast(
+                                  nextFit === 'contain'
+                                    ? 'Poster set to Auto Fit (saved to Cloud for all devices)'
+                                    : 'Poster set to Fill Card (saved to Cloud for all devices)'
+                                );
+                              } catch (saveErr) {
+                                console.warn('Could not persist fit to cloud:', saveErr);
+                                showToast(nextFit === 'contain' ? 'Poster set to Auto Fit' : 'Poster set to Fill Card');
+                              }
+                            } else {
+                              showToast(nextFit === 'contain' ? 'Viewing in Auto Fit mode' : 'Viewing in Fill Card mode');
+                            }
                           }}
                           className="px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-xs flex items-center gap-1 text-[11px] font-bold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                          title={isFit ? 'Switch to Fill (cover container)' : 'Switch to Fit (show entire uncropped poster)'}
+                          title={isFit ? 'Switch to Fill Card' : 'Switch to Auto Fit (full uncropped poster)'}
                         >
                           {isFit ? (
                             <>
                               <Minimize2 className="w-3 h-3 text-cyan-300" />
-                              <span>Fit</span>
+                              <span>Auto Fit</span>
                             </>
                           ) : (
                             <>
                               <Maximize2 className="w-3 h-3 text-purple-300" />
-                              <span>Fill</span>
+                              <span>Fill Card</span>
                             </>
                           )}
                         </button>
@@ -6191,34 +6251,45 @@ export default function App() {
             <div className="flex items-center gap-2.5 self-end sm:self-auto flex-wrap">
               {/* Global Event Photo Fit Toggle */}
               <div className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800/80 p-0.5 border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
-                <span className="text-[11px] text-[#607494] dark:text-slate-400 pl-2.5 pr-1">Photo:</span>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setEventMediaFitPreference('contain');
-                    try { localStorage.setItem('avocean_event_media_fit', 'contain'); } catch {}
                     setEventPhotoFitOverrides({});
-                    showToast('All event photos set to Fit (full uncropped poster)');
+                    if (isOwner) {
+                      const updated: AppSettings = { ...settings, calendarMediaFit: 'contain' };
+                      setSettings(updated);
+                      await saveSettingsToFirestore(updated).catch(() => {});
+                      showToast('All event photos set to Auto Fit (saved to Cloud for everyone)');
+                    } else {
+                      showToast('All event photos set to Auto Fit (full uncropped poster)');
+                    }
                   }}
                   className={`px-2.5 py-1 rounded-full text-[11px] transition-all cursor-pointer ${
-                    eventMediaFitPreference === 'contain'
+                    (settings.calendarMediaFit ?? eventMediaFitPreference) === 'contain'
                       ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-extrabold'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                   title="Fit whole poster without cropping"
                 >
-                  Fit (Full)
+                  Auto Fit
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setEventMediaFitPreference('cover');
-                    try { localStorage.setItem('avocean_event_media_fit', 'cover'); } catch {}
                     setEventPhotoFitOverrides({});
-                    showToast('All event photos set to Fill cards');
+                    if (isOwner) {
+                      const updated: AppSettings = { ...settings, calendarMediaFit: 'cover' };
+                      setSettings(updated);
+                      await saveSettingsToFirestore(updated).catch(() => {});
+                      showToast('All event photos set to Fill cards (saved to Cloud for everyone)');
+                    } else {
+                      showToast('All event photos set to Fill cards');
+                    }
                   }}
                   className={`px-2.5 py-1 rounded-full text-[11px] transition-all cursor-pointer ${
-                    eventMediaFitPreference === 'cover'
+                    (settings.calendarMediaFit ?? eventMediaFitPreference) === 'cover'
                       ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-extrabold'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}

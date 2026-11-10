@@ -276,11 +276,6 @@ export function subscribeToEvents(
 }
 
 export async function saveEventToFirestore(ev: ScheduleEvent): Promise<void> {
-  if (isQuotaExceeded) {
-    console.warn('Firestore quota exceeded. Event saved to local storage.');
-    return;
-  }
-
   try {
     const eventRef = doc(db, 'events', ev.id);
     const clean = sanitizeForFirestore({
@@ -294,30 +289,39 @@ export async function saveEventToFirestore(ev: ScheduleEvent): Promise<void> {
       throw new Error('Event data (including poster image) exceeds 950KB cloud document limit. Please use a compressed photo or web link.');
     }
 
-    await setDoc(eventRef, clean);
+    await setDoc(eventRef, clean, { merge: true });
+    console.log(`[Firestore] Event "${ev.title}" (${ev.id}) saved to Cloud Firestore successfully.`);
   } catch (error: any) {
     if (error?.code === 'resource-exhausted' || error?.message?.includes('Quota limit exceeded')) {
       notifyQuotaExceeded();
-      console.warn('Firestore quota exceeded during saveEvent. Event preserved in local storage.');
-      return; // Do not throw so local state continues to save
     }
+    console.error('[Firestore] Error saving event to cloud:', error);
+    throw error;
+  }
+}
+
+export async function updateEventPosterFitInFirestore(eventId: string, fit: 'contain' | 'cover'): Promise<void> {
+  try {
+    const eventRef = doc(db, 'events', eventId);
+    await updateDoc(eventRef, {
+      posterFit: fit,
+      updatedAt: new Date().toISOString()
+    });
+    console.log(`[Firestore] Event (${eventId}) posterFit updated to "${fit}" in cloud.`);
+  } catch (error: any) {
+    console.error('[Firestore] Error updating poster fit in cloud:', error);
     throw error;
   }
 }
 
 export async function deleteEventFromFirestore(eventId: string): Promise<void> {
-  if (isQuotaExceeded) {
-    console.warn('Firestore quota exceeded. Event deleted from local storage.');
-    return;
-  }
-
   try {
     const eventRef = doc(db, 'events', eventId);
     await deleteDoc(eventRef);
+    console.log(`[Firestore] Event (${eventId}) deleted from Cloud Firestore.`);
   } catch (error: any) {
     if (error?.code === 'resource-exhausted' || error?.message?.includes('Quota limit exceeded')) {
       notifyQuotaExceeded();
-      return;
     }
     throw error;
   }

@@ -19,6 +19,10 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "posterFit": {
+          "type": "string",
+          "enum": ["contain", "cover", "auto"]
+        },
         "members": {
           "type": "array",
           "items": { "type": "string" }
@@ -63,6 +67,7 @@
         "bannerFit": { "type": "string" },
         "bannerHeight": { "type": "string" },
         "bannerPreset": { "type": "string" },
+        "calendarMediaFit": { "type": "string" },
         "websiteIcon": { "type": "string" },
         "ownerPin": { "type": "string" },
         "adminPin": { "type": "string" },
