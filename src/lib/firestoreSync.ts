@@ -679,6 +679,8 @@ export interface AdminAccount {
   adminCategory?: AdminCategory; // 'general': Calendar, Career Projects, Messages; 'fanclub': Assigned Fan Club & Events only
   assignedClubId?: string; // ID of specific fan club if adminCategory === 'fanclub'
   assignedClubName?: string; // Display name of specific fan club
+  assignedClubIds?: string[]; // IDs of multiple fan clubs handled by this admin
+  assignedClubNames?: string[]; // Names of multiple fan clubs handled by this admin
   assignedFoodProjectId?: string; // ID of specific food support project if applicable
   assignedFoodProjectTitle?: string; // Title of food support project
   status?: 'approved' | 'pending' | 'rejected';
@@ -751,7 +753,9 @@ export async function registerAdminAccount(
   assignedClubId?: string,
   assignedClubName?: string,
   assignedFoodProjectId?: string,
-  assignedFoodProjectTitle?: string
+  assignedFoodProjectTitle?: string,
+  assignedClubIds?: string[],
+  assignedClubNames?: string[]
 ): Promise<{ success: boolean; account?: AdminAccount; error?: string }> {
   const email = normalizeAccountEmail(rawEmail);
   const pass = rawPass.trim();
@@ -812,13 +816,18 @@ export async function registerAdminAccount(
   }
 
   const nowIso = new Date().toISOString();
+  const clubIds = assignedClubIds && assignedClubIds.length > 0 ? assignedClubIds : assignedClubId ? [assignedClubId] : [];
+  const clubNames = assignedClubNames && assignedClubNames.length > 0 ? assignedClubNames : assignedClubName ? [assignedClubName] : [];
+
   const newAccount: AdminAccount = {
     id: email,
     email,
     role: 'admin',
     adminCategory,
-    assignedClubId: assignedClubId || undefined,
-    assignedClubName: assignedClubName || undefined,
+    assignedClubId: clubIds[0] || undefined,
+    assignedClubName: clubNames.join(', ') || undefined,
+    assignedClubIds: clubIds.length > 0 ? clubIds : undefined,
+    assignedClubNames: clubNames.length > 0 ? clubNames : undefined,
     assignedFoodProjectId: assignedFoodProjectId || undefined,
     assignedFoodProjectTitle: assignedFoodProjectTitle || undefined,
     status: 'pending', // Requires Owner Approval!
@@ -850,7 +859,7 @@ export async function registerAdminAccount(
   // Record audit log entry
   const scopeDetail =
     adminCategory === 'fanclub'
-      ? `Fan Club Admin (Assigned: ${assignedClubName || assignedClubId || 'Fan Club'})`
+      ? `Fan Club Admin (Assigned: ${clubNames.join(', ') || 'Fan Club'})`
       : 'General Admin (Calendar, Career Projects, Messages)';
 
   await recordAuditLog({
@@ -873,6 +882,8 @@ export async function approveAdminAccount(
     adminCategory?: AdminCategory;
     assignedClubId?: string;
     assignedClubName?: string;
+    assignedClubIds?: string[];
+    assignedClubNames?: string[];
     assignedFoodProjectId?: string;
     assignedFoodProjectTitle?: string;
   }
@@ -894,6 +905,8 @@ export async function approveAdminAccount(
         if (overrides.adminCategory !== undefined) updateData.adminCategory = overrides.adminCategory;
         if (overrides.assignedClubId !== undefined) updateData.assignedClubId = overrides.assignedClubId;
         if (overrides.assignedClubName !== undefined) updateData.assignedClubName = overrides.assignedClubName;
+        if (overrides.assignedClubIds !== undefined) updateData.assignedClubIds = overrides.assignedClubIds;
+        if (overrides.assignedClubNames !== undefined) updateData.assignedClubNames = overrides.assignedClubNames;
         if (overrides.assignedFoodProjectId !== undefined) updateData.assignedFoodProjectId = overrides.assignedFoodProjectId;
         if (overrides.assignedFoodProjectTitle !== undefined) updateData.assignedFoodProjectTitle = overrides.assignedFoodProjectTitle;
       }
@@ -925,6 +938,8 @@ export async function updateAdminAccountScope(
     adminCategory: AdminCategory;
     assignedClubId?: string;
     assignedClubName?: string;
+    assignedClubIds?: string[];
+    assignedClubNames?: string[];
     assignedFoodProjectId?: string;
     assignedFoodProjectTitle?: string;
     displayName?: string;
@@ -944,6 +959,8 @@ export async function updateAdminAccountScope(
         adminCategory: updates.adminCategory,
         assignedClubId: updates.adminCategory === 'fanclub' ? (updates.assignedClubId || '') : '',
         assignedClubName: updates.adminCategory === 'fanclub' ? (updates.assignedClubName || '') : '',
+        assignedClubIds: updates.adminCategory === 'fanclub' ? (updates.assignedClubIds || []) : [],
+        assignedClubNames: updates.adminCategory === 'fanclub' ? (updates.assignedClubNames || []) : [],
         assignedFoodProjectId: updates.adminCategory === 'fanclub' ? (updates.assignedFoodProjectId || '') : '',
         assignedFoodProjectTitle: updates.adminCategory === 'fanclub' ? (updates.assignedFoodProjectTitle || '') : '',
         updatedAt: nowIso
@@ -963,7 +980,7 @@ export async function updateAdminAccountScope(
     userEmail: ownerEmail,
     role: 'owner',
     actionType: 'settings_update',
-    details: `Owner updated admin scope for ${email}: Category=${updates.adminCategory}, Club=${updates.assignedClubName || 'None'}`
+    details: `Owner updated admin scope for ${email}: Category=${updates.adminCategory}, Clubs=${updates.assignedClubNames?.join(', ') || updates.assignedClubName || 'None'}`
   });
 
   return { success: true };
@@ -980,6 +997,8 @@ export async function createAdminAccountDirectly(
     adminCategory: AdminCategory;
     assignedClubId?: string;
     assignedClubName?: string;
+    assignedClubIds?: string[];
+    assignedClubNames?: string[];
     assignedFoodProjectId?: string;
     assignedFoodProjectTitle?: string;
   },
@@ -1007,6 +1026,8 @@ export async function createAdminAccountDirectly(
     adminCategory: accountData.adminCategory,
     assignedClubId: accountData.assignedClubId || undefined,
     assignedClubName: accountData.assignedClubName || undefined,
+    assignedClubIds: accountData.assignedClubIds && accountData.assignedClubIds.length > 0 ? accountData.assignedClubIds : undefined,
+    assignedClubNames: accountData.assignedClubNames && accountData.assignedClubNames.length > 0 ? accountData.assignedClubNames : undefined,
     assignedFoodProjectId: accountData.assignedFoodProjectId || undefined,
     assignedFoodProjectTitle: accountData.assignedFoodProjectTitle || undefined,
     status: 'approved',

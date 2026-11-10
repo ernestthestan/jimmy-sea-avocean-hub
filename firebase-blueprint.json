@@ -148,6 +148,14 @@
         "adminCategory": { "type": "string" },
         "assignedClubId": { "type": "string" },
         "assignedClubName": { "type": "string" },
+        "assignedClubIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "assignedClubNames": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "assignedFoodProjectId": { "type": "string" },
         "assignedFoodProjectTitle": { "type": "string" },
         "status": { "type": "string" },

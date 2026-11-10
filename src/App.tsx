@@ -1509,11 +1509,19 @@ export default function App() {
   const canManageAdmins = isOwner; // Manage registered admin accounts (Owner only)
 
   // Fan Club permission helper: Owner or assigned Fan Club Admin
+  // Fan Club permission helper: Owner or assigned Fan Club Admin (supports single or multiple assigned clubs)
   const canEditClub = (club: FanClub) => {
     if (isOwner) return true;
     if (!isFanClubAdmin) return false;
+    // Check multiple assigned club IDs array
+    if (currentAccount?.assignedClubIds && currentAccount.assignedClubIds.includes(club.id)) return true;
+    // Check multiple assigned club names array
+    if (currentAccount?.assignedClubNames && currentAccount.assignedClubNames.some((n) => n.trim().toLowerCase() === club.name?.trim().toLowerCase())) return true;
+    // Legacy single fields fallback
     if (currentAccount?.assignedClubId && club.id === currentAccount.assignedClubId) return true;
     if (currentAccount?.assignedClubName && club.name?.trim().toLowerCase() === currentAccount.assignedClubName.trim().toLowerCase()) return true;
+    // Match comma-separated list in assignedClubName
+    if (currentAccount?.assignedClubName?.split(',').some((n) => n.trim().toLowerCase() === club.name?.trim().toLowerCase())) return true;
     return false;
   };
 
@@ -1523,7 +1531,18 @@ export default function App() {
     if (!isFanClubAdmin) return false;
     if (currentAccount?.assignedFoodProjectId && project.id === currentAccount.assignedFoodProjectId) return true;
     if (currentAccount?.assignedFoodProjectTitle && project.title?.trim().toLowerCase() === currentAccount.assignedFoodProjectTitle.trim().toLowerCase()) return true;
-    if (currentAccount?.assignedClubName && (project.organizerName?.toLowerCase().includes(currentAccount.assignedClubName.toLowerCase()) || project.title?.toLowerCase().includes(currentAccount.assignedClubName.toLowerCase()))) return true;
+    const allAssignedNames: string[] = [
+      ...(currentAccount?.assignedClubNames || []),
+      ...(currentAccount?.assignedClubName ? currentAccount.assignedClubName.split(',').map((s) => s.trim()) : [])
+    ];
+    if (allAssignedNames.some((cName) =>
+      cName && (
+        (project.organizerName && project.organizerName.toLowerCase().includes(cName.toLowerCase())) ||
+        (project.title && project.title.toLowerCase().includes(cName.toLowerCase()))
+      )
+    )) {
+      return true;
+    }
     return false;
   };
 
@@ -1564,6 +1583,8 @@ export default function App() {
   const [scopeClubIdEdit, setScopeClubIdEdit] = useState<string>('');
   const [scopeClubNameEdit, setScopeClubNameEdit] = useState<string>('');
   const [scopeCustomClubName, setScopeCustomClubName] = useState<string>('');
+  const [scopeSelectedClubIds, setScopeSelectedClubIds] = useState<string[]>([]);
+  const [scopeSelectedClubNames, setScopeSelectedClubNames] = useState<string[]>([]);
   const [isDirectCreateOpen, setIsDirectCreateOpen] = useState<boolean>(false);
   const [directEmail, setDirectEmail] = useState<string>('');
   const [directPassword, setDirectPassword] = useState<string>('');
@@ -1572,6 +1593,8 @@ export default function App() {
   const [directClubId, setDirectClubId] = useState<string>('');
   const [directClubName, setDirectClubName] = useState<string>('');
   const [directCustomClubName, setDirectCustomClubName] = useState<string>('');
+  const [directSelectedClubIds, setDirectSelectedClubIds] = useState<string[]>([]);
+  const [directSelectedClubNames, setDirectSelectedClubNames] = useState<string[]>([]);
   const [directError, setDirectError] = useState<string>('');
   const [directLoading, setDirectLoading] = useState<boolean>(false);
 
@@ -2864,6 +2887,8 @@ export default function App() {
       adminCategory?: AdminCategory;
       assignedClubId?: string;
       assignedClubName?: string;
+      assignedClubIds?: string[];
+      assignedClubNames?: string[];
     }
   ) => {
     if (!isOwner) return;
@@ -2884,20 +2909,41 @@ export default function App() {
     e.preventDefault();
     if (!isOwner || !editingAdminScope) return;
 
-    const assignedName =
-      scopeCategoryEdit === 'fanclub'
-        ? (scopeCustomClubName.trim() || scopeClubNameEdit.trim())
-        : '';
+    // Collect all selected club IDs and names
+    const finalClubIds = [...scopeSelectedClubIds];
+    const finalClubNames = [...scopeSelectedClubNames];
+
+    // If custom club name is entered, add it
+    if (scopeCustomClubName.trim() && !finalClubNames.includes(scopeCustomClubName.trim())) {
+      finalClubNames.push(scopeCustomClubName.trim());
+    }
+
+    // Fallback if legacy single fields were set
+    if (scopeClubIdEdit && !finalClubIds.includes(scopeClubIdEdit)) {
+      finalClubIds.push(scopeClubIdEdit);
+    }
+    if (scopeClubNameEdit.trim() && !finalClubNames.includes(scopeClubNameEdit.trim())) {
+      finalClubNames.push(scopeClubNameEdit.trim());
+    }
+
+    if (scopeCategoryEdit === 'fanclub' && finalClubNames.length === 0) {
+      showToast('Please select or add at least one fan club for this admin.');
+      return;
+    }
+
+    const assignedDisplay = finalClubNames.join(', ');
 
     try {
       const res = await updateAdminAccountScope(editingAdminScope.email, currentUserEmail, {
         adminCategory: scopeCategoryEdit,
-        assignedClubId: scopeCategoryEdit === 'fanclub' ? scopeClubIdEdit : '',
-        assignedClubName: assignedName
+        assignedClubId: scopeCategoryEdit === 'fanclub' ? (finalClubIds[0] || '') : '',
+        assignedClubName: scopeCategoryEdit === 'fanclub' ? assignedDisplay : '',
+        assignedClubIds: scopeCategoryEdit === 'fanclub' ? finalClubIds : [],
+        assignedClubNames: scopeCategoryEdit === 'fanclub' ? finalClubNames : []
       });
 
       if (res.success) {
-        showToast(`✅ Updated scope for ${editingAdminScope.email}: ${scopeCategoryEdit === 'fanclub' ? `Fan Club Admin (${assignedName})` : 'General Admin'}`);
+        showToast(`✅ Updated scope for ${editingAdminScope.email}: ${scopeCategoryEdit === 'fanclub' ? `Fan Club Admin (${assignedDisplay})` : 'General Admin'}`);
         setEditingAdminScope(null);
       } else {
         showToast(res.error || 'Could not update admin scope.');
@@ -2922,15 +2968,24 @@ export default function App() {
       return;
     }
 
-    const assignedName =
-      directCategory === 'fanclub'
-        ? (directCustomClubName.trim() || directClubName.trim())
-        : '';
+    const finalClubIds = [...directSelectedClubIds];
+    const finalClubNames = [...directSelectedClubNames];
+    if (directCustomClubName.trim() && !finalClubNames.includes(directCustomClubName.trim())) {
+      finalClubNames.push(directCustomClubName.trim());
+    }
+    if (directClubId && !finalClubIds.includes(directClubId)) {
+      finalClubIds.push(directClubId);
+    }
+    if (directClubName.trim() && !finalClubNames.includes(directClubName.trim())) {
+      finalClubNames.push(directClubName.trim());
+    }
 
-    if (directCategory === 'fanclub' && !assignedName) {
-      setDirectError('Please select or enter the assigned fan club name.');
+    if (directCategory === 'fanclub' && finalClubNames.length === 0) {
+      setDirectError('Please select or enter at least one assigned fan club.');
       return;
     }
+
+    const assignedDisplay = finalClubNames.join(', ');
 
     setDirectLoading(true);
     try {
@@ -2940,14 +2995,16 @@ export default function App() {
           password: directPassword,
           displayName: directDisplayName.trim() || directEmail.split('@')[0],
           adminCategory: directCategory,
-          assignedClubId: directCategory === 'fanclub' ? directClubId : undefined,
-          assignedClubName: assignedName || undefined
+          assignedClubId: directCategory === 'fanclub' ? (finalClubIds[0] || undefined) : undefined,
+          assignedClubName: directCategory === 'fanclub' ? (assignedDisplay || undefined) : undefined,
+          assignedClubIds: directCategory === 'fanclub' ? finalClubIds : undefined,
+          assignedClubNames: directCategory === 'fanclub' ? finalClubNames : undefined
         },
         currentUserEmail
       );
 
       if (res.success && res.account) {
-        showToast(`🎉 Created approved ${directCategory === 'fanclub' ? `Fan Club Admin (${assignedName})` : 'General Admin'} for ${res.account.displayName}!`);
+        showToast(`🎉 Created approved ${directCategory === 'fanclub' ? `Fan Club Admin (${assignedDisplay})` : 'General Admin'} for ${res.account.displayName}!`);
         setIsDirectCreateOpen(false);
         setDirectEmail('');
         setDirectPassword('');
@@ -2956,6 +3013,8 @@ export default function App() {
         setDirectClubId('');
         setDirectClubName('');
         setDirectCustomClubName('');
+        setDirectSelectedClubIds([]);
+        setDirectSelectedClubNames([]);
         setDirectError('');
       } else {
         setDirectError(res.error || 'Could not create admin account.');
@@ -8471,10 +8530,10 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default"
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-xl sm:max-w-2xl max-h-[88vh] flex flex-col p-5 sm:p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800 cursor-default overflow-hidden"
           >
             {/* Top Close & Header */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div
                   className={`w-9 h-9 rounded-2xl flex items-center justify-center ${
@@ -8524,7 +8583,7 @@ export default function App() {
             </div>
 
             {/* Mode Switcher Tabs: Sign In vs Create Admin Account */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-4">
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-3 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -8562,9 +8621,9 @@ export default function App() {
             </div>
 
             {loginMode === 'signin' ? (
-              <>
+              <div className="flex-1 overflow-y-auto min-h-0 pr-1 max-w-md mx-auto w-full space-y-3.5">
                 {/* Role Switcher Tabs for Sign In */}
-                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 mb-4">
+                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
                   <button
                     type="button"
                     onClick={() => {
@@ -8600,7 +8659,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <form onSubmit={handleVerifyLogin} className="space-y-3.5">
+                <form onSubmit={handleVerifyLogin} className="space-y-3">
                   {/* Email Address */}
                   <div>
                     <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
@@ -8705,223 +8764,235 @@ export default function App() {
                     </button>
                   </div>
                 </form>
-              </>
+              </div>
             ) : (
               /* CREATE ADMIN ACCOUNT REGISTRATION FORM */
-              <form onSubmit={handleRegisterAdmin} className="space-y-3">
-                {/* Admin Category Selection */}
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1.5">
-                    Admin Category / Role Type <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRegCategory('general')}
-                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                        regCategory === 'general'
-                          ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-400 dark:border-blue-600 ring-2 ring-blue-400/30'
-                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-[#1A3668] dark:text-white">
-                        <span>🛡️</span>
-                        <span>General Admin</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
-                        Can edit calendar events, career projects & messages.
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRegCategory('fanclub')}
-                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                        regCategory === 'fanclub'
-                          ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/30'
-                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-200">
-                        <span>🌟</span>
-                        <span>Fan Club Admin</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
-                        Can only edit your assigned fan club & its events.
-                      </p>
-                    </button>
-                  </div>
-                </div>
-
-                {/* If Fan Club Admin, select or specify Fan Club */}
-                {regCategory === 'fanclub' && (
-                  <div className="p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 space-y-2 animate-in fade-in duration-150">
-                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
-                      Select Your Fan Club <span className="text-rose-500">*</span>
+              <form onSubmit={handleRegisterAdmin} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex-1 overflow-y-auto min-h-0 pr-1.5 space-y-3">
+                  {/* Admin Category Selection */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1.5">
+                      Admin Category / Role Type <span className="text-rose-500">*</span>
                     </label>
-                    <select
-                      value={regAssignedClubId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setRegAssignedClubId(id);
-                        if (id === 'custom') {
-                          setRegAssignedClubName('');
-                        } else {
-                          const found = fanClubs.find((c) => c.id === id);
-                          if (found) {
-                            setRegAssignedClubName(found.name);
-                            setRegCustomClubName('');
-                          }
-                        }
-                      }}
-                      className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none cursor-pointer"
-                    >
-                      <option value="">-- Choose from existing Fan Clubs --</option>
-                      {fanClubs.map((club) => (
-                        <option key={club.id} value={club.id}>
-                          {club.countryName ? `${club.countryName}: ` : ''}{club.name}
-                        </option>
-                      ))}
-                      <option value="custom">✍️ Other / New Fan Club Name</option>
-                    </select>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setRegCategory('general')}
+                        className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                          regCategory === 'general'
+                            ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-400 dark:border-blue-600 ring-2 ring-blue-400/30'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-[#1A3668] dark:text-white">
+                          <span>🛡️</span>
+                          <span>General Admin</span>
+                        </div>
+                        <p className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                          Can edit calendar events, career projects & messages.
+                        </p>
+                      </button>
 
-                    {(regAssignedClubId === 'custom' || (!regAssignedClubId && fanClubs.length === 0)) && (
+                      <button
+                        type="button"
+                        onClick={() => setRegCategory('fanclub')}
+                        className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                          regCategory === 'fanclub'
+                            ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/30'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-200">
+                          <span>🌟</span>
+                          <span>Fan Club Admin</span>
+                        </div>
+                        <p className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                          Can edit your assigned fan club(s) & its events.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* If Fan Club Admin, select or specify Fan Club */}
+                  {regCategory === 'fanclub' && (
+                    <div className="p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 space-y-2 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                          Select Your Fan Club <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[10.5px] text-amber-700 dark:text-amber-300 font-semibold">
+                          (Owner can assign more clubs later)
+                        </span>
+                      </div>
+                      <select
+                        value={regAssignedClubId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setRegAssignedClubId(id);
+                          if (id === 'custom') {
+                            setRegAssignedClubName('');
+                          } else {
+                            const found = fanClubs.find((c) => c.id === id);
+                            if (found) {
+                              setRegAssignedClubName(found.name);
+                              setRegCustomClubName('');
+                            }
+                          }
+                        }}
+                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none cursor-pointer"
+                      >
+                        <option value="">-- Choose from existing Fan Clubs --</option>
+                        {fanClubs.map((club) => (
+                          <option key={club.id} value={club.id}>
+                            {club.countryName ? `${club.countryName}: ` : ''}{club.name}
+                          </option>
+                        ))}
+                        <option value="custom">✍️ Other / New Fan Club Name</option>
+                      </select>
+
+                      {(regAssignedClubId === 'custom' || (!regAssignedClubId && fanClubs.length === 0)) && (
+                        <input
+                          type="text"
+                          value={regCustomClubName}
+                          onChange={(e) => setRegCustomClubName(e.target.value)}
+                          placeholder="Type your official fan club name"
+                          className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* 2-Column Responsive Row: Email Address & Display Name */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Admin's Own Email Address */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Your Email Address <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={regEmailInput}
+                        onChange={(e) => {
+                          setRegEmailInput(e.target.value);
+                          setRegError('');
+                        }}
+                        placeholder="e.g. name@gmail.com"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Admin Display Name */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Your Name / Display Name
+                      </label>
                       <input
                         type="text"
-                        value={regCustomClubName}
-                        onChange={(e) => setRegCustomClubName(e.target.value)}
-                        placeholder="Type your official fan club name"
-                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                        value={regDisplayNameInput}
+                        onChange={(e) => setRegDisplayNameInput(e.target.value)}
+                        placeholder="e.g. Sarah (PH Admin)"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
                       />
-                    )}
+                    </div>
                   </div>
-                )}
 
-                {/* Admin's Own Email Address */}
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Your Email Address <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={regEmailInput}
-                    onChange={(e) => {
-                      setRegEmailInput(e.target.value);
-                      setRegError('');
-                    }}
-                    placeholder="Enter your personal or admin email (e.g. name@gmail.com)"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                    autoFocus
-                  />
-                </div>
+                  {/* 2-Column Responsive Row: Passcode & Confirm Passcode */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Chosen Admin Passcode / Password */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Passcode / Password <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showRegPassword ? 'text' : 'password'}
+                          required
+                          value={regPasswordInput}
+                          onChange={(e) => {
+                            setRegPasswordInput(e.target.value);
+                            setRegError('');
+                          }}
+                          placeholder="Min. 6 characters"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowRegPassword(!showRegPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        >
+                          {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
 
-                {/* Admin Display Name */}
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Your Name / Display Name
-                  </label>
-                  <input
-                    type="text"
-                    value={regDisplayNameInput}
-                    onChange={(e) => setRegDisplayNameInput(e.target.value)}
-                    placeholder="e.g. Sarah (PH Admin) or Admin Alex"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                  />
-                </div>
-
-                {/* Chosen Admin Passcode / Password */}
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Your Chosen Passcode / Password <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showRegPassword ? 'text' : 'password'}
-                      required
-                      value={regPasswordInput}
-                      onChange={(e) => {
-                        setRegPasswordInput(e.target.value);
-                        setRegError('');
-                      }}
-                      placeholder="At least 6 characters"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    >
-                      {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    {/* Confirm Chosen Passcode */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
+                        Confirm Passcode <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type={showRegPassword ? 'text' : 'password'}
+                        required
+                        value={regConfirmPasswordInput}
+                        onChange={(e) => {
+                          setRegConfirmPasswordInput(e.target.value);
+                          setRegError('');
+                        }}
+                        placeholder="Repeat your passcode"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                {/* Confirm Chosen Passcode */}
-                <div>
-                  <label className="block text-xs font-bold text-[#526586] dark:text-slate-400 mb-1">
-                    Confirm Chosen Passcode / Password <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type={showRegPassword ? 'text' : 'password'}
-                    required
-                    value={regConfirmPasswordInput}
-                    onChange={(e) => {
-                      setRegConfirmPasswordInput(e.target.value);
-                      setRegError('');
-                    }}
-                    placeholder="Repeat your chosen passcode"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                  />
-                </div>
-
-                {/* Private Admin Authorization Code (Masked, not shown) */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-1.5">
-                  <div className="flex items-center justify-between">
+                  {/* Private Admin Authorization Code (Masked, not shown) */}
+                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-1">
                     <label className="block text-xs font-bold text-[#1A3668] dark:text-slate-200">
                       Private Admin Authorization Code <span className="text-rose-500">*</span>
                     </label>
+                    <div className="relative">
+                      <input
+                        type={showRegAuthCode ? 'text' : 'password'}
+                        required
+                        value={regAdminPasscodeInput}
+                        onChange={(e) => {
+                          setRegAdminPasscodeInput(e.target.value);
+                          setRegError('');
+                        }}
+                        placeholder="Enter the secret authorization code provided by the Owner"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegAuthCode(!showRegAuthCode)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        {showRegAuthCode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[10.5px] font-medium text-[#607494] dark:text-slate-400">
+                      🔒 Enter the authorization code given to you directly by the Hub Owner.
+                    </p>
                   </div>
-                  <div className="relative">
-                    <input
-                      type={showRegAuthCode ? 'text' : 'password'}
-                      required
-                      value={regAdminPasscodeInput}
-                      onChange={(e) => {
-                        setRegAdminPasscodeInput(e.target.value);
-                        setRegError('');
-                      }}
-                      placeholder="Enter the code provided by the Owner"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 pr-10 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-blue-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegAuthCode(!showRegAuthCode)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    >
-                      {showRegAuthCode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+
+                  {/* Owner Approval Notice */}
+                  <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200/90 dark:border-amber-800 text-[11px] font-medium text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                    <span className="text-xs shrink-0">👑</span>
+                    <span>
+                      <strong>Owner Approval Required:</strong> Submitting sends an application to the Hub Owner (Ernest). Once approved, you can log in immediately.
+                    </span>
                   </div>
-                  <p className="text-[10.5px] font-medium text-[#607494] dark:text-slate-400">
-                    🔒 Enter the private authorization code given to you directly by the Hub Owner.
-                  </p>
+
+                  {regError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
+                      {regError}
+                    </div>
+                  )}
                 </div>
 
-                {/* Owner Approval Notice */}
-                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200/90 dark:border-amber-800 text-[11px] font-medium text-amber-900 dark:text-amber-200 flex items-start gap-2">
-                  <span className="text-xs shrink-0">👑</span>
-                  <span>
-                    <strong>Owner Approval Required:</strong> Submitting this request sends an application to the Hub Owner (Ernest). Once approved, you will be able to log in to manage events.
-                  </span>
-                </div>
-
-                {regError && (
-                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-300">
-                    {regError}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                {/* Sticky Footer Buttons */}
+                <div className="shrink-0 pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
                   <button
                     type="button"
                     onClick={() => {
@@ -9271,47 +9342,144 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* If Fan Club Admin, select club */}
+                {/* If Fan Club Admin, select club(s) */}
                 {directCategory === 'fanclub' && (
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
-                      Assign Fan Club <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={directClubId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setDirectClubId(id);
-                        if (id === 'custom') {
-                          setDirectClubName('');
-                        } else {
-                          const found = fanClubs.find((c) => c.id === id);
-                          if (found) {
-                            setDirectClubName(found.name);
-                            setDirectCustomClubName('');
-                          }
-                        }
-                      }}
-                      className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
-                    >
-                      <option value="">-- Choose Fan Club to Assign --</option>
-                      {fanClubs.map((club) => (
-                        <option key={club.id} value={club.id}>
-                          {club.countryName ? `${club.countryName}: ` : ''}{club.name}
-                        </option>
-                      ))}
-                      <option value="custom">✍️ Other / New Fan Club Name</option>
-                    </select>
+                  <div className="space-y-2 p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                        Assign Fan Clubs <span className="text-[11px] font-medium text-slate-500">({directSelectedClubNames.length} selected)</span>
+                      </label>
+                      {directSelectedClubNames.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDirectSelectedClubIds([]);
+                            setDirectSelectedClubNames([]);
+                          }}
+                          className="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
 
-                    {(directClubId === 'custom' || (!directClubId && fanClubs.length === 0)) && (
+                    {/* Selected club badges */}
+                    {directSelectedClubNames.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white/80 dark:bg-slate-900 border border-amber-200 dark:border-amber-900">
+                        {directSelectedClubNames.map((cName) => {
+                          const matchingClub = fanClubs.find((fc) => fc.name.trim().toLowerCase() === cName.trim().toLowerCase());
+                          return (
+                            <span
+                              key={cName}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-200/90 dark:bg-amber-800 text-amber-950 dark:text-amber-100 shadow-2xs"
+                            >
+                              <span>{matchingClub?.flagEmoji || '🌟'}</span>
+                              <span>{cName}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDirectSelectedClubNames(directSelectedClubNames.filter((n) => n !== cName));
+                                  if (matchingClub) {
+                                    setDirectSelectedClubIds(directSelectedClubIds.filter((id) => id !== matchingClub.id));
+                                  }
+                                }}
+                                className="text-amber-800 dark:text-amber-200 hover:text-rose-600 ml-0.5 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-amber-800/80 dark:text-amber-300 italic px-1">
+                        Select one or more fan clubs below that this admin can manage.
+                      </div>
+                    )}
+
+                    {/* Scrollable multi-select checklist of existing fan clubs */}
+                    <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1.5 space-y-1">
+                      {fanClubs.length === 0 ? (
+                        <div className="text-xs text-slate-400 p-2">No fan clubs registered in directory yet.</div>
+                      ) : (
+                        fanClubs.map((club) => {
+                          const isChecked =
+                            directSelectedClubIds.includes(club.id) ||
+                            directSelectedClubNames.some((n) => n.trim().toLowerCase() === club.name.trim().toLowerCase());
+
+                          return (
+                            <label
+                              key={club.id}
+                              className={`flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer transition-colors text-xs font-semibold ${
+                                isChecked
+                                  ? 'bg-amber-100/80 dark:bg-amber-900/40 text-amber-950 dark:text-amber-100 font-bold'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-755 text-[#1A3668] dark:text-slate-200'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setDirectSelectedClubIds((prev) => prev.includes(club.id) ? prev : [...prev, club.id]);
+                                    setDirectSelectedClubNames((prev) =>
+                                      prev.some((n) => n.trim().toLowerCase() === club.name.trim().toLowerCase())
+                                        ? prev
+                                        : [...prev, club.name]
+                                    );
+                                  } else {
+                                    setDirectSelectedClubIds((prev) => prev.filter((id) => id !== club.id));
+                                    setDirectSelectedClubNames((prev) =>
+                                      prev.filter((n) => n.trim().toLowerCase() !== club.name.trim().toLowerCase())
+                                    );
+                                  }
+                                }}
+                                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-400 cursor-pointer"
+                              />
+                              <span className="text-sm shrink-0">{club.flagEmoji || '🚩'}</span>
+                              <span className="flex-1 truncate">
+                                {club.name}
+                                {club.countryName ? ` (${club.countryName})` : ''}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Write-in to add extra / custom fan club name */}
+                    <div className="flex items-center gap-2 pt-1">
                       <input
                         type="text"
                         value={directCustomClubName}
                         onChange={(e) => setDirectCustomClubName(e.target.value)}
-                        placeholder="Type assigned fan club name"
-                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                        placeholder="Type another fan club name..."
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = directCustomClubName.trim();
+                            if (val && !directSelectedClubNames.includes(val)) {
+                              setDirectSelectedClubNames([...directSelectedClubNames, val]);
+                              setDirectCustomClubName('');
+                            }
+                          }
+                        }}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
                       />
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = directCustomClubName.trim();
+                          if (val && !directSelectedClubNames.includes(val)) {
+                            setDirectSelectedClubNames([...directSelectedClubNames, val]);
+                            setDirectCustomClubName('');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold cursor-pointer shrink-0"
+                      >
+                        + Add Club
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -9419,47 +9587,147 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* If Fan Club Admin, select assigned club */}
+                {/* If Fan Club Admin, select assigned club(s) */}
                 {scopeCategoryEdit === 'fanclub' && (
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
-                      Assign Fan Club
-                    </label>
-                    <select
-                      value={scopeClubIdEdit}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setScopeClubIdEdit(id);
-                        if (id === 'custom') {
-                          setScopeClubNameEdit('');
-                        } else {
-                          const found = fanClubs.find((c) => c.id === id);
-                          if (found) {
-                            setScopeClubNameEdit(found.name);
-                            setScopeCustomClubName('');
-                          }
-                        }
-                      }}
-                      className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
-                    >
-                      <option value="">-- Choose Fan Club --</option>
-                      {fanClubs.map((club) => (
-                        <option key={club.id} value={club.id}>
-                          {club.countryName ? `${club.countryName}: ` : ''}{club.name}
-                        </option>
-                      ))}
-                      <option value="custom">✍️ Other / New Fan Club Name</option>
-                    </select>
+                  <div className="space-y-2 p-3 rounded-2xl bg-white/90 dark:bg-slate-900 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                        Assign Fan Clubs <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">({scopeSelectedClubNames.length} selected - admin can edit all checked clubs)</span>
+                      </label>
+                      {scopeSelectedClubNames.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScopeSelectedClubIds([]);
+                            setScopeSelectedClubNames([]);
+                          }}
+                          className="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
 
-                    {(scopeClubIdEdit === 'custom' || (!scopeClubIdEdit && fanClubs.length === 0)) && (
+                    {/* Selected club badges */}
+                    {scopeSelectedClubNames.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900">
+                        {scopeSelectedClubNames.map((cName) => {
+                          const matchingClub = fanClubs.find((fc) => fc.name.trim().toLowerCase() === cName.trim().toLowerCase());
+                          return (
+                            <span
+                              key={cName}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-200/90 dark:bg-amber-800 text-amber-950 dark:text-amber-100 shadow-2xs"
+                            >
+                              <span>{matchingClub?.flagEmoji || '🌟'}</span>
+                              <span>{cName}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setScopeSelectedClubNames(scopeSelectedClubNames.filter((n) => n !== cName));
+                                  if (matchingClub) {
+                                    setScopeSelectedClubIds(scopeSelectedClubIds.filter((id) => id !== matchingClub.id));
+                                  }
+                                }}
+                                className="text-amber-800 dark:text-amber-200 hover:text-rose-600 ml-0.5 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-amber-800/80 dark:text-amber-300 italic px-1">
+                        No fan clubs selected yet. Check the clubs below or type a custom name.
+                      </div>
+                    )}
+
+                    {/* Scrollable multi-select checklist of existing fan clubs */}
+                    <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 p-2 space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-1">
+                        Directory Fan Clubs (Click to check / uncheck)
+                      </div>
+                      {fanClubs.length === 0 ? (
+                        <div className="text-xs text-slate-400 p-2">No fan clubs registered in directory yet.</div>
+                      ) : (
+                        fanClubs.map((club) => {
+                          const isChecked =
+                            scopeSelectedClubIds.includes(club.id) ||
+                            scopeSelectedClubNames.some((n) => n.trim().toLowerCase() === club.name.trim().toLowerCase());
+
+                          return (
+                            <label
+                              key={club.id}
+                              className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs font-semibold ${
+                                isChecked
+                                  ? 'bg-amber-100/70 dark:bg-amber-900/40 text-amber-950 dark:text-amber-100 font-bold'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-750 text-[#1A3668] dark:text-slate-200'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setScopeSelectedClubIds((prev) => prev.includes(club.id) ? prev : [...prev, club.id]);
+                                    setScopeSelectedClubNames((prev) =>
+                                      prev.some((n) => n.trim().toLowerCase() === club.name.trim().toLowerCase())
+                                        ? prev
+                                        : [...prev, club.name]
+                                    );
+                                  } else {
+                                    setScopeSelectedClubIds((prev) => prev.filter((id) => id !== club.id));
+                                    setScopeSelectedClubNames((prev) =>
+                                      prev.filter((n) => n.trim().toLowerCase() !== club.name.trim().toLowerCase())
+                                    );
+                                  }
+                                }}
+                                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-400 cursor-pointer"
+                              />
+                              <span className="text-sm shrink-0">{club.flagEmoji || '🚩'}</span>
+                              <span className="flex-1 truncate">
+                                {club.name}
+                                {club.countryName ? ` (${club.countryName})` : ''}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Write-in to add extra / custom fan club name */}
+                    <div className="flex items-center gap-2 pt-1">
                       <input
                         type="text"
                         value={scopeCustomClubName}
                         onChange={(e) => setScopeCustomClubName(e.target.value)}
-                        placeholder="Type assigned fan club name"
-                        className="w-full rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
+                        placeholder="Type another fan club name..."
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = scopeCustomClubName.trim();
+                            if (val && !scopeSelectedClubNames.includes(val)) {
+                              setScopeSelectedClubNames([...scopeSelectedClubNames, val]);
+                              setScopeCustomClubName('');
+                            }
+                          }
+                        }}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none"
                       />
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = scopeCustomClubName.trim();
+                          if (val && !scopeSelectedClubNames.includes(val)) {
+                            setScopeSelectedClubNames([...scopeSelectedClubNames, val]);
+                            setScopeCustomClubName('');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold cursor-pointer shrink-0"
+                      >
+                        + Add Club
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -9559,10 +9827,10 @@ export default function App() {
                                     Pending Approval
                                   </span>
                                 ) : isFanClub ? (
-                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 flex items-center gap-1">
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 flex items-center gap-1 max-w-[280px] sm:max-w-none">
                                     <span>🌟 Fan Club Admin:</span>
-                                    <span className="underline decoration-amber-400">
-                                      {acc.assignedClubName || 'Assigned Club'}
+                                    <span className="underline decoration-amber-400 truncate">
+                                      {acc.assignedClubNames?.join(', ') || acc.assignedClubName || 'Assigned Club'}
                                     </span>
                                   </span>
                                 ) : (
@@ -9582,9 +9850,9 @@ export default function App() {
                                   : acc.lastLoginAt
                                   ? `Last active: ${new Date(acc.lastLoginAt).toLocaleDateString()}`
                                   : `Approved: ${new Date(acc.approvedAt || acc.createdAt).toLocaleDateString()}`}
-                                {isFanClub && acc.assignedClubName && (
+                                {isFanClub && (acc.assignedClubNames?.length || acc.assignedClubName) && (
                                   <span className="ml-1 text-amber-600 dark:text-amber-400 font-semibold">
-                                    • Assigned to {acc.assignedClubName}
+                                    • Assigned to {acc.assignedClubNames?.join(', ') || acc.assignedClubName}
                                   </span>
                                 )}
                               </div>
@@ -9620,14 +9888,23 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      const initialIds = acc.assignedClubIds && acc.assignedClubIds.length > 0
+                                        ? [...acc.assignedClubIds]
+                                        : acc.assignedClubId ? [acc.assignedClubId] : [];
+                                      const initialNames = acc.assignedClubNames && acc.assignedClubNames.length > 0
+                                        ? [...acc.assignedClubNames]
+                                        : acc.assignedClubName ? acc.assignedClubName.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
                                       setEditingAdminScope(acc);
                                       setScopeCategoryEdit(acc.adminCategory || 'general');
                                       setScopeClubIdEdit(acc.assignedClubId || '');
                                       setScopeClubNameEdit(acc.assignedClubName || '');
+                                      setScopeSelectedClubIds(initialIds);
+                                      setScopeSelectedClubNames(initialNames);
                                       setScopeCustomClubName('');
                                     }}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/50 text-slate-700 dark:text-slate-300 hover:text-amber-700 border border-slate-200 dark:border-slate-700 text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                                    title="Edit admin category or reassign fan club"
+                                    title="Edit admin category or reassign fan club(s)"
                                   >
                                     <Edit2 className="w-3.5 h-3.5 text-amber-500" />
                                     <span>Edit Scope</span>

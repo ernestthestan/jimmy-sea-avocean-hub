@@ -1363,37 +1363,64 @@ export const FanHub: React.FC<FanHubProps> = ({
                   <div className="text-xs sm:text-sm font-extrabold text-[#1A3668] dark:text-white flex items-center gap-1.5 flex-wrap">
                     <span>Logged in as Fan Club Admin:</span>
                     <span className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border border-amber-300/80 dark:border-amber-700">
-                      {currentAccount?.assignedClubName || 'Assigned Fan Club'}
+                      {currentAccount?.assignedClubNames?.length ? currentAccount.assignedClubNames.join(', ') : (currentAccount?.assignedClubName || 'Assigned Fan Club')}
                     </span>
                   </div>
                   <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-                    You have permission to edit details and add/update organized events for your specific fan club.
+                    You have permission to edit details and add/update organized events for your assigned fan club(s).
                   </div>
                 </div>
               </div>
 
-              {currentAccount?.assignedClubName && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const matched = fanClubs.find(
-                      (c) =>
-                        (currentAccount.assignedClubId && c.id === currentAccount.assignedClubId) ||
-                        (c.name && c.name.trim().toLowerCase() === currentAccount.assignedClubName?.trim().toLowerCase())
-                    );
-                    if (matched) {
-                      setEditingClub(matched);
-                      setIsClubModalOpen(true);
-                    } else {
-                      showToast(`Could not find "${currentAccount.assignedClubName}" in directory.`);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all shrink-0"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Edit My Fan Club</span>
-                </button>
-              )}
+              {/* Quick Edit button(s) for assigned fan clubs */}
+              {(() => {
+                const matchedClubs = fanClubs.filter((c) =>
+                  (currentAccount?.assignedClubIds && currentAccount.assignedClubIds.includes(c.id)) ||
+                  (currentAccount?.assignedClubNames && currentAccount.assignedClubNames.some((n) => n.trim().toLowerCase() === c.name.trim().toLowerCase())) ||
+                  (currentAccount?.assignedClubId && c.id === currentAccount.assignedClubId) ||
+                  (currentAccount?.assignedClubName && c.name.trim().toLowerCase() === currentAccount.assignedClubName.trim().toLowerCase()) ||
+                  (currentAccount?.assignedClubName && currentAccount.assignedClubName.split(',').some((n) => n.trim().toLowerCase() === c.name.trim().toLowerCase()))
+                );
+
+                if (matchedClubs.length === 0) return null;
+
+                if (matchedClubs.length === 1) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingClub(matchedClubs[0]);
+                        setIsClubModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all shrink-0"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit My Fan Club</span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Quick Edit:</span>
+                    {matchedClubs.map((club) => (
+                      <button
+                        key={club.id}
+                        type="button"
+                        onClick={() => {
+                          setEditingClub(club);
+                          setIsClubModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-2xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <span>{club.flagEmoji || '🌟'}</span>
+                        <span>{club.name}</span>
+                        <Edit2 className="w-3 h-3 ml-0.5 opacity-80" />
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
