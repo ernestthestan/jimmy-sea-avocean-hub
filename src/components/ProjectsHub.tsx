@@ -1609,7 +1609,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
       case 'sea':
         return { label: 'Sea Tawinan', emoji: '🌊', bg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800' };
       case 'avocean':
-        return { label: 'Avocean Community', emoji: '🥑💚', bg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
+        return { label: 'Avocean', emoji: '💚', bg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
     }
   };
 
@@ -1812,7 +1812,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             const getActorAccent = () => {
               if (key === 'jimmy') return { border: 'border-purple-200 dark:border-purple-900/60', badge: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300', emoji: '🥑', ring: 'ring-purple-200 dark:ring-purple-900/50', bg: 'from-purple-500/20 via-purple-500/10 to-indigo-500/20' };
               if (key === 'sea') return { border: 'border-sky-200 dark:border-sky-900/60', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300', emoji: '🌊', ring: 'ring-sky-200 dark:ring-sky-900/50', bg: 'from-sky-500/20 via-sky-500/10 to-blue-500/20' };
-              return { border: 'border-emerald-200 dark:border-emerald-900/60', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300', emoji: '🥑💚', ring: 'ring-emerald-200 dark:ring-emerald-900/50', bg: 'from-emerald-500/20 via-teal-500/10 to-green-500/20' };
+              return { border: 'border-emerald-200 dark:border-emerald-900/60', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300', emoji: '💚', ring: 'ring-emerald-200 dark:ring-emerald-900/50', bg: 'from-emerald-500/20 via-teal-500/10 to-green-500/20' };
             };
 
             const accent = getActorAccent();
@@ -1827,7 +1827,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black shadow-xs ${accent.badge}`}>
                       <span>{accent.emoji}</span>
-                      <span>{key === 'jimmy' ? 'Jimmy Jitaraphol' : key === 'sea' ? 'Sea Tawinan' : 'AVOCEAN Community'}</span>
+                      <span>{key === 'jimmy' ? 'Jimmy Jitaraphol' : key === 'sea' ? 'Sea Tawinan' : 'Avocean'}</span>
                     </span>
 
                     <div className="flex items-center gap-2">
@@ -1886,7 +1886,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       const currentAvatarIdx = (activeAvatarIndex[key] ?? 0) % (allAvatarPhotos.length || 1);
                       const activeAvatarPhoto = allAvatarPhotos[currentAvatarIdx] || profile.avatarUrl;
 
-                      const emojiFallback = key === 'jimmy' ? '🥑' : key === 'sea' ? '🌊' : '🥑🌊';
+                      const emojiFallback = key === 'jimmy' ? '🥑' : key === 'sea' ? '🌊' : '💚';
 
                       return (
                         <div className="flex flex-col items-center gap-1.5 shrink-0">
@@ -1907,6 +1907,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               <img
                                 src={activeAvatarPhoto}
                                 alt={`${profile.name} - Photo ${currentAvatarIdx + 1}`}
+                                referrerPolicy="no-referrer"
                                 style={{
                                   objectPosition: profile.avatarPosition || 'center 12%',
                                   objectFit: profile.avatarFit || 'cover'
@@ -1990,18 +1991,25 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                     {/* Names & Roles Header */}
                     <div className="space-y-1.5 flex-1 min-w-0">
-                      <h3 className={`${getTitleSizeClass()} font-black text-[#1A3668] dark:text-white tracking-tight`}>
-                        {profile.name}
-                      </h3>
+                      <div className="flex items-baseline gap-x-2 gap-y-1 flex-wrap">
+                        <h3 className={`${getTitleSizeClass()} font-black text-[#1A3668] dark:text-white tracking-tight inline-flex items-baseline gap-2 flex-wrap`}>
+                          <span>{profile.name}</span>
+                          {profile.nativeName && (
+                            <>
+                              <span className="text-purple-400 dark:text-purple-500 font-bold select-none opacity-70">
+                                •
+                              </span>
+                              <span className="font-thai font-black text-[#1A3668] dark:text-white tracking-normal text-inherit">
+                                {profile.nativeName}
+                              </span>
+                            </>
+                          )}
+                        </h3>
+                      </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        {profile.nativeName && (
-                          <span className="text-xs sm:text-sm font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-0.5 rounded-lg border border-purple-100 dark:border-purple-900/40 font-thai">
-                            🇹🇭 {profile.nativeName}
-                          </span>
-                        )}
                         {profile.nickname && (
-                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
                             ({profile.nickname})
                           </span>
                         )}
@@ -3070,6 +3078,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             <img
                               src={activePhoto}
                               alt={primaryEnglishTitle}
+                              referrerPolicy="no-referrer"
                               style={{ objectPosition: focalPos }}
                               className={`w-full h-full relative z-10 transition-transform duration-500 ${
                                 isBrand
@@ -3366,17 +3375,17 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           </div>
                         )}
 
-                        {/* Title & Original Thai Script: Side by side separated by a bullet */}
+                        {/* Title & Original Thai Script: Side by side separated by a bullet (same font size) */}
                         <div className="flex items-baseline gap-x-2 gap-y-1 flex-wrap">
                           <h3 className={`${typo.title} text-[#1A3668] dark:text-white leading-snug group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors inline-flex items-baseline gap-2 flex-wrap`}>
                             <span>{primaryEnglishTitle}</span>
 
                             {originalThaiScript && originalThaiScript !== primaryEnglishTitle && (
                               <>
-                                <span className="text-purple-400 dark:text-purple-500 font-bold select-none text-[0.85em] opacity-70">
+                                <span className="text-purple-400 dark:text-purple-500 font-bold select-none opacity-80">
                                   •
                                 </span>
-                                <span className="font-thai font-bold text-[#526586] dark:text-slate-200 tracking-normal text-[0.95em] sm:text-[1em]">
+                                <span className="font-thai font-black text-[#1A3668] dark:text-white tracking-normal text-inherit">
                                   {originalThaiScript}
                                 </span>
                               </>
