@@ -76,7 +76,9 @@ import {
   Truck,
   Film,
   RefreshCw,
-  Heart
+  Heart,
+  ShoppingBag,
+  Trophy
 } from 'lucide-react';
 import {
   testFirestoreConnection,
@@ -223,6 +225,25 @@ export interface ScheduleEvent {
   registrationTimezone?: string; // e.g. BKK
   registrationUrl?: string; // Link to registration form or ticket platform
   registrationNotes?: string; // Guidelines or instructions
+  registrationMedias?: string[]; // Registration posters, tier charts, seating map
+  // Purchasing / Top Spender Period Fields
+  hasPurchasingPeriod?: boolean;
+  purchasingStartDate?: string; // YYYY-MM-DD
+  purchasingStartTime?: string; // e.g. 10:00 AM or 10:00
+  purchasingEndDate?: string; // YYYY-MM-DD
+  purchasingEndTime?: string; // e.g. 11:59 PM or 23:59
+  purchasingTimezone?: string; // e.g. BKK
+  purchasingUrl?: string; // Link to purchasing store / campaign / receipt submission
+  purchasingNotes?: string; // Top Spender rules, minimum purchase, reward tiers
+  purchasingMedias?: string[]; // Campaign posters, top spender tier charts, product promo images
+  // Winner Announcement Date & Details
+  hasWinnerAnnouncement?: boolean;
+  winnerAnnouncementDate?: string; // YYYY-MM-DD
+  winnerAnnouncementTime?: string; // e.g. 6:00 PM or 18:00
+  winnerAnnouncementTimezone?: string; // e.g. BKK
+  winnerAnnouncementUrl?: string; // Link to winners post / livestream / announcement page
+  winnerAnnouncementNotes?: string; // Winner details & confirmation guidelines
+  winnerAnnouncementMedias?: string[]; // Official winner list poster, announcement graphics
   updatedAt?: string;
 }
 
@@ -238,6 +259,8 @@ export interface UserReminder {
   type: 'calendar' | 'email' | 'sms' | 'whatsapp' | 'browser';
   targetContact?: string;
   createdAt: string;
+  milestoneType?: 'main' | 'registration' | 'purchasing' | 'winner';
+  milestoneLabel?: string;
 }
 
 export type TitleSizeChoice = 'compact' | 'medium' | 'large' | 'xlarge';
@@ -1035,6 +1058,225 @@ export const formatRegistrationSchedule = (ev: ScheduleEvent, is12h: boolean): s
   return `${dateLabel} (${tz})`;
 };
 
+export interface PurchasingStatusInfo {
+  hasPurchasing: boolean;
+  status: 'open' | 'upcoming' | 'closed' | 'none';
+  statusLabel: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+}
+
+export const getPurchasingStatusInfo = (ev: ScheduleEvent, todayStr: string): PurchasingStatusInfo => {
+  if (!ev.hasPurchasingPeriod && !ev.purchasingStartDate && !ev.purchasingEndDate) {
+    return {
+      hasPurchasing: false,
+      status: 'none',
+      statusLabel: '',
+      badgeBg: '',
+      badgeText: '',
+      badgeBorder: ''
+    };
+  }
+
+  const startDate = ev.purchasingStartDate || '';
+  const endDate = ev.purchasingEndDate || startDate;
+
+  if (startDate && todayStr < startDate) {
+    return {
+      hasPurchasing: true,
+      status: 'upcoming',
+      statusLabel: 'Purchasing Starts Soon',
+      badgeBg: 'bg-amber-50 dark:bg-amber-950/70',
+      badgeText: 'text-amber-800 dark:text-amber-300',
+      badgeBorder: 'border-amber-300 dark:border-amber-700'
+    };
+  }
+
+  if (endDate && todayStr > endDate) {
+    return {
+      hasPurchasing: true,
+      status: 'closed',
+      statusLabel: 'Purchasing Concluded',
+      badgeBg: 'bg-slate-100 dark:bg-slate-800',
+      badgeText: 'text-slate-600 dark:text-slate-400',
+      badgeBorder: 'border-slate-200 dark:border-slate-700'
+    };
+  }
+
+  return {
+    hasPurchasing: true,
+    status: 'open',
+    statusLabel: 'Purchasing / Top Spender OPEN',
+    badgeBg: 'bg-rose-100 dark:bg-rose-950/80',
+    badgeText: 'text-rose-800 dark:text-rose-300',
+    badgeBorder: 'border-rose-300 dark:border-rose-700'
+  };
+};
+
+export const formatPurchasingSchedule = (ev: ScheduleEvent, is12h: boolean): string => {
+  const startD = ev.purchasingStartDate;
+  const endD = ev.purchasingEndDate;
+  const startT = ev.purchasingStartTime ? (is12h ? formatTime12h(ev.purchasingStartTime) : ev.purchasingStartTime) : '';
+  const endT = ev.purchasingEndTime ? (is12h ? formatTime12h(ev.purchasingEndTime) : ev.purchasingEndTime) : '';
+  const tz = ev.purchasingTimezone || ev.timezone || 'BKK';
+
+  if (!startD && !endD) return '';
+
+  const formatSingleDate = (dStr: string) => {
+    const dt = parseDateKey(dStr);
+    return `${dt.getDate()} ${SHORT_MONTHS[dt.getMonth()]}`;
+  };
+
+  if (startD && endD && startD !== endD) {
+    const sLabel = `${formatSingleDate(startD)}${startT ? ` ${startT}` : ''}`;
+    const eLabel = `${formatSingleDate(endD)}${endT ? ` ${endT}` : ''}`;
+    return `${sLabel} – ${eLabel} (${tz})`;
+  }
+
+  const dateLabel = formatSingleDate(startD || endD || '');
+  if (startT && endT) {
+    return `${dateLabel}, ${startT} – ${endT} (${tz})`;
+  }
+  if (startT) {
+    return `${dateLabel} at ${startT} (${tz})`;
+  }
+  return `${dateLabel} (${tz})`;
+};
+
+export interface WinnerAnnouncementStatusInfo {
+  hasWinner: boolean;
+  status: 'today' | 'upcoming' | 'past' | 'none';
+  statusLabel: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+}
+
+export const getWinnerAnnouncementStatusInfo = (ev: ScheduleEvent, todayStr: string): WinnerAnnouncementStatusInfo => {
+  if (!ev.hasWinnerAnnouncement && !ev.winnerAnnouncementDate) {
+    return {
+      hasWinner: false,
+      status: 'none',
+      statusLabel: '',
+      badgeBg: '',
+      badgeText: '',
+      badgeBorder: ''
+    };
+  }
+
+  const announceDate = ev.winnerAnnouncementDate || '';
+
+  if (announceDate && todayStr === announceDate) {
+    return {
+      hasWinner: true,
+      status: 'today',
+      statusLabel: 'Winners Announced TODAY!',
+      badgeBg: 'bg-fuchsia-100 dark:bg-fuchsia-950/80',
+      badgeText: 'text-fuchsia-800 dark:text-fuchsia-300',
+      badgeBorder: 'border-fuchsia-300 dark:border-fuchsia-700'
+    };
+  }
+
+  if (announceDate && todayStr < announceDate) {
+    return {
+      hasWinner: true,
+      status: 'upcoming',
+      statusLabel: 'Winner Reveal Upcoming',
+      badgeBg: 'bg-purple-100 dark:bg-purple-950/80',
+      badgeText: 'text-purple-800 dark:text-purple-300',
+      badgeBorder: 'border-purple-300 dark:border-purple-700'
+    };
+  }
+
+  return {
+    hasWinner: true,
+    status: 'past',
+    statusLabel: 'Winners Announced',
+    badgeBg: 'bg-slate-100 dark:bg-slate-800',
+    badgeText: 'text-slate-600 dark:text-slate-400',
+    badgeBorder: 'border-slate-200 dark:border-slate-700'
+  };
+};
+
+export const formatWinnerAnnouncementSchedule = (ev: ScheduleEvent, is12h: boolean): string => {
+  const dStr = ev.winnerAnnouncementDate;
+  if (!dStr) return '';
+  const tStr = ev.winnerAnnouncementTime ? (is12h ? formatTime12h(ev.winnerAnnouncementTime) : ev.winnerAnnouncementTime) : '';
+  const tz = ev.winnerAnnouncementTimezone || ev.timezone || 'BKK';
+  const dt = parseDateKey(dStr);
+  const dateLabel = `${dt.getDate()} ${SHORT_MONTHS[dt.getMonth()]}`;
+  return tStr ? `${dateLabel} at ${tStr} (${tz})` : `${dateLabel} (${tz})`;
+};
+
+export type ReminderMilestone = 'main' | 'registration' | 'purchasing' | 'winner';
+
+export interface EventMilestoneDetails {
+  key: ReminderMilestone;
+  label: string;
+  badgeLabel: string;
+  icon: string;
+  date: string;
+  time: string;
+  timezone: string;
+  url?: string;
+  notes?: string;
+}
+
+export const getEventMilestone = (ev: ScheduleEvent, milestone: ReminderMilestone): EventMilestoneDetails => {
+  switch (milestone) {
+    case 'purchasing':
+      return {
+        key: 'purchasing',
+        label: 'Purchasing / Top Spender Deadline',
+        badgeLabel: 'Top Spender Cut-Off',
+        icon: '🛍️',
+        date: ev.purchasingEndDate || ev.purchasingStartDate || ev.date,
+        time: ev.purchasingEndTime || ev.purchasingStartTime || (ev.isAllDay ? 'All Day' : ev.time || '23:59'),
+        timezone: ev.purchasingTimezone || ev.timezone || 'BKK',
+        url: ev.purchasingUrl,
+        notes: ev.purchasingNotes
+      };
+    case 'winner':
+      return {
+        key: 'winner',
+        label: 'Winner Announcement Date',
+        badgeLabel: 'Winners Reveal',
+        icon: '🏆',
+        date: ev.winnerAnnouncementDate || ev.date,
+        time: ev.winnerAnnouncementTime || '18:00',
+        timezone: ev.winnerAnnouncementTimezone || ev.timezone || 'BKK',
+        url: ev.winnerAnnouncementUrl,
+        notes: ev.winnerAnnouncementNotes
+      };
+    case 'registration':
+      return {
+        key: 'registration',
+        label: 'Registration / Ticket Sales',
+        badgeLabel: 'Tickets Opening',
+        icon: '🎟️',
+        date: ev.registrationStartDate || ev.date,
+        time: ev.registrationStartTime || '10:00',
+        timezone: ev.registrationTimezone || ev.timezone || 'BKK',
+        url: ev.registrationUrl,
+        notes: ev.registrationNotes
+      };
+    case 'main':
+    default:
+      return {
+        key: 'main',
+        label: 'Main Event Schedule',
+        badgeLabel: 'Live Event',
+        icon: '📅',
+        date: ev.date,
+        time: ev.time || '18:00',
+        timezone: ev.timezone || 'BKK',
+        url: ev.link,
+        notes: ev.description
+      };
+  }
+};
+
 // Get numeric offset in hours for any timezone code
 const getTimezoneOffsetHours = (tzCode?: string): number => {
   if (!tzCode) return 7;
@@ -1256,28 +1498,32 @@ const getVisitorLocalTimeLabel = (ev: ScheduleEvent, prefer12h: boolean = true):
   }
 };
 
-// Generate 1-Click Google Calendar URL
-const createGoogleCalendarUrl = (ev: ScheduleEvent) => {
-  const fromOffset = getTimezoneOffsetHours(ev.timezone || 'BKK');
-  const [h, m] = parseHourAndMinute(ev.time || '18:00');
-  const [year, month, day] = ev.date.split('-').map(Number);
+// Generate 1-Click Google Calendar URL (Supports Milestones like Purchasing Deadline & Winner Announcement)
+const createGoogleCalendarUrl = (ev: ScheduleEvent, milestone: ReminderMilestone = 'main') => {
+  const m = getEventMilestone(ev, milestone);
+  const fromOffset = getTimezoneOffsetHours(m.timezone);
+  const [h, min] = parseHourAndMinute(m.time);
+  const [year, month, day] = m.date.split('-').map(Number);
 
-  const utcMs = Date.UTC(year, month - 1, day, h - fromOffset, m || 0);
+  const utcMs = Date.UTC(year, month - 1, day, h - fromOffset, min || 0);
   const startDate = new Date(utcMs);
 
-  const endTargetDateStr = ev.endDate && ev.endDate > ev.date ? ev.endDate : ev.date;
-  const [endYear, endMonth, endDay] = endTargetDateStr.split('-').map(Number);
-  
   let endDate: Date;
-  if (ev.endTime) {
-    const [endH, endM] = parseHourAndMinute(ev.endTime);
-    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, endH - fromOffset, endM || 0));
-    if (endDate <= startDate) {
-      endDate = new Date(endDate.getTime() + 24 * 3600 * 1000);
+  if (milestone === 'main') {
+    const endTargetDateStr = ev.endDate && ev.endDate > ev.date ? ev.endDate : ev.date;
+    const [endYear, endMonth, endDay] = endTargetDateStr.split('-').map(Number);
+    if (ev.endTime) {
+      const [endH, endM] = parseHourAndMinute(ev.endTime);
+      endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, endH - fromOffset, endM || 0));
+      if (endDate <= startDate) {
+        endDate = new Date(endDate.getTime() + 24 * 3600 * 1000);
+      }
+    } else {
+      const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
+      endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, min || 0));
     }
   } else {
-    const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
-    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, m || 0));
+    endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
   }
 
   const formatUtc = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
@@ -1285,45 +1531,51 @@ const createGoogleCalendarUrl = (ev: ScheduleEvent) => {
   const startUtc = formatUtc(startDate);
   const endUtc = formatUtc(endDate);
 
-  const title = encodeURIComponent(ev.title);
+  const eventTitle = milestone === 'main' ? ev.title : `[${m.label}] ${ev.title}`;
+  const title = encodeURIComponent(eventTitle);
   const watchLinks = (ev.watchPlatforms || []).map((w) => `${w.name} (${w.platform}): ${w.url}`).join('\n');
   const details = encodeURIComponent(
-    `${ev.description || ''}\n\n${ev.hashtags || ''}\n\nWhere to watch:\n${watchLinks}\n\n${ev.link ? `Event Link: ${ev.link}` : ''}`
+    `${m.label}\n\n${m.notes ? `Details / Guidelines: ${m.notes}\n\n` : ''}${m.url ? `Link: ${m.url}\n\n` : ''}${ev.description || ''}\n\n${ev.hashtags || ''}\n\nWhere to watch:\n${watchLinks}\n\n${ev.link ? `Event Link: ${ev.link}` : ''}`
   );
   const location = encodeURIComponent(ev.location || '');
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startUtc}/${endUtc}&details=${details}&location=${location}`;
 };
 
-// Generate and download .ics file
-const downloadIcsFile = (ev: ScheduleEvent, reminderMinutes: number = 15) => {
-  const fromOffset = getTimezoneOffsetHours(ev.timezone || 'BKK');
-  const [h, m] = parseHourAndMinute(ev.time || '18:00');
-  const [year, month, day] = ev.date.split('-').map(Number);
+// Generate and download .ics file (Supports Milestones like Purchasing Deadline & Winner Announcement)
+const downloadIcsFile = (ev: ScheduleEvent, reminderMinutes: number = 15, milestone: ReminderMilestone = 'main') => {
+  const m = getEventMilestone(ev, milestone);
+  const fromOffset = getTimezoneOffsetHours(m.timezone);
+  const [h, min] = parseHourAndMinute(m.time);
+  const [year, month, day] = m.date.split('-').map(Number);
 
-  const utcMs = Date.UTC(year, month - 1, day, h - fromOffset, m || 0);
+  const utcMs = Date.UTC(year, month - 1, day, h - fromOffset, min || 0);
   const startDate = new Date(utcMs);
 
-  const endTargetDateStr = ev.endDate && ev.endDate > ev.date ? ev.endDate : ev.date;
-  const [endYear, endMonth, endDay] = endTargetDateStr.split('-').map(Number);
-  
   let endDate: Date;
-  if (ev.endTime) {
-    const [endH, endM] = parseHourAndMinute(ev.endTime);
-    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, endH - fromOffset, endM || 0));
-    if (endDate <= startDate) {
-      endDate = new Date(endDate.getTime() + 24 * 3600 * 1000);
+  if (milestone === 'main') {
+    const endTargetDateStr = ev.endDate && ev.endDate > ev.date ? ev.endDate : ev.date;
+    const [endYear, endMonth, endDay] = endTargetDateStr.split('-').map(Number);
+    if (ev.endTime) {
+      const [endH, endM] = parseHourAndMinute(ev.endTime);
+      endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, endH - fromOffset, endM || 0));
+      if (endDate <= startDate) {
+        endDate = new Date(endDate.getTime() + 24 * 3600 * 1000);
+      }
+    } else {
+      const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
+      endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, min || 0));
     }
   } else {
-    const endDurationHours = ev.endDate && ev.endDate > ev.date ? 4 : 2;
-    endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, h - fromOffset + endDurationHours, m || 0));
+    endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
   }
 
   const formatUtc = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
   const nowUtc = formatUtc(new Date());
 
+  const eventTitle = milestone === 'main' ? ev.title : `[${m.label}] ${ev.title}`;
   const watchLinks = (ev.watchPlatforms || []).map((w) => `${w.name} (${w.platform}): ${w.url}`).join('\\n');
-  const descriptionText = `${(ev.description || '').replace(/\n/g, '\\n')}\\n\\n${ev.hashtags || ''}\\n\\nWatch:\\n${watchLinks}`;
+  const descriptionText = `${m.label}\\n\\n${m.notes ? `Details / Guidelines: ${m.notes}\\n\\n` : ''}${m.url ? `Link: ${m.url}\\n\\n` : ''}${(ev.description || '').replace(/\n/g, '\\n')}\\n\\n${ev.hashtags || ''}\\n\\nWatch:\\n${watchLinks}`;
 
   const icsLines = [
     'BEGIN:VCALENDAR',
@@ -1332,17 +1584,17 @@ const downloadIcsFile = (ev: ScheduleEvent, reminderMinutes: number = 15) => {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:avocean-${ev.id}-${Date.now()}@avocean.app`,
+    `UID:avocean-${ev.id}-${milestone}-${Date.now()}@avocean.app`,
     `DTSTAMP:${nowUtc}`,
     `DTSTART:${formatUtc(startDate)}`,
     `DTEND:${formatUtc(endDate)}`,
-    `SUMMARY:${ev.title}`,
+    `SUMMARY:${eventTitle}`,
     `DESCRIPTION:${descriptionText}`,
     `LOCATION:${ev.location || ''}`,
     'BEGIN:VALARM',
     `TRIGGER:-PT${reminderMinutes}M`,
     'ACTION:DISPLAY',
-    `DESCRIPTION:Reminder: ${ev.title} starts soon!`,
+    `DESCRIPTION:Reminder: ${eventTitle}`,
     'END:VALARM',
     'END:VEVENT',
     'END:VCALENDAR'
@@ -1352,10 +1604,8 @@ const downloadIcsFile = (ev: ScheduleEvent, reminderMinutes: number = 15) => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${ev.title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30)}.ics`;
-  document.body.appendChild(a);
+  a.download = `${ev.date}-${milestone}-${ev.title.slice(0, 20).replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
   a.click();
-  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
 
@@ -2524,6 +2774,7 @@ export default function App() {
   const [reminderCountryCode, setReminderCountryCode] = useState<string>('+63');
   const [reminderPhone, setReminderPhone] = useState<string>('');
   const [reminderSuccess, setReminderSuccess] = useState<boolean>(false);
+  const [reminderMilestone, setReminderMilestone] = useState<ReminderMilestone>('main');
 
   // Event Form State
   const [isSavingEvent, setIsSavingEvent] = useState<boolean>(false);
@@ -2661,13 +2912,44 @@ export default function App() {
   const [formRegTimezone, setFormRegTimezone] = useState<string>('BKK');
   const [formRegUrl, setFormRegUrl] = useState<string>('');
   const [formRegNotes, setFormRegNotes] = useState<string>('');
+  const [formRegMedias, setFormRegMedias] = useState<string[]>([]);
+  const [formNewRegMediaInput, setFormNewRegMediaInput] = useState<string>('');
+
+  // Purchasing / Top Spender Period Form State
+  const [formHasPurchasing, setFormHasPurchasing] = useState<boolean>(false);
+  const [formPurchasingStartDate, setFormPurchasingStartDate] = useState<string>('');
+  const [formPurchasingStartTime, setFormPurchasingStartTime] = useState<string>('');
+  const [formPurchasingEndDate, setFormPurchasingEndDate] = useState<string>('');
+  const [formPurchasingEndTime, setFormPurchasingEndTime] = useState<string>('');
+  const [formPurchasingTimezone, setFormPurchasingTimezone] = useState<string>('BKK');
+  const [formPurchasingUrl, setFormPurchasingUrl] = useState<string>('');
+  const [formPurchasingNotes, setFormPurchasingNotes] = useState<string>('');
+  const [formPurchasingMedias, setFormPurchasingMedias] = useState<string[]>([]);
+  const [formNewPurchasingMediaInput, setFormNewPurchasingMediaInput] = useState<string>('');
+
+  // Winner Announcement Date Form State
+  const [formHasWinnerAnnouncement, setFormHasWinnerAnnouncement] = useState<boolean>(false);
+  const [formWinnerAnnouncementDate, setFormWinnerAnnouncementDate] = useState<string>('');
+  const [formWinnerAnnouncementTime, setFormWinnerAnnouncementTime] = useState<string>('');
+  const [formWinnerAnnouncementTimezone, setFormWinnerAnnouncementTimezone] = useState<string>('BKK');
+  const [formWinnerAnnouncementUrl, setFormWinnerAnnouncementUrl] = useState<string>('');
+  const [formWinnerAnnouncementNotes, setFormWinnerAnnouncementNotes] = useState<string>('');
+  const [formWinnerAnnouncementMedias, setFormWinnerAnnouncementMedias] = useState<string[]>([]);
+  const [formNewWinnerMediaInput, setFormNewWinnerMediaInput] = useState<string>('');
 
   const [newPlatformName, setNewPlatformName] = useState<string>('GMMTV');
   const [newPlatformType, setNewPlatformType] = useState<string>('YouTube');
   const [newPlatformUrl, setNewPlatformUrl] = useState<string>('https://youtube.com/@gmmtv');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const regFileInputRef = useRef<HTMLInputElement | null>(null);
+  const purchasingFileInputRef = useRef<HTMLInputElement | null>(null);
+  const winnerFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [isCompressingRegMedia, setIsCompressingRegMedia] = useState<boolean>(false);
+  const [isCompressingPurchasingMedia, setIsCompressingPurchasingMedia] = useState<boolean>(false);
+  const [isCompressingWinnerMedia, setIsCompressingWinnerMedia] = useState<boolean>(false);
 
   // Settings Form State
   const [draftGreeting, setDraftGreeting] = useState<string>(settings.greeting);
@@ -3371,6 +3653,26 @@ export default function App() {
     setFormRegTimezone('BKK');
     setFormRegUrl('');
     setFormRegNotes('');
+    setFormRegMedias([]);
+    setFormNewRegMediaInput('');
+    setFormHasPurchasing(false);
+    setFormPurchasingStartDate('');
+    setFormPurchasingStartTime(is12Hour ? '10:00 AM' : '10:00');
+    setFormPurchasingEndDate('');
+    setFormPurchasingEndTime(is12Hour ? '11:59 PM' : '23:59');
+    setFormPurchasingTimezone('BKK');
+    setFormPurchasingUrl('');
+    setFormPurchasingNotes('');
+    setFormPurchasingMedias([]);
+    setFormNewPurchasingMediaInput('');
+    setFormHasWinnerAnnouncement(false);
+    setFormWinnerAnnouncementDate('');
+    setFormWinnerAnnouncementTime(is12Hour ? '6:00 PM' : '18:00');
+    setFormWinnerAnnouncementTimezone('BKK');
+    setFormWinnerAnnouncementUrl('');
+    setFormWinnerAnnouncementNotes('');
+    setFormWinnerAnnouncementMedias([]);
+    setFormNewWinnerMediaInput('');
     setShowTimeAdjuster(true);
     setEventModalOpen(true);
   };
@@ -3465,6 +3767,28 @@ export default function App() {
     setFormRegTimezone(ev.registrationTimezone || ev.timezone || 'BKK');
     setFormRegUrl(ev.registrationUrl || '');
     setFormRegNotes(ev.registrationNotes || '');
+    setFormRegMedias(ev.registrationMedias ? [...ev.registrationMedias] : []);
+    setFormNewRegMediaInput('');
+    // Populate purchasing period fields
+    setFormHasPurchasing(Boolean(ev.hasPurchasingPeriod || ev.purchasingStartDate));
+    setFormPurchasingStartDate(ev.purchasingStartDate || '');
+    setFormPurchasingStartTime(ev.purchasingStartTime || '');
+    setFormPurchasingEndDate(ev.purchasingEndDate || '');
+    setFormPurchasingEndTime(ev.purchasingEndTime || '');
+    setFormPurchasingTimezone(ev.purchasingTimezone || ev.timezone || 'BKK');
+    setFormPurchasingUrl(ev.purchasingUrl || '');
+    setFormPurchasingNotes(ev.purchasingNotes || '');
+    setFormPurchasingMedias(ev.purchasingMedias ? [...ev.purchasingMedias] : []);
+    setFormNewPurchasingMediaInput('');
+    // Populate winner announcement fields
+    setFormHasWinnerAnnouncement(Boolean(ev.hasWinnerAnnouncement || ev.winnerAnnouncementDate));
+    setFormWinnerAnnouncementDate(ev.winnerAnnouncementDate || '');
+    setFormWinnerAnnouncementTime(ev.winnerAnnouncementTime || '');
+    setFormWinnerAnnouncementTimezone(ev.winnerAnnouncementTimezone || ev.timezone || 'BKK');
+    setFormWinnerAnnouncementUrl(ev.winnerAnnouncementUrl || '');
+    setFormWinnerAnnouncementNotes(ev.winnerAnnouncementNotes || '');
+    setFormWinnerAnnouncementMedias(ev.winnerAnnouncementMedias ? [...ev.winnerAnnouncementMedias] : []);
+    setFormNewWinnerMediaInput('');
     setEventModalOpen(true);
   };
 
@@ -3514,6 +3838,25 @@ export default function App() {
 
       const primaryPoster = compressedPostersList[0] || '';
 
+      // Prepare registration, purchasing, and winner media lists including any pending inputs
+      let finalRegMediasList = [...formRegMedias];
+      if (formNewRegMediaInput.trim() && !finalRegMediasList.includes(formNewRegMediaInput.trim())) {
+        finalRegMediasList.push(formNewRegMediaInput.trim());
+      }
+      finalRegMediasList = finalRegMediasList.filter(Boolean);
+
+      let finalPurchasingMediasList = [...formPurchasingMedias];
+      if (formNewPurchasingMediaInput.trim() && !finalPurchasingMediasList.includes(formNewPurchasingMediaInput.trim())) {
+        finalPurchasingMediasList.push(formNewPurchasingMediaInput.trim());
+      }
+      finalPurchasingMediasList = finalPurchasingMediasList.filter(Boolean);
+
+      let finalWinnerMediasList = [...formWinnerAnnouncementMedias];
+      if (formNewWinnerMediaInput.trim() && !finalWinnerMediasList.includes(formNewWinnerMediaInput.trim())) {
+        finalWinnerMediasList.push(formNewWinnerMediaInput.trim());
+      }
+      finalWinnerMediasList = finalWinnerMediasList.filter(Boolean);
+
       const newEvent: ScheduleEvent = {
         id: editingEvent ? editingEvent.id : `ev-${Date.now()}`,
         title: formTitle.trim(),
@@ -3542,7 +3885,26 @@ export default function App() {
         registrationEndTime: formHasRegistration && formRegEndTime.trim() ? formRegEndTime.trim() : undefined,
         registrationTimezone: formHasRegistration && formRegStartDate ? formRegTimezone : undefined,
         registrationUrl: formHasRegistration && formRegUrl.trim() ? formRegUrl.trim() : undefined,
-        registrationNotes: formHasRegistration && formRegNotes.trim() ? formRegNotes.trim() : undefined
+        registrationNotes: formHasRegistration && formRegNotes.trim() ? formRegNotes.trim() : undefined,
+        registrationMedias: formHasRegistration && finalRegMediasList.length > 0 ? finalRegMediasList : undefined,
+        // Purchasing / Top Spender Period Fields
+        hasPurchasingPeriod: formHasPurchasing,
+        purchasingStartDate: formHasPurchasing && formPurchasingStartDate ? formPurchasingStartDate : undefined,
+        purchasingStartTime: formHasPurchasing && formPurchasingStartTime.trim() ? formPurchasingStartTime.trim() : undefined,
+        purchasingEndDate: formHasPurchasing && formPurchasingEndDate ? formPurchasingEndDate : undefined,
+        purchasingEndTime: formHasPurchasing && formPurchasingEndTime.trim() ? formPurchasingEndTime.trim() : undefined,
+        purchasingTimezone: formHasPurchasing && formPurchasingStartDate ? formPurchasingTimezone : undefined,
+        purchasingUrl: formHasPurchasing && formPurchasingUrl.trim() ? formPurchasingUrl.trim() : undefined,
+        purchasingNotes: formHasPurchasing && formPurchasingNotes.trim() ? formPurchasingNotes.trim() : undefined,
+        purchasingMedias: formHasPurchasing && finalPurchasingMediasList.length > 0 ? finalPurchasingMediasList : undefined,
+        // Winner Announcement Date & Details
+        hasWinnerAnnouncement: formHasWinnerAnnouncement,
+        winnerAnnouncementDate: formHasWinnerAnnouncement && formWinnerAnnouncementDate ? formWinnerAnnouncementDate : undefined,
+        winnerAnnouncementTime: formHasWinnerAnnouncement && formWinnerAnnouncementTime.trim() ? formWinnerAnnouncementTime.trim() : undefined,
+        winnerAnnouncementTimezone: formHasWinnerAnnouncement && formWinnerAnnouncementDate ? formWinnerAnnouncementTimezone : undefined,
+        winnerAnnouncementUrl: formHasWinnerAnnouncement && formWinnerAnnouncementUrl.trim() ? formWinnerAnnouncementUrl.trim() : undefined,
+        winnerAnnouncementNotes: formHasWinnerAnnouncement && formWinnerAnnouncementNotes.trim() ? formWinnerAnnouncementNotes.trim() : undefined,
+        winnerAnnouncementMedias: formHasWinnerAnnouncement && finalWinnerMediasList.length > 0 ? finalWinnerMediasList : undefined
       };
 
       // 1. Await Firestore save to guarantee it is safely committed to cloud
@@ -3763,6 +4125,129 @@ export default function App() {
       setFormPosterUrl(copy[0] || '');
       return copy;
     });
+  };
+
+  // Registration Media Helpers
+  const handleAddRegMediaUrl = () => {
+    const trimmed = formNewRegMediaInput.trim();
+    if (!trimmed) return;
+    setFormRegMedias((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setFormNewRegMediaInput('');
+    showToast('Registration media photo added!');
+  };
+
+  const handleRegMediaFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsCompressingRegMedia(true);
+    showToast(`Optimizing ${files.length} registration photo${files.length > 1 ? 's' : ''}...`);
+    try {
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 15 * 1024 * 1024) continue;
+        try {
+          const comp = await compressImageFile(file, 1100, 0.78);
+          newUrls.push(comp);
+        } catch (err) {
+          console.warn('Compression error:', err);
+        }
+      }
+      if (newUrls.length > 0) {
+        setFormRegMedias((prev) => [...prev, ...newUrls]);
+        showToast(`Added ${newUrls.length} registration photo${newUrls.length > 1 ? 's' : ''}!`);
+      }
+    } finally {
+      setIsCompressingRegMedia(false);
+      if (regFileInputRef.current) regFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveRegMedia = (idxToRemove: number) => {
+    setFormRegMedias((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+    showToast('Registration photo removed.');
+  };
+
+  // Purchasing & Top Spender Media Helpers
+  const handleAddPurchasingMediaUrl = () => {
+    const trimmed = formNewPurchasingMediaInput.trim();
+    if (!trimmed) return;
+    setFormPurchasingMedias((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setFormNewPurchasingMediaInput('');
+    showToast('Purchasing promo photo added!');
+  };
+
+  const handlePurchasingMediaFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsCompressingPurchasingMedia(true);
+    showToast(`Optimizing ${files.length} purchasing promo photo${files.length > 1 ? 's' : ''}...`);
+    try {
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 15 * 1024 * 1024) continue;
+        try {
+          const comp = await compressImageFile(file, 1100, 0.78);
+          newUrls.push(comp);
+        } catch (err) {
+          console.warn('Compression error:', err);
+        }
+      }
+      if (newUrls.length > 0) {
+        setFormPurchasingMedias((prev) => [...prev, ...newUrls]);
+        showToast(`Added ${newUrls.length} purchasing promo photo${newUrls.length > 1 ? 's' : ''}!`);
+      }
+    } finally {
+      setIsCompressingPurchasingMedia(false);
+      if (purchasingFileInputRef.current) purchasingFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePurchasingMedia = (idxToRemove: number) => {
+    setFormPurchasingMedias((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+    showToast('Purchasing photo removed.');
+  };
+
+  // Winner Announcement Media Helpers
+  const handleAddWinnerMediaUrl = () => {
+    const trimmed = formNewWinnerMediaInput.trim();
+    if (!trimmed) return;
+    setFormWinnerAnnouncementMedias((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setFormNewWinnerMediaInput('');
+    showToast('Winner announcement photo added!');
+  };
+
+  const handleWinnerMediaFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsCompressingWinnerMedia(true);
+    showToast(`Optimizing ${files.length} winner photo${files.length > 1 ? 's' : ''}...`);
+    try {
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 15 * 1024 * 1024) continue;
+        try {
+          const comp = await compressImageFile(file, 1100, 0.78);
+          newUrls.push(comp);
+        } catch (err) {
+          console.warn('Compression error:', err);
+        }
+      }
+      if (newUrls.length > 0) {
+        setFormWinnerAnnouncementMedias((prev) => [...prev, ...newUrls]);
+        showToast(`Added ${newUrls.length} winner photo${newUrls.length > 1 ? 's' : ''}!`);
+      }
+    } finally {
+      setIsCompressingWinnerMedia(false);
+      if (winnerFileInputRef.current) winnerFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveWinnerMedia = (idxToRemove: number) => {
+    setFormWinnerAnnouncementMedias((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+    showToast('Winner announcement photo removed.');
   };
 
   // Handle Banner Photo Upload from device with compression and Firestore real-time sync
@@ -4017,8 +4502,9 @@ export default function App() {
   };
 
   // --- Open Reminder Modal ---
-  const openReminderModal = (ev: ScheduleEvent) => {
+  const openReminderModal = (ev: ScheduleEvent, milestone: ReminderMilestone = 'main') => {
     setReminderEvent(ev);
+    setReminderMilestone(milestone);
     setReminderSuccess(false);
 
     const userOffsetHours = -new Date().getTimezoneOffset() / 60;
@@ -4038,11 +4524,12 @@ export default function App() {
     if (!reminderEvent) return;
 
     const timingOption = REMINDER_TIMING_OPTIONS.find((t) => t.minutes === reminderTiming) || REMINDER_TIMING_OPTIONS[0];
+    const milestoneData = getEventMilestone(reminderEvent, reminderMilestone);
     const converted = convertEventTimeAndDate(
-      reminderEvent.time || '18:00',
-      reminderEvent.timezone || 'BKK',
+      milestoneData.time || '18:00',
+      milestoneData.timezone || 'BKK',
       reminderUserTz,
-      reminderEvent.date,
+      milestoneData.date,
       is12Hour
     );
 
@@ -4050,7 +4537,9 @@ export default function App() {
       id: `rem-${Date.now()}`,
       eventId: reminderEvent.id,
       eventTitle: reminderEvent.title,
-      eventDate: reminderEvent.date,
+      eventDate: milestoneData.date,
+      milestoneType: reminderMilestone,
+      milestoneLabel: milestoneData.label,
       userTimezone: reminderUserTz,
       convertedTimeStr: `${converted.time} ${reminderUserTz}`,
       timingMinutes: reminderTiming,
@@ -4060,9 +4549,12 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    setUserReminders((prev) => [newReminder, ...prev.filter((r) => r.eventId !== reminderEvent.id)]);
+    setUserReminders((prev) => [
+      newReminder,
+      ...prev.filter((r) => !(r.eventId === reminderEvent.id && (r.milestoneType || 'main') === reminderMilestone))
+    ]);
     setReminderSuccess(true);
-    showToast(`Reminder saved! Converted to ${converted.time} ${reminderUserTz}`);
+    showToast(`Reminder set for ${milestoneData.label}! Converted to ${converted.time} ${reminderUserTz}`);
   };
 
   const handleDeleteReminder = (id: string) => {
@@ -4070,8 +4562,11 @@ export default function App() {
     showToast('Reminder removed');
   };
 
-  const isReminderSetForEvent = (eventId: string) => {
-    return userReminders.some((r) => r.eventId === eventId);
+  const isReminderSetForEvent = (eventId: string, milestone?: ReminderMilestone) => {
+    if (!milestone) {
+      return userReminders.some((r) => r.eventId === eventId);
+    }
+    return userReminders.some((r) => r.eventId === eventId && (r.milestoneType || 'main') === milestone);
   };
 
   const handleEnableBrowserNotification = async () => {
@@ -4082,9 +4577,10 @@ export default function App() {
 
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
+      const milestoneData = reminderEvent ? getEventMilestone(reminderEvent, reminderMilestone) : null;
       handleSaveReminder('browser', 'Web Browser Notification');
       new Notification('JIMMY SEA AVOCEAN HUB', {
-        body: `You will be alerted when "${reminderEvent?.title}" is starting!`,
+        body: `You will be alerted when "${reminderEvent?.title}" (${milestoneData?.label || 'Event'}) is starting!`,
         icon: '/favicon.ico'
       });
       showToast('Browser notifications enabled!');
@@ -4095,15 +4591,17 @@ export default function App() {
 
   const getWhatsAppReminderUrl = () => {
     if (!reminderEvent) return '';
+    const milestoneData = getEventMilestone(reminderEvent, reminderMilestone);
     const converted = convertEventTimeAndDate(
-      reminderEvent.time || '18:00',
-      reminderEvent.timezone || 'BKK',
+      milestoneData.time || '18:00',
+      milestoneData.timezone || 'BKK',
       reminderUserTz,
-      reminderEvent.date,
+      milestoneData.date,
       is12Hour
     );
+    const prefix = reminderMilestone === 'main' ? '' : `[${milestoneData.badgeLabel}] `;
     const text = encodeURIComponent(
-      `🥑🌊 *Event Reminder: ${reminderEvent.title}*\n\n📅 Date: ${converted.fullDateLabel}\n⏰ Your Time: ${converted.time} ${reminderUserTz} ${converted.dayShift}\n📍 Location: ${reminderEvent.location || 'Online'}\n${reminderEvent.hashtags || ''}\n\nDon't miss it!`
+      `🥑🌊 *Event Reminder: ${prefix}${reminderEvent.title}*\n\n📌 Milestone: ${milestoneData.label}\n📅 Date: ${converted.fullDateLabel}\n⏰ Your Time: ${converted.time} ${reminderUserTz} ${converted.dayShift}\n📍 Location: ${reminderEvent.location || 'Online'}\n${milestoneData.url ? `🔗 Link: ${milestoneData.url}\n` : ''}${reminderEvent.hashtags || ''}\n\nDon't miss it!`
     );
     return `https://api.whatsapp.com/send?text=${text}`;
   };
@@ -4339,32 +4837,37 @@ export default function App() {
 
   const reminderConversion = useMemo(() => {
     if (!reminderEvent) return null;
+    const milestoneData = getEventMilestone(reminderEvent, reminderMilestone);
     const startConv = convertEventTimeAndDate(
-      reminderEvent.time || '18:00',
-      reminderEvent.timezone || 'BKK',
+      milestoneData.time || '18:00',
+      milestoneData.timezone || 'BKK',
       reminderUserTz,
-      reminderEvent.date,
+      milestoneData.date,
       is12Hour
     );
-    const endConv = reminderEvent.endTime
-      ? convertEventTimeAndDate(
-          reminderEvent.endTime,
-          reminderEvent.timezone || 'BKK',
-          reminderUserTz,
-          reminderEvent.endDate || reminderEvent.date,
-          is12Hour
-        )
-      : null;
+    const endConv =
+      reminderMilestone === 'main' && reminderEvent.endTime
+        ? convertEventTimeAndDate(
+            reminderEvent.endTime,
+            reminderEvent.timezone || 'BKK',
+            reminderUserTz,
+            reminderEvent.endDate || reminderEvent.date,
+            is12Hour
+          )
+        : null;
     return {
       start: startConv,
-      end: endConv
+      end: endConv,
+      milestone: milestoneData
     };
-  }, [reminderEvent, reminderUserTz, is12Hour]);
+  }, [reminderEvent, reminderMilestone, reminderUserTz, is12Hour]);
 
   // Render Full Event View (Matching Screenshot 2 - shows all details immediately!)
   const renderFullEventCard = (ev: ScheduleEvent) => {
     const hasReminder = isReminderSetForEvent(ev.id);
     const regInfo = getRegistrationStatusInfo(ev, todayDateStr);
+    const purchasingInfo = getPurchasingStatusInfo(ev, todayDateStr);
+    const winnerInfo = getWinnerAnnouncementStatusInfo(ev, todayDateStr);
     const allPosters = getEventPosters(ev);
 
     return (
@@ -4393,6 +4896,30 @@ export default function App() {
                     : 'bg-slate-400'
                 }`} />
                 <span>{regInfo.statusLabel}</span>
+              </span>
+            )}
+            {purchasingInfo.hasPurchasing && (
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-2xs ${purchasingInfo.badgeBg} ${purchasingInfo.badgeText} ${purchasingInfo.badgeBorder}`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  purchasingInfo.status === 'open'
+                    ? 'bg-amber-500 animate-pulse'
+                    : purchasingInfo.status === 'upcoming'
+                    ? 'bg-sky-500'
+                    : 'bg-slate-400'
+                }`} />
+                <span>{purchasingInfo.statusLabel}</span>
+              </span>
+            )}
+            {winnerInfo.hasWinner && (
+              <span className={`text-xs font-extrabold flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-2xs ${winnerInfo.badgeBg} ${winnerInfo.badgeText} ${winnerInfo.badgeBorder}`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  winnerInfo.status === 'today'
+                    ? 'bg-yellow-500 animate-pulse'
+                    : winnerInfo.status === 'upcoming'
+                    ? 'bg-amber-400'
+                    : 'bg-slate-400'
+                }`} />
+                <span>{winnerInfo.statusLabel}</span>
               </span>
             )}
             {ev.updatedAt && (
@@ -4858,33 +5385,44 @@ export default function App() {
                       </span>
 
                       <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#1A3668] dark:text-white">
-                        <Ticket className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        <Ticket className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         <span>Registration / Ticket Period</span>
                       </div>
                     </div>
 
-                    {ev.registrationUrl && (
-                      <a
-                        href={ev.registrationUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white shadow-xs transition-all cursor-pointer ${
-                          regInfo.status === 'open'
-                            ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
-                            : regInfo.status === 'upcoming'
-                            ? 'bg-amber-600 hover:bg-amber-700'
-                            : 'bg-slate-700 hover:bg-slate-800'
-                        }`}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openReminderModal(ev, 'registration')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-slate-700 shadow-2xs transition-all cursor-pointer"
                       >
-                        <span>{regInfo.status === 'open' ? 'Register / Get Tickets Now' : 'Registration Link'}</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
+                        <Bell className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Remind Me (Tickets)</span>
+                      </button>
+
+                      {ev.registrationUrl && (
+                        <a
+                          href={ev.registrationUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white shadow-xs transition-all cursor-pointer ${
+                            regInfo.status === 'open'
+                              ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
+                              : regInfo.status === 'upcoming'
+                              ? 'bg-amber-600 hover:bg-amber-700'
+                              : 'bg-slate-700 hover:bg-slate-800'
+                          }`}
+                        >
+                          <span>{regInfo.status === 'open' ? 'Register / Get Tickets Now' : 'Registration Link'}</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs font-bold text-[#1A3668] dark:text-slate-200">
                     <div className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                      <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       <span>{formatRegistrationSchedule(ev, is12Hour)}</span>
                     </div>
 
@@ -4894,6 +5432,228 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  {/* Registration Media Gallery (Seating charts, posters, guidelines) */}
+                  {ev.registrationMedias && ev.registrationMedias.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-emerald-200/60 dark:border-emerald-800/60 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 overflow-x-auto py-1">
+                        <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200 shrink-0">
+                          🎟️ Seating Plan & Registration Media:
+                        </span>
+                        {ev.registrationMedias.map((mUrl, mIdx) => (
+                          <img
+                            key={mIdx}
+                            src={mUrl}
+                            alt={`Registration Media ${mIdx + 1}`}
+                            onClick={() => setEnlargedPhoto({ url: mUrl, title: `${ev.title} - Registration Media ${mIdx + 1}`, photos: ev.registrationMedias!, currentIndex: mIdx })}
+                            className="w-12 h-12 object-cover rounded-lg border border-emerald-300 dark:border-emerald-700 cursor-pointer shadow-2xs hover:scale-105 transition-transform"
+                          />
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setEnlargedPhoto({ url: ev.registrationMedias![0], title: `${ev.title} - Registration Media (1/${ev.registrationMedias!.length})`, photos: ev.registrationMedias!, currentIndex: 0 })}
+                        className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer ml-auto"
+                      >
+                        View All {ev.registrationMedias.length} Media Photos &rarr;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Purchasing / Top Spender Period Card */}
+              {purchasingInfo.hasPurchasing && (
+                <div
+                  className={`rounded-[26px] p-4.5 sm:p-5 shadow-2xs border transition-all ${
+                    purchasingInfo.status === 'open'
+                      ? 'bg-gradient-to-br from-amber-50/95 via-orange-50/80 to-purple-50/70 dark:from-amber-950/60 dark:via-orange-950/50 dark:to-purple-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-400/25'
+                      : purchasingInfo.status === 'upcoming'
+                      ? 'bg-gradient-to-br from-sky-50/90 to-indigo-50/70 dark:from-sky-950/50 dark:to-indigo-950/40 border-sky-300 dark:border-sky-700'
+                      : 'bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-2xs ${purchasingInfo.badgeBg} ${purchasingInfo.badgeText} ${purchasingInfo.badgeBorder}`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          purchasingInfo.status === 'open'
+                            ? 'bg-amber-500 animate-pulse'
+                            : purchasingInfo.status === 'upcoming'
+                            ? 'bg-sky-500'
+                            : 'bg-slate-400'
+                        }`} />
+                        <span>{purchasingInfo.statusLabel}</span>
+                      </span>
+
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#1A3668] dark:text-white">
+                        <ShoppingBag className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <span>Purchasing / Top Spender Period</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openReminderModal(ev, 'purchasing')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-slate-700 shadow-2xs transition-all cursor-pointer"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>Remind Me (Purchasing Deadline)</span>
+                      </button>
+
+                      {ev.purchasingUrl && (
+                        <a
+                          href={ev.purchasingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-95 shadow-xs transition-all cursor-pointer"
+                        >
+                          <span>Shop / Join Campaign</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs font-bold text-[#1A3668] dark:text-slate-200">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>{formatPurchasingSchedule(ev, is12Hour)}</span>
+                    </div>
+
+                    {ev.purchasingNotes && (
+                      <div className="text-[11px] font-semibold text-amber-950 dark:text-amber-200 bg-white/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-amber-200/60 dark:border-amber-700/60">
+                        🛍️ {ev.purchasingNotes}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Purchasing & Top Spender Media Photos Gallery */}
+                  {ev.purchasingMedias && ev.purchasingMedias.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-amber-200/60 dark:border-amber-800/60 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 overflow-x-auto py-1">
+                        <span className="text-[11px] font-bold text-amber-950 dark:text-amber-200 shrink-0">
+                          📷 Top Spender Promo & Rewards:
+                        </span>
+                        {ev.purchasingMedias.map((mUrl, mIdx) => (
+                          <img
+                            key={mIdx}
+                            src={mUrl}
+                            alt={`Top Spender Media ${mIdx + 1}`}
+                            onClick={() => setEnlargedPhoto({ url: mUrl, title: `${ev.title} - Top Spender Media ${mIdx + 1}`, photos: ev.purchasingMedias!, currentIndex: mIdx })}
+                            className="w-12 h-12 object-cover rounded-lg border border-amber-300 dark:border-amber-700 cursor-pointer shadow-2xs hover:scale-105 transition-transform"
+                          />
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setEnlargedPhoto({ url: ev.purchasingMedias![0], title: `${ev.title} - Top Spender & Promo Media (1/${ev.purchasingMedias!.length})`, photos: ev.purchasingMedias!, currentIndex: 0 })}
+                        className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer ml-auto"
+                      >
+                        View All {ev.purchasingMedias.length} Media Photos &rarr;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Winner Announcement Card */}
+              {winnerInfo.hasWinner && (
+                <div
+                  className={`rounded-[26px] p-4.5 sm:p-5 shadow-2xs border transition-all ${
+                    winnerInfo.status === 'today'
+                      ? 'bg-gradient-to-br from-yellow-50/95 via-amber-50/80 to-emerald-50/70 dark:from-yellow-950/60 dark:via-amber-950/50 dark:to-emerald-950/40 border-yellow-400 dark:border-yellow-600 ring-2 ring-yellow-400/30'
+                      : winnerInfo.status === 'upcoming'
+                      ? 'bg-gradient-to-br from-yellow-50/80 to-amber-50/60 dark:from-yellow-950/40 dark:to-amber-950/30 border-yellow-300 dark:border-yellow-700'
+                      : 'bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-2xs ${winnerInfo.badgeBg} ${winnerInfo.badgeText} ${winnerInfo.badgeBorder}`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          winnerInfo.status === 'today'
+                            ? 'bg-yellow-500 animate-pulse'
+                            : winnerInfo.status === 'upcoming'
+                            ? 'bg-amber-400'
+                            : 'bg-slate-400'
+                        }`} />
+                        <span>{winnerInfo.statusLabel}</span>
+                      </span>
+
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#1A3668] dark:text-white">
+                        <Trophy className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                        <span>Winner Announcement Date</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openReminderModal(ev, 'winner')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-yellow-900 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 hover:bg-yellow-50 dark:hover:bg-slate-700 shadow-2xs transition-all cursor-pointer"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
+                        <span>Remind Me (Winner Reveal)</span>
+                      </button>
+
+                      {ev.winnerAnnouncementUrl && (
+                        <a
+                          href={ev.winnerAnnouncementUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-yellow-600 hover:bg-yellow-700 active:scale-95 shadow-xs transition-all cursor-pointer"
+                        >
+                          <span>Check Winners List</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs font-bold text-[#1A3668] dark:text-slate-200">
+                    <div className="flex items-center gap-1.5">
+                      <CalendarIcon className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+                      <span>{formatWinnerAnnouncementSchedule(ev, is12Hour)}</span>
+                    </div>
+
+                    {ev.winnerAnnouncementNotes && (
+                      <div className="text-[11px] font-semibold text-yellow-950 dark:text-yellow-200 bg-white/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-yellow-200/60 dark:border-yellow-700/60">
+                        🏆 {ev.winnerAnnouncementNotes}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Winner Announcement Media Gallery */}
+                  {ev.winnerAnnouncementMedias && ev.winnerAnnouncementMedias.length > 0 && (
+                    <div className="mt-3 pt-2.5 border-t border-yellow-200/60 dark:border-yellow-800/60 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 overflow-x-auto py-1">
+                        <span className="text-[11px] font-bold text-yellow-950 dark:text-yellow-200 shrink-0">
+                          🏆 Winner List & Graphics:
+                        </span>
+                        {ev.winnerAnnouncementMedias.map((mUrl, mIdx) => (
+                          <img
+                            key={mIdx}
+                            src={mUrl}
+                            alt={`Winner Media ${mIdx + 1}`}
+                            onClick={() => setEnlargedPhoto({ url: mUrl, title: `${ev.title} - Winner Media ${mIdx + 1}`, photos: ev.winnerAnnouncementMedias!, currentIndex: mIdx })}
+                            className="w-12 h-12 object-cover rounded-lg border border-yellow-300 dark:border-yellow-700 cursor-pointer shadow-2xs hover:scale-105 transition-transform"
+                          />
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setEnlargedPhoto({ url: ev.winnerAnnouncementMedias![0], title: `${ev.title} - Winner Announcement Media (1/${ev.winnerAnnouncementMedias!.length})`, photos: ev.winnerAnnouncementMedias!, currentIndex: 0 })}
+                        className="text-[11px] font-bold text-yellow-700 dark:text-yellow-300 hover:underline cursor-pointer ml-auto"
+                      >
+                        View All {ev.winnerAnnouncementMedias.length} Media Photos &rarr;
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -6793,7 +7553,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-lg p-5 sm:p-6 my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             {/* Header */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                   <BellRing className="w-5 h-5" />
@@ -6815,13 +7575,68 @@ export default function App() {
               </button>
             </div>
 
+            {/* Milestone Selector: Choose Main Event, Ticket/Registration, Top Spender Purchasing Period, or Winner Announcement */}
+            {(() => {
+              const hasReg = Boolean(reminderEvent.hasRegistration || reminderEvent.registrationStartDate);
+              const hasPurchasing = Boolean(reminderEvent.hasPurchasingPeriod || reminderEvent.purchasingStartDate);
+              const hasWinner = Boolean(reminderEvent.hasWinnerAnnouncement || reminderEvent.winnerAnnouncementDate);
+              const hasMultiMilestones = hasReg || hasPurchasing || hasWinner;
+
+              if (!hasMultiMilestones) return null;
+
+              const milestones: Array<{ key: ReminderMilestone; label: string; icon: string; dateStr?: string }> = [
+                { key: 'main', label: 'Main Event', icon: '📅', dateStr: reminderEvent.date },
+                ...(hasReg ? [{ key: 'registration' as ReminderMilestone, label: 'Tickets / Reg.', icon: '🎟️', dateStr: reminderEvent.registrationStartDate }] : []),
+                ...(hasPurchasing ? [{ key: 'purchasing' as ReminderMilestone, label: 'Top Spenders', icon: '🛍️', dateStr: reminderEvent.purchasingEndDate || reminderEvent.purchasingStartDate }] : []),
+                ...(hasWinner ? [{ key: 'winner' as ReminderMilestone, label: 'Winners Reveal', icon: '🏆', dateStr: reminderEvent.winnerAnnouncementDate }] : []),
+              ];
+
+              return (
+                <div className="mb-4 p-3 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-800 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-purple-900 dark:text-purple-300">
+                    <span>Choose Reminder Milestone:</span>
+                    <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400">
+                      Active: {milestones.find((m) => m.key === reminderMilestone)?.label || 'Main Event'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {milestones.map((m) => {
+                      const isActive = reminderMilestone === m.key;
+                      return (
+                        <button
+                          key={m.key}
+                          type="button"
+                          onClick={() => setReminderMilestone(m.key)}
+                          className={`p-2 rounded-xl text-xs font-bold border transition-all text-left flex flex-col justify-between cursor-pointer ${
+                            isActive
+                              ? 'bg-[#1A3668] dark:bg-purple-600 text-white border-[#1A3668] dark:border-purple-600 shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-[#1A3668] dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1 mb-1">
+                            <span>{m.icon}</span>
+                            <span className="truncate">{m.label}</span>
+                          </div>
+                          {m.dateStr && (
+                            <span className={`text-[10px] font-mono ${isActive ? 'text-purple-200 dark:text-purple-200' : 'text-slate-400'}`}>
+                              {m.dateStr}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Success Notification */}
             {reminderSuccess && (
               <div className="mb-4 p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800 flex items-start gap-2.5">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <div className="text-xs text-emerald-900 dark:text-emerald-200">
                   <span className="font-bold block">Reminder Confirmed!</span>
-                  <span>We've registered your reminder preference for this event in your chosen timezone.</span>
+                  <span>We've registered your reminder preference for this event milestone in your chosen timezone.</span>
                 </div>
               </div>
             )}
@@ -6876,13 +7691,22 @@ export default function App() {
               {reminderConversion && (
                 <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200/80 dark:border-purple-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs">
                   <div>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Original event schedule:</span>
-                    <span className="font-bold text-[#1A3668] dark:text-white">
-                      {formatEventTime(reminderEvent, is12Hour) || 'TBA'}
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block font-medium">
+                      {reminderConversion.milestone.label} schedule:
                     </span>
+                    <span className="font-bold text-[#1A3668] dark:text-white">
+                      {reminderConversion.milestone.time} {reminderConversion.milestone.timezone}
+                    </span>
+                    {reminderConversion.milestone.date && (
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 block font-semibold">
+                        📅 {reminderConversion.milestone.date}
+                      </span>
+                    )}
                   </div>
                   <div className="sm:text-right">
-                    <span className="text-[11px] text-purple-700 dark:text-purple-300 font-bold block">Your converted local time:</span>
+                    <span className="text-[11px] text-purple-700 dark:text-purple-300 font-bold block">
+                      Your local converted time ({reminderUserTz}):
+                    </span>
                     <span className="font-extrabold text-[#7C3AED] dark:text-purple-300 text-sm">
                       {reminderConversion.end
                         ? `${reminderConversion.start.time} – ${reminderConversion.end.time} ${reminderUserTz}`
@@ -6978,15 +7802,15 @@ export default function App() {
               {reminderTab === 'calendar' && (
                 <div className="space-y-2.5">
                   <p className="text-xs text-[#607494] dark:text-slate-400">
-                    Add directly to your personal calendar. Times and alarm notifications will be set automatically:
+                    Add directly to your personal calendar. Times and alarm notifications will be set automatically for the selected milestone ({reminderConversion?.milestone.label || 'Main Event'}):
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <a
-                      href={createGoogleCalendarUrl(reminderEvent)}
+                      href={createGoogleCalendarUrl(reminderEvent, reminderMilestone)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => handleSaveReminder('calendar', 'Google Calendar')}
+                      onClick={() => handleSaveReminder('calendar', `Google Calendar (${reminderConversion?.milestone.badgeLabel || 'Event'})`)}
                       className="py-3 px-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 hover:bg-purple-50/50 shadow-xs flex items-center gap-2.5 font-bold text-xs text-[#1A3668] dark:text-white transition-all cursor-pointer"
                     >
                       <CalendarIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
@@ -6997,8 +7821,8 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        downloadIcsFile(reminderEvent, reminderTiming);
-                        handleSaveReminder('calendar', 'Apple / Outlook (.ics)');
+                        downloadIcsFile(reminderEvent, reminderTiming, reminderMilestone);
+                        handleSaveReminder('calendar', `Apple / Outlook (${reminderConversion?.milestone.badgeLabel || 'Event'})`);
                       }}
                       className="py-3 px-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 hover:bg-purple-50/50 shadow-xs flex items-center gap-2.5 font-bold text-xs text-[#1A3668] dark:text-white transition-all cursor-pointer"
                     >
@@ -8554,6 +9378,511 @@ export default function App() {
                         placeholder="e.g. 1 entry per account, raffle results announced 2 days before event"
                         className="w-full rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
                       />
+                    </div>
+
+                    {/* Registration Media Photos (Posters, Seating Charts, Flowcharts) */}
+                    <div className="space-y-2 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-bold text-emerald-900 dark:text-emerald-200">
+                          Registration Media & Seating Charts ({formRegMedias.length})
+                        </label>
+                        {formRegMedias.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setFormRegMedias([])}
+                            className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                          >
+                            Clear All
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={formNewRegMediaInput}
+                          onChange={(e) => setFormNewRegMediaInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddRegMediaUrl();
+                            }
+                          }}
+                          placeholder="Paste image link URL (e.g. seating chart or poster)"
+                          className="flex-1 rounded-xl border border-emerald-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddRegMediaUrl}
+                          disabled={!formNewRegMediaInput.trim()}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer shrink-0"
+                        >
+                          + Add URL
+                        </button>
+                        <input
+                          type="file"
+                          ref={regFileInputRef}
+                          onChange={handleRegMediaFileUpload}
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          disabled={isCompressingRegMedia}
+                          onClick={() => regFileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0 inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          {isCompressingRegMedia ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Upload className="w-3 h-3" />
+                          )}
+                          <span>Upload</span>
+                        </button>
+                      </div>
+
+                      {/* Registration Media Thumbnails Preview */}
+                      {formRegMedias.length > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto py-1">
+                          {formRegMedias.map((mUrl, mIdx) => (
+                            <div key={mIdx} className="relative group shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-700 shadow-2xs bg-slate-100 dark:bg-slate-800">
+                              <img
+                                src={mUrl}
+                                alt={`Registration Media ${mIdx + 1}`}
+                                className="w-full h-full object-cover cursor-pointer"
+                                onClick={() => setEnlargedPhoto({ url: mUrl, title: `Registration Media ${mIdx + 1}`, photos: formRegMedias, currentIndex: mIdx })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRegMedia(mIdx)}
+                                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                                title="Remove photo"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Purchasing / Top Spender Period Section */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/70 via-orange-50/60 to-purple-50/50 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-purple-950/30 border border-amber-200/80 dark:border-amber-800/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formHasPurchasing}
+                      onChange={(e) => setFormHasPurchasing(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-amber-300 dark:border-slate-700 cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <ShoppingBag className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-xs font-bold text-amber-950 dark:text-amber-200">
+                        Include Purchasing / Top Spender Period
+                      </span>
+                    </div>
+                  </label>
+                  {formHasPurchasing && (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/80 text-amber-950 dark:text-amber-200">
+                      Top Spenders Active
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] font-medium text-amber-900/90 dark:text-amber-300/80">
+                  Specify product purchase period, campaign store link, and mechanics for fans competing as Top Spenders or qualifying for benefits.
+                </p>
+
+                {formHasPurchasing && (
+                  <div className="space-y-3 pt-2 border-t border-amber-200/60 dark:border-amber-800/60">
+                    {/* Purchasing Start & End Dates */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                          Purchasing Starts (Start Date) *
+                        </label>
+                        <input
+                          type="date"
+                          required={formHasPurchasing}
+                          value={formPurchasingStartDate}
+                          onChange={(e) => {
+                            setFormPurchasingStartDate(e.target.value);
+                            if (formPurchasingEndDate && formPurchasingEndDate < e.target.value) {
+                              setFormPurchasingEndDate(e.target.value);
+                            }
+                          }}
+                          className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                          Purchasing Deadline (End Date) *
+                        </label>
+                        <input
+                          type="date"
+                          required={formHasPurchasing}
+                          min={formPurchasingStartDate}
+                          value={formPurchasingEndDate}
+                          onChange={(e) => setFormPurchasingEndDate(e.target.value)}
+                          className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Purchasing Times & Timezone */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                          Start Time (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={formPurchasingStartTime}
+                          onChange={(e) => setFormPurchasingStartTime(e.target.value)}
+                          placeholder={is12Hour ? 'e.g. 10:00 AM' : 'e.g. 10:00'}
+                          className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                          Cut-off / End Time (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={formPurchasingEndTime}
+                          onChange={(e) => setFormPurchasingEndTime(e.target.value)}
+                          placeholder={is12Hour ? 'e.g. 11:59 PM' : 'e.g. 23:59'}
+                          className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                          Timezone
+                        </label>
+                        <select
+                          value={formPurchasingTimezone}
+                          onChange={(e) => setFormPurchasingTimezone(e.target.value)}
+                          className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                        >
+                          {ALL_TIMEZONES.slice(0, 15).map((tz) => (
+                            <option key={tz.code} value={tz.code}>
+                              {tz.code} ({tz.offset})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Purchasing Link / Store URL */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                        Online Store / Purchasing Campaign Link (URL)
+                      </label>
+                      <input
+                        type="url"
+                        value={formPurchasingUrl}
+                        onChange={(e) => setFormPurchasingUrl(e.target.value)}
+                        placeholder="https://... (GMMTV Shop, Shopee, Lazada, Brand campaign store)"
+                        className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* Top Spender Rules / Notes */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                        Top Spender Rules & Instructions (Optional)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formPurchasingNotes}
+                        onChange={(e) => setFormPurchasingNotes(e.target.value)}
+                        placeholder="e.g. Top 10 Spenders get 1:1 photocard & front-row access. Keep receipts for verification."
+                        className="w-full rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500 resize-none"
+                      />
+                    </div>
+
+                    {/* Purchasing & Top Spender Media Photos */}
+                    <div className="space-y-2 pt-2 border-t border-amber-200/60 dark:border-amber-800/60">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200">
+                          Purchasing & Top Spender Media Photos ({formPurchasingMedias.length})
+                        </label>
+                        {formPurchasingMedias.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setFormPurchasingMedias([])}
+                            className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                          >
+                            Clear All
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={formNewPurchasingMediaInput}
+                          onChange={(e) => setFormNewPurchasingMediaInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddPurchasingMediaUrl();
+                            }
+                          }}
+                          placeholder="Paste image link URL (e.g. Top Spender rewards chart or merchandise poster)"
+                          className="flex-1 rounded-xl border border-amber-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddPurchasingMediaUrl}
+                          disabled={!formNewPurchasingMediaInput.trim()}
+                          className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer shrink-0"
+                        >
+                          + Add URL
+                        </button>
+                        <input
+                          type="file"
+                          ref={purchasingFileInputRef}
+                          onChange={handlePurchasingMediaFileUpload}
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          disabled={isCompressingPurchasingMedia}
+                          onClick={() => purchasingFileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0 inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          {isCompressingPurchasingMedia ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Upload className="w-3 h-3" />
+                          )}
+                          <span>Upload</span>
+                        </button>
+                      </div>
+
+                      {/* Purchasing Media Thumbnails Preview */}
+                      {formPurchasingMedias.length > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto py-1">
+                          {formPurchasingMedias.map((mUrl, mIdx) => (
+                            <div key={mIdx} className="relative group shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-amber-300 dark:border-amber-700 shadow-2xs bg-slate-100 dark:bg-slate-800">
+                              <img
+                                src={mUrl}
+                                alt={`Purchasing Media ${mIdx + 1}`}
+                                className="w-full h-full object-cover cursor-pointer"
+                                onClick={() => setEnlargedPhoto({ url: mUrl, title: `Top Spender & Purchasing Media ${mIdx + 1}`, photos: formPurchasingMedias, currentIndex: mIdx })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePurchasingMedia(mIdx)}
+                                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                                title="Remove photo"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Winner Announcement Date Section */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-yellow-50/70 via-amber-50/60 to-sky-50/50 dark:from-yellow-950/40 dark:via-amber-950/30 dark:to-sky-950/30 border border-yellow-200/80 dark:border-yellow-800/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formHasWinnerAnnouncement}
+                      onChange={(e) => setFormHasWinnerAnnouncement(e.target.checked)}
+                      className="w-4 h-4 rounded text-yellow-600 focus:ring-yellow-500 border-yellow-300 dark:border-slate-700 cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Trophy className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                      <span className="text-xs font-bold text-yellow-950 dark:text-yellow-200">
+                        Include Winner Announcement Date
+                      </span>
+                    </div>
+                  </label>
+                  {formHasWinnerAnnouncement && (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-yellow-200/80 dark:bg-yellow-900/80 text-yellow-950 dark:text-yellow-200">
+                      Winners Date Set
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] font-medium text-yellow-900/90 dark:text-yellow-300/80">
+                  Set when Top Spenders or raffle prize winners will be revealed so fans can follow the announcement and set a reminder.
+                </p>
+
+                {formHasWinnerAnnouncement && (
+                  <div className="space-y-3 pt-2 border-t border-yellow-200/60 dark:border-yellow-800/60">
+                    {/* Announcement Date, Time & Timezone */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-yellow-950 dark:text-yellow-200 mb-1">
+                          Announcement Date *
+                        </label>
+                        <input
+                          type="date"
+                          required={formHasWinnerAnnouncement}
+                          value={formWinnerAnnouncementDate}
+                          onChange={(e) => setFormWinnerAnnouncementDate(e.target.value)}
+                          className="w-full rounded-xl border border-yellow-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-yellow-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-yellow-950 dark:text-yellow-200 mb-1">
+                          Announcement Time (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={formWinnerAnnouncementTime}
+                          onChange={(e) => setFormWinnerAnnouncementTime(e.target.value)}
+                          placeholder={is12Hour ? 'e.g. 6:00 PM' : 'e.g. 18:00'}
+                          className="w-full rounded-xl border border-yellow-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-yellow-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-yellow-950 dark:text-yellow-200 mb-1">
+                          Timezone
+                        </label>
+                        <select
+                          value={formWinnerAnnouncementTimezone}
+                          onChange={(e) => setFormWinnerAnnouncementTimezone(e.target.value)}
+                          className="w-full rounded-xl border border-yellow-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none focus:border-yellow-500 cursor-pointer"
+                        >
+                          {ALL_TIMEZONES.slice(0, 15).map((tz) => (
+                            <option key={tz.code} value={tz.code}>
+                              {tz.code} ({tz.offset})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Announcement Link */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-yellow-950 dark:text-yellow-200 mb-1">
+                        Announcement Link / Post URL (Optional)
+                      </label>
+                      <input
+                        type="url"
+                        value={formWinnerAnnouncementUrl}
+                        onChange={(e) => setFormWinnerAnnouncementUrl(e.target.value)}
+                        placeholder="https://x.com/... (Official post, livestream or results webpage)"
+                        className="w-full rounded-xl border border-yellow-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-yellow-500"
+                      />
+                    </div>
+
+                    {/* Winner Notes / Claim Rules */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-yellow-950 dark:text-yellow-200 mb-1">
+                        Winner Guidelines & Claim Rules (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={formWinnerAnnouncementNotes}
+                        onChange={(e) => setFormWinnerAnnouncementNotes(e.target.value)}
+                        placeholder="e.g. Winners must confirm identification via DM within 48h to claim privileges"
+                        className="w-full rounded-xl border border-yellow-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-yellow-500"
+                      />
+                    </div>
+
+                    {/* Winner Announcement Media Photos */}
+                    <div className="space-y-2 pt-2 border-t border-yellow-200/60 dark:border-yellow-800/60">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-bold text-yellow-950 dark:text-yellow-200">
+                          Winner Announcement Media Photos ({formWinnerAnnouncementMedias.length})
+                        </label>
+                        {formWinnerAnnouncementMedias.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setFormWinnerAnnouncementMedias([])}
+                            className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                          >
+                            Clear All
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={formNewWinnerMediaInput}
+                          onChange={(e) => setFormNewWinnerMediaInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddWinnerMediaUrl();
+                            }
+                          }}
+                          placeholder="Paste image link URL (e.g. Winner list announcement poster or seat chart)"
+                          className="flex-1 rounded-xl border border-yellow-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-yellow-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddWinnerMediaUrl}
+                          disabled={!formNewWinnerMediaInput.trim()}
+                          className="px-3 py-1.5 rounded-xl bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 text-white text-xs font-bold cursor-pointer shrink-0"
+                        >
+                          + Add URL
+                        </button>
+                        <input
+                          type="file"
+                          ref={winnerFileInputRef}
+                          onChange={handleWinnerMediaFileUpload}
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          disabled={isCompressingWinnerMedia}
+                          onClick={() => winnerFileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl bg-yellow-700 hover:bg-yellow-800 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0 inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          {isCompressingWinnerMedia ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Upload className="w-3 h-3" />
+                          )}
+                          <span>Upload</span>
+                        </button>
+                      </div>
+
+                      {/* Winner Media Thumbnails Preview */}
+                      {formWinnerAnnouncementMedias.length > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto py-1">
+                          {formWinnerAnnouncementMedias.map((mUrl, mIdx) => (
+                            <div key={mIdx} className="relative group shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-yellow-300 dark:border-yellow-700 shadow-2xs bg-slate-100 dark:bg-slate-800">
+                              <img
+                                src={mUrl}
+                                alt={`Winner Media ${mIdx + 1}`}
+                                className="w-full h-full object-cover cursor-pointer"
+                                onClick={() => setEnlargedPhoto({ url: mUrl, title: `Winner Announcement Media ${mIdx + 1}`, photos: formWinnerAnnouncementMedias, currentIndex: mIdx })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveWinnerMedia(mIdx)}
+                                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                                title="Remove photo"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -12930,8 +14259,9 @@ export default function App() {
             : undefined;
         const isShowingTranslated = Boolean(activeTranslationViews[ev.id] && cachedTranslation);
         const currentDisplayDescription = isShowingTranslated ? cachedTranslation : ev.description;
-        const currentLangObj = TRANSLATION_LANGUAGES.find((l) => l.code === preferredTranslationLang);
         const regInfo = getRegistrationStatusInfo(ev, todayDateStr);
+        const purchasingInfo = getPurchasingStatusInfo(ev, todayDateStr);
+        const winnerInfo = getWinnerAnnouncementStatusInfo(ev, todayDateStr);
 
         const fontSizeClasses = {
           sm: 'text-xs sm:text-[13px] leading-normal',
@@ -13128,28 +14458,193 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-5 bg-white dark:bg-slate-900">
                 {/* Registration Callout if applicable */}
                 {regInfo.hasReg && (
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200/80 dark:border-emerald-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${regInfo.badgeBg} ${regInfo.badgeText} border ${regInfo.badgeBorder}`}>
-                          {regInfo.statusLabel}
-                        </span>
-                        <span className="text-xs font-bold text-[#1A3668] dark:text-white">Registration & Ticket Schedule</span>
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200/80 dark:border-emerald-800 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${regInfo.badgeBg} ${regInfo.badgeText} border ${regInfo.badgeBorder}`}>
+                            {regInfo.statusLabel}
+                          </span>
+                          <span className="text-xs font-bold text-[#1A3668] dark:text-white">🎟️ Registration & Ticket Schedule</span>
+                        </div>
+                        <p className="text-xs font-semibold text-[#607494] dark:text-slate-300">
+                          {formatRegistrationSchedule(ev, is12Hour)}
+                        </p>
                       </div>
-                      <p className="text-xs font-semibold text-[#607494] dark:text-slate-300">
-                        {formatRegistrationSchedule(ev, is12Hour)}
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDescriptionModalEvent(null);
+                            openReminderModal(ev, 'registration');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 shadow-2xs cursor-pointer"
+                        >
+                          <Bell className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>Remind Me (Tickets)</span>
+                        </button>
+                        {ev.registrationUrl && (
+                          <a
+                            href={ev.registrationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs shrink-0 cursor-pointer"
+                          >
+                            <span>Open Official Registration</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
                     </div>
-                    {ev.registrationUrl && (
-                      <a
-                        href={ev.registrationUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs shrink-0 cursor-pointer"
-                      >
-                        <span>Open Official Registration</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+
+                    {/* Registration Medias in Reader */}
+                    {ev.registrationMedias && ev.registrationMedias.length > 0 && (
+                      <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60 flex items-center gap-2 overflow-x-auto py-1">
+                        <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200 shrink-0">
+                          Seating & Info Graphics:
+                        </span>
+                        {ev.registrationMedias.map((mUrl, mIdx) => (
+                          <img
+                            key={mIdx}
+                            src={mUrl}
+                            alt={`Registration Graphic ${mIdx + 1}`}
+                            onClick={() => setEnlargedPhoto({ url: mUrl, title: `${ev.title} - Registration Graphic ${mIdx + 1}`, photos: ev.registrationMedias!, currentIndex: mIdx })}
+                            className="w-12 h-12 object-cover rounded-lg border border-emerald-300 dark:border-emerald-700 cursor-pointer shadow-2xs hover:scale-105 transition-transform"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Purchasing / Top Spender Callout if applicable */}
+                {purchasingInfo.hasPurchasing && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/95 via-orange-50/80 to-purple-50/70 dark:from-amber-950/50 dark:via-orange-950/40 dark:to-purple-950/30 border border-amber-300/80 dark:border-amber-700 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${purchasingInfo.badgeBg} ${purchasingInfo.badgeText} border ${purchasingInfo.badgeBorder}`}>
+                            {purchasingInfo.statusLabel}
+                          </span>
+                          <span className="text-xs font-bold text-amber-950 dark:text-amber-200">🛍️ Purchasing / Top Spender Period</span>
+                        </div>
+                        <p className="text-xs font-semibold text-amber-900/90 dark:text-amber-300/90">
+                          {formatPurchasingSchedule(ev, is12Hour)}
+                        </p>
+                        {ev.purchasingNotes && (
+                          <p className="text-[11px] text-amber-950 dark:text-amber-200 font-medium">
+                            📌 {ev.purchasingNotes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDescriptionModalEvent(null);
+                            openReminderModal(ev, 'purchasing');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-50 shadow-2xs cursor-pointer"
+                        >
+                          <Bell className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>Remind Me (Top Spenders)</span>
+                        </button>
+                        {ev.purchasingUrl && (
+                          <a
+                            href={ev.purchasingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs shrink-0 cursor-pointer"
+                          >
+                            <span>Shop / Join Campaign</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Purchasing Medias in Reader */}
+                    {ev.purchasingMedias && ev.purchasingMedias.length > 0 && (
+                      <div className="pt-2 border-t border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2 overflow-x-auto py-1">
+                        <span className="text-[11px] font-bold text-amber-950 dark:text-amber-200 shrink-0">
+                          Reward Tiers & Promo:
+                        </span>
+                        {ev.purchasingMedias.map((mUrl, mIdx) => (
+                          <img
+                            key={mIdx}
+                            src={mUrl}
+                            alt={`Purchasing Promo ${mIdx + 1}`}
+                            onClick={() => setEnlargedPhoto({ url: mUrl, title: `${ev.title} - Purchasing Promo ${mIdx + 1}`, photos: ev.purchasingMedias!, currentIndex: mIdx })}
+                            className="w-12 h-12 object-cover rounded-lg border border-amber-300 dark:border-amber-700 cursor-pointer shadow-2xs hover:scale-105 transition-transform"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Winner Announcement Callout if applicable */}
+                {winnerInfo.hasWinner && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-yellow-50/95 via-amber-50/80 to-sky-50/70 dark:from-yellow-950/50 dark:via-amber-950/40 dark:to-sky-950/30 border border-yellow-300/80 dark:border-yellow-700 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${winnerInfo.badgeBg} ${winnerInfo.badgeText} border ${winnerInfo.badgeBorder}`}>
+                            {winnerInfo.statusLabel}
+                          </span>
+                          <span className="text-xs font-bold text-yellow-950 dark:text-yellow-200">🏆 Winner Announcement Date</span>
+                        </div>
+                        <p className="text-xs font-semibold text-yellow-950 dark:text-yellow-200">
+                          {formatWinnerAnnouncementSchedule(ev, is12Hour)}
+                        </p>
+                        {ev.winnerAnnouncementNotes && (
+                          <p className="text-[11px] text-yellow-950 dark:text-yellow-200 font-medium">
+                            📌 {ev.winnerAnnouncementNotes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDescriptionModalEvent(null);
+                            openReminderModal(ev, 'winner');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800 text-yellow-950 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 hover:bg-yellow-50 shadow-2xs cursor-pointer"
+                        >
+                          <Bell className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
+                          <span>Remind Me (Winner Reveal)</span>
+                        </button>
+                        {ev.winnerAnnouncementUrl && (
+                          <a
+                            href={ev.winnerAnnouncementUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-yellow-600 hover:bg-yellow-700 shadow-xs shrink-0 cursor-pointer"
+                          >
+                            <span>Check Winners List</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Winner Medias in Reader */}
+                    {ev.winnerAnnouncementMedias && ev.winnerAnnouncementMedias.length > 0 && (
+                      <div className="pt-2 border-t border-yellow-200/60 dark:border-yellow-800/60 flex items-center gap-2 overflow-x-auto py-1">
+                        <span className="text-[11px] font-bold text-yellow-950 dark:text-yellow-200 shrink-0">
+                          Winner Graphics & Seat Lists:
+                        </span>
+                        {ev.winnerAnnouncementMedias.map((mUrl, mIdx) => (
+                          <img
+                            key={mIdx}
+                            src={mUrl}
+                            alt={`Winner List Graphic ${mIdx + 1}`}
+                            onClick={() => setEnlargedPhoto({ url: mUrl, title: `${ev.title} - Winner List Graphic ${mIdx + 1}`, photos: ev.winnerAnnouncementMedias!, currentIndex: mIdx })}
+                            className="w-12 h-12 object-cover rounded-lg border border-yellow-300 dark:border-yellow-700 cursor-pointer shadow-2xs hover:scale-105 transition-transform"
+                          />
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
