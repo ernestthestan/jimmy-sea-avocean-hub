@@ -150,21 +150,72 @@ function splitSingleLineIntoSegments(lineCore: string, maxLen = 350): LineSegmen
 }
 
 /**
+ * Detects non-Latin script (Thai, Japanese, Korean, Chinese, Arabic) so mixed
+ * Thai+English lines aren't misidentified as English by translation APIs.
+ */
+function detectSourceLang(segment: string, targetLang: string, fallbackText?: string): string {
+  const targetPrefix = targetLang.split('-')[0].toLowerCase();
+  const sample = segment;
+
+  const detectIn = (s: string): string | null => {
+    if (/[\u0E00-\u0E7F]/.test(s)) return 'th';
+    if (/[\u3040-\u30FF]/.test(s)) return 'ja';
+    if (/[\uAC00-\uD7AF]/.test(s)) return 'ko';
+    if (/[\u4E00-\u9FFF]/.test(s)) return 'zh-CN';
+    if (/[\u0600-\u06FF]/.test(s)) return 'ar';
+    return null;
+  };
+
+  const detected = detectIn(sample) || (fallbackText ? detectIn(fallbackText) : null);
+  if (detected && detected.split('-')[0].toLowerCase() !== targetPrefix) {
+    return detected;
+  }
+  return 'autodetect';
+}
+
+/**
+ * Checks if MyMemory failed by returning the untranslated original text
+ */
+function looksUntranslated(original: string, candidate: string, sourceLang: string, targetLang: string): boolean {
+  const targetPrefix = targetLang.split('-')[0].toLowerCase();
+  if (sourceLang !== 'autodetect' && sourceLang.split('-')[0].toLowerCase() === targetPrefix) {
+    return false;
+  }
+  if (candidate.trim().toLowerCase() === original.trim().toLowerCase() && /\p{L}{3,}/u.test(original)) {
+    return true;
+  }
+  // If translating out of Thai and substantial Thai script remains untouched
+  if (sourceLang === 'th' && targetPrefix !== 'th' && /[\u0E00-\u0E7F]{3,}/.test(candidate)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Translates a single small chunk (< 350 chars) via MyMemory API
  */
-async function translateChunkMyMemory(chunk: string, targetLang: string): Promise<string | null> {
+async function translateChunkMyMemory(
+  chunk: string,
+  targetLang: string,
+  sourceLang: string
+): Promise<string | null> {
   try {
     const langCode = targetLang.split('-')[0].toLowerCase();
+    const pairSource = sourceLang === 'zh-CN' ? 'zh' : sourceLang;
     const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
       chunk
-    )}&langpair=autodetect|${encodeURIComponent(langCode)}`;
+    )}&langpair=${encodeURIComponent(pairSource)}|${encodeURIComponent(langCode)}`;
 
     const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
     const candidate = data?.responseData?.translatedText;
-    if (candidate && !isInvalidTranslationResult(candidate)) {
+    if (
+      candidate &&
+      !isInvalidTranslationResult(candidate) &&
+      !looksUntranslated(chunk, candidate, sourceLang, targetLang)
+    ) {
       return candidate.trim();
     }
   } catch {
@@ -176,11 +227,16 @@ async function translateChunkMyMemory(chunk: string, targetLang: string): Promis
 /**
  * Translates a single small chunk via Google GTX web translation endpoint
  */
-async function translateChunkGTX(chunk: string, targetLang: string): Promise<string | null> {
+async function translateChunkGTX(
+  chunk: string,
+  targetLang: string,
+  sourceLang: string
+): Promise<string | null> {
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
-      targetLang
-    )}&dt=t&q=${encodeURIComponent(chunk)}`;
+    const sl = sourceLang === 'autodetect' ? 'auto' : sourceLang;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(
+      sl
+    )}&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(chunk)}`;
 
     const res = await fetch(url);
     if (!res.ok) return null;
@@ -223,7 +279,11 @@ async function translateChunkGTX(chunk: string, targetLang: string): Promise<str
 /**
  * Translates the non-whitespace core of a single line, chunking safely if > 350 chars
  */
-async function translateSingleLineCore(core: string, targetLang: string): Promise<string> {
+async function translateSingleLineCore(
+  core: string,
+  targetLang: string,
+  fullDocContext: string
+): Promise<string> {
   const segments = splitSingleLineIntoSegments(core, 350);
   const wordSpacedTarget = usesWordSpaces(targetLang);
   const translatedPieces: string[] = [];
@@ -234,9 +294,10 @@ async function translateSingleLineCore(core: string, targetLang: string): Promis
       continue;
     }
 
-    let result = await translateChunkMyMemory(seg.text, targetLang);
+    const sourceLang = detectSourceLang(seg.text, targetLang, fullDocContext);
+    let result = await translateChunkMyMemory(seg.text, targetLang, sourceLang);
     if (!result) {
-      result = await translateChunkGTX(seg.text, targetLang);
+      result = await translateChunkGTX(seg.text, targetLang, sourceLang);
     }
     translatedPieces.push(result || seg.text);
   }
@@ -268,35 +329,56 @@ async function translateSingleLineCore(core: string, targetLang: string): Promis
   return joined;
 }
 
-/**
- * Translates a single full line while preserving its leading indentation,
- * bullet/list prefix + spacing, and trailing whitespace verbatim.
- */
-async function translateLinePreservingStructure(
-  line: string,
-  targetLang: string,
-  lineCache: Map<string, string>
-): Promise<string> {
-  // Preserve blank or whitespace-only lines verbatim
-  if (!line.trim()) return line;
+interface ParsedLine {
+  raw: string;
+  isBlank: boolean;
+  leadingWs: string;
+  bulletPrefix: string;
+  core: string;
+  trailingWs: string;
+  translatable: boolean;
+}
 
-  const cached = lineCache.get(line);
-  if (cached !== undefined) return cached;
-
-  const match = line.match(/^([ \t]*)((?:[-•*▪▫◦–—]+\s+|\d+[.)]\s+)?)(.*?)([ \t]*)$/);
-  if (!match) return line;
-
-  const [, leadingWs, bulletPrefix, core, trailingWs] = match;
-
-  if (!core || !hasTranslatableLetters(core)) {
-    lineCache.set(line, line);
-    return line;
+function parseStructuralLine(line: string): ParsedLine {
+  if (!line.trim()) {
+    return {
+      raw: line,
+      isBlank: true,
+      leadingWs: '',
+      bulletPrefix: '',
+      core: '',
+      trailingWs: '',
+      translatable: false
+    };
   }
 
-  let translatedCore = await translateSingleLineCore(core, targetLang);
+  const match = line.match(/^([ \t]*)((?:[-•*▪▫◦–—]+\s+|\d+[.)]\s+)?)(.*?)([ \t]*)$/);
+  if (!match) {
+    return {
+      raw: line,
+      isBlank: false,
+      leadingWs: '',
+      bulletPrefix: '',
+      core: line,
+      trailingWs: '',
+      translatable: hasTranslatableLetters(line)
+    };
+  }
 
-  // Guard against translators accidentally stripping a space right after a leading symbol/emoji
-  const leadingSymbolGapMatch = core.match(/^([^\p{L}\p{N}\s(\["'#_]+)(\s+)([\p{L}\p{N}])/u);
+  const [, leadingWs, bulletPrefix, core, trailingWs] = match;
+  return {
+    raw: line,
+    isBlank: false,
+    leadingWs,
+    bulletPrefix,
+    core,
+    trailingWs,
+    translatable: Boolean(core && hasTranslatableLetters(core))
+  };
+}
+
+function preserveLeadingEmojiGap(originalCore: string, translatedCore: string): string {
+  const leadingSymbolGapMatch = originalCore.match(/^([^\p{L}\p{N}\s(\["'#_]+)(\s+)([\p{L}\p{N}])/u);
   if (leadingSymbolGapMatch) {
     const symbol = leadingSymbolGapMatch[1];
     const gap = leadingSymbolGapMatch[2];
@@ -305,13 +387,36 @@ async function translateLinePreservingStructure(
       translatedCore.length > symbol.length &&
       !/^\s/.test(translatedCore.slice(symbol.length))
     ) {
-      translatedCore = `${symbol}${gap}${translatedCore.slice(symbol.length)}`;
+      return `${symbol}${gap}${translatedCore.slice(symbol.length)}`;
     }
   }
+  return translatedCore;
+}
 
-  const finalLine = `${leadingWs}${bulletPrefix}${translatedCore}${trailingWs}`;
-  lineCache.set(line, finalLine);
-  return finalLine;
+/**
+ * Translates a single full line while preserving its leading indentation,
+ * bullet/list prefix + spacing, and trailing whitespace verbatim.
+ */
+async function translateLinePreservingStructure(
+  parsed: ParsedLine,
+  targetLang: string,
+  fullDocContext: string,
+  lineCache: Map<string, string>
+): Promise<string> {
+  if (parsed.isBlank || !parsed.translatable) return parsed.raw;
+
+  const cached = lineCache.get(parsed.core);
+  if (cached !== undefined) {
+    return `${parsed.leadingWs}${parsed.bulletPrefix}${cached}${parsed.trailingWs}`;
+  }
+
+  const translatedCore = preserveLeadingEmojiGap(
+    parsed.core,
+    await translateSingleLineCore(parsed.core, targetLang, fullDocContext)
+  );
+
+  lineCache.set(parsed.core, translatedCore);
+  return `${parsed.leadingWs}${parsed.bulletPrefix}${translatedCore}${parsed.trailingWs}`;
 }
 
 /**
@@ -365,9 +470,10 @@ function restoreUrls(text: string, urlMap: Map<string, string>): string {
 
 /**
  * Main translation entry point supporting:
- * 1. Server-side Gemini 3.8 Flash AI translation endpoint (/api/translate)
- * 2. Line-by-line client-side fallback (< 350 chars per segment) preserving every
- *    line break, blank paragraph gap, indentation, bullet spacing, and word spacing
+ * 1. Server-side Gemini 3.8 Flash AI translation endpoint (/api/translate) using
+ *    structured lines JSON so client preserves 100% of blank lines, line breaks & bullets
+ * 2. Line-by-line client-side fallback (< 350 chars per segment) with explicit script
+ *    detection so mixed Thai+English lines and spacing are preserved accurately
  * 3. Automatic URL protection ensuring links are preserved with 100% accuracy
  */
 export async function translateText(
@@ -404,7 +510,22 @@ export async function translateText(
   // Protect URLs so external translation engines do not translate, shorten, or break links
   const { protectedText, urlMap } = protectUrls(outerTrimmed);
 
-  // 1. Try server-side Gemini 3.8 Flash AI endpoint first (if full-stack server is running)
+  // Parse exact structural lines so NEITHER server Gemini NOR client APIs can drop blank lines, line breaks, indentation, or bullets
+  const parsedLines = protectedText.split('\n').map(parseStructuralLine);
+  const translatableIndices: number[] = [];
+  const translatableCores: string[] = [];
+  parsedLines.forEach((p, idx) => {
+    if (!p.isBlank && p.translatable) {
+      translatableIndices.push(idx);
+      translatableCores.push(p.core);
+    }
+  });
+
+  if (translatableCores.length === 0) {
+    return restoreUrls(outerTrimmed, urlMap);
+  }
+
+  // 1. Try server-side Gemini 3.8 Flash AI endpoint first (structured JSON array preserves exact line structure 100%)
   try {
     const res = await fetch('/api/translate', {
       method: 'POST',
@@ -413,6 +534,7 @@ export async function translateText(
       },
       body: JSON.stringify({
         text: protectedText,
+        lines: translatableCores,
         targetLang,
         targetLangName
       })
@@ -422,6 +544,18 @@ export async function translateText(
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await res.json();
+        if (Array.isArray(data.lines) && data.lines.length === translatableCores.length) {
+          const rebuilt = parsedLines.map((p) => p.raw);
+          translatableIndices.forEach((lineIdx, corePos) => {
+            const p = parsedLines[lineIdx];
+            const translatedCore = preserveLeadingEmojiGap(
+              p.core,
+              String(data.lines[corePos] ?? p.core).replace(/[\r\n]+/g, ' ').trim() || p.core
+            );
+            rebuilt[lineIdx] = `${p.leadingWs}${p.bulletPrefix}${translatedCore}${p.trailingWs}`;
+          });
+          return restoreUrls(rebuilt.join('\n'), urlMap);
+        }
         if (data.translation && typeof data.translation === 'string' && data.translation.trim()) {
           const cleanServerText = data.translation.replace(/^\r?\n+|\r?\n+$/g, '');
           return restoreUrls(cleanServerText, urlMap);
@@ -433,17 +567,21 @@ export async function translateText(
   }
 
   // 2. Line-by-line Client-side Translation (guarantees blank lines, line breaks & bullets never get stripped)
-  const lines = protectedText.split('\n');
-  const translatedLines = new Array<string>(lines.length);
+  const translatedLines = new Array<string>(parsedLines.length);
   const lineCache = new Map<string, string>();
 
   const CONCURRENCY = 4;
   let cursor = 0;
 
-  const workers = Array.from({ length: Math.min(CONCURRENCY, lines.length) }, async () => {
-    while (cursor < lines.length) {
+  const workers = Array.from({ length: Math.min(CONCURRENCY, parsedLines.length) }, async () => {
+    while (cursor < parsedLines.length) {
       const idx = cursor++;
-      translatedLines[idx] = await translateLinePreservingStructure(lines[idx], targetLang, lineCache);
+      translatedLines[idx] = await translateLinePreservingStructure(
+        parsedLines[idx],
+        targetLang,
+        outerTrimmed,
+        lineCache
+      );
     }
   });
 

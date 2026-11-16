@@ -2071,7 +2071,7 @@ export default function App() {
 
   const [translationsCache, setTranslationsCache] = useState<Record<string, Record<string, string>>>(() => {
     try {
-      const saved = localStorage.getItem('avocean_translations_cache_v2');
+      const saved = localStorage.getItem('avocean_translations_cache_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
         // Filter out any stale error strings like QUERY LENGTH LIMIT EXCEEDED
@@ -3916,7 +3916,7 @@ export default function App() {
         const next = { ...prev };
         delete next[newEvent.id];
         try {
-          localStorage.setItem('avocean_translations_cache_v2', JSON.stringify(next));
+          localStorage.setItem('avocean_translations_cache_v3', JSON.stringify(next));
         } catch {}
         return next;
       });
@@ -3989,7 +3989,7 @@ export default function App() {
       const next = { ...prev };
       delete next[eventId];
       try {
-        localStorage.setItem('avocean_translations_cache_v2', JSON.stringify(next));
+        localStorage.setItem('avocean_translations_cache_v3', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -4469,7 +4469,7 @@ export default function App() {
           }
         };
         try {
-          localStorage.setItem('avocean_translations_cache_v2', JSON.stringify(next));
+          localStorage.setItem('avocean_translations_cache_v3', JSON.stringify(next));
         } catch {}
         return next;
       });

@@ -1,6 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,10 +13,10 @@ app.use(express.json());
 // Server-side Gemini AI Translation Route
 app.post('/api/translate', async (req, res) => {
   try {
-    const { text, targetLang, targetLangName } = req.body;
+    const { text, lines, targetLang, targetLangName } = req.body;
 
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'Text string is required' });
+    if ((!text || typeof text !== 'string') && (!Array.isArray(lines) || lines.length === 0)) {
+      return res.status(400).json({ error: 'Text string or lines array is required' });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -32,6 +32,47 @@ app.post('/api/translate', async (req, res) => {
         },
       },
     });
+
+    // Preferred deterministic mode: translate an array of non-empty lines while client owns 100% of line breaks & spacing
+    if (Array.isArray(lines) && lines.length > 0) {
+      const sanitizedLines = lines.map((l: unknown) => (typeof l === 'string' ? l : String(l ?? '')));
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: `You are an expert bilingual translator for Thai entertainment, GMMTV celebrity fandom, and international fan club events.
+Translate each item in the input JSON string array into ${targetLangName || targetLang}, using the full array as shared context (for dates like Thai Buddhist year 69 = 2026, pronouns, and venue names).
+CRITICAL RULES:
+1. Return a JSON array of strings with the EXACT SAME number of items (${sanitizedLines.length}) in the exact same order.
+2. Preserve artist names (such as Jimmy, Sea, Avocean, GMMTV), venue names, dates, and times accurately.
+3. Preserve all placeholder tokens (such as __AVO_URL_0__), hashtags, social handles, emojis, and internal spacing around them EXACTLY without removing spaces or merging items.
+4. Do NOT add or remove items, and do NOT include newlines inside an array item.
+5. Make the translation natural, clear, and friendly for international fans.
+
+Input lines JSON:
+${JSON.stringify(sanitizedLines)}`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+          },
+        },
+      });
+
+      const rawJson = response.text?.trim() || '';
+      try {
+        const parsed = JSON.parse(rawJson);
+        if (Array.isArray(parsed) && parsed.length === sanitizedLines.length) {
+          return res.json({
+            lines: parsed.map((item: unknown) => (typeof item === 'string' ? item : String(item ?? ''))),
+          });
+        }
+      } catch {
+        // Fall through to single-text mode if JSON parse fails
+      }
+      if (!text || typeof text !== 'string') {
+        return res.status(502).json({ error: 'Structured translation count mismatch' });
+      }
+    }
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
