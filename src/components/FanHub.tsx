@@ -1810,12 +1810,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                                       {targetClubLangObj.flag} {targetClubLangObj.name}
                                     </span>
                                   </div>
-                                  <p className="text-[13px] sm:text-sm text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
+                                  <p className="text-[13px] sm:text-sm text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-wrap">
                                     {translatedBioText}
                                   </p>
                                 </div>
                               ) : (
-                                <p className="text-[13px] sm:text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
+                                <p className="text-[13px] sm:text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
                                   {club.description}
                                 </p>
                               )}
@@ -2168,12 +2168,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                                               {targetClubLangObj.flag} {targetClubLangObj.name}
                                             </span>
                                           </div>
-                                          <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
+                                          <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-wrap">
                                             {translatedEvText}
                                           </p>
                                         </div>
                                       ) : ev.description ? (
-                                        <p className="text-xs sm:text-[12.5px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
+                                        <p className="text-xs sm:text-[12.5px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
                                           {ev.description}
                                         </p>
                                       ) : null}
@@ -2500,12 +2500,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                                     {targetProjLangObj.flag} {targetProjLangObj.name}
                                   </span>
                                 </div>
-                                <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-line">
+                                <p className="text-xs text-[#1A3668] dark:text-purple-100 font-medium leading-relaxed whitespace-pre-wrap">
                                   {translatedDesc}
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-line">
+                              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed whitespace-pre-wrap">
                                 {proj.description}
                               </p>
                             )}

@@ -201,7 +201,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   const [projectCardLangs, setProjectCardLangs] = useState<Record<string, string>>({});
   const [projectCardTranslations, setProjectCardTranslations] = useState<Record<string, Record<string, Record<string, string>>>>(() => {
     try {
-      const raw = localStorage.getItem('avocean_project_card_translations_v2');
+      const raw = localStorage.getItem('avocean_project_card_translations_v3');
       return raw ? JSON.parse(raw) : {};
     } catch {
       return {};
@@ -351,7 +351,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
   // Cached full card translations: actorId -> langCode -> TranslatedCardData
   const [actorCardTranslations, setActorCardTranslations] = useState<Record<string, Record<string, Record<string, string>>>>(() => {
     try {
-      const saved = localStorage.getItem('avocean_actor_card_translations_v2');
+      const saved = localStorage.getItem('avocean_actor_card_translations_v3');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -413,7 +413,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           }
         };
         try {
-          localStorage.setItem('avocean_actor_card_translations_v2', JSON.stringify(next));
+          localStorage.setItem('avocean_actor_card_translations_v3', JSON.stringify(next));
         } catch {}
         return next;
       });
@@ -1087,7 +1087,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           }
         };
         try {
-          localStorage.setItem('avocean_project_card_translations_v2', JSON.stringify(next));
+          localStorage.setItem('avocean_project_card_translations_v3', JSON.stringify(next));
         } catch {}
         return next;
       });
@@ -2183,7 +2183,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                       Biography
                     </span>
-                    <p className={`${getBioSizeClass()} font-normal text-slate-600 dark:text-slate-300 transition-all`}>
+                    <p className={`${getBioSizeClass()} font-normal text-slate-600 dark:text-slate-300 whitespace-pre-wrap transition-all`}>
                       {currentBio}
                     </p>
                   </div>
@@ -3441,7 +3441,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             </span>
                           </div>
 
-                          <p className={`font-medium text-[#475569] dark:text-slate-300 whitespace-pre-line leading-relaxed ${typo.body}`}>
+                          <p className={`font-medium text-[#475569] dark:text-slate-300 whitespace-pre-wrap leading-relaxed ${typo.body}`}>
                             {displayDescription}
                           </p>
                         </div>

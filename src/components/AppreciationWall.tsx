@@ -90,7 +90,7 @@ export const AppreciationWall: React.FC<AppreciationWallProps> = ({
   // Cached translations (msgId -> { [langCode]: string })
   const [translationsCache, setTranslationsCache] = useState<Record<string, Record<string, string>>>(() => {
     try {
-      const saved = localStorage.getItem('avocean_wall_translations_cache');
+      const saved = localStorage.getItem('avocean_wall_translations_cache_v2');
       if (saved) return JSON.parse(saved);
     } catch {}
     return {};
@@ -150,7 +150,7 @@ export const AppreciationWall: React.FC<AppreciationWallProps> = ({
           }
         };
         try {
-          localStorage.setItem('avocean_wall_translations_cache', JSON.stringify(next));
+          localStorage.setItem('avocean_wall_translations_cache_v2', JSON.stringify(next));
         } catch {}
         return next;
       });
@@ -543,7 +543,7 @@ export const AppreciationWall: React.FC<AppreciationWallProps> = ({
                     <span className="absolute -top-2 left-3 text-2xl text-rose-300 dark:text-rose-700 select-none font-serif leading-none">
                       “
                     </span>
-                    <p className="text-xs sm:text-[13px] text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line font-medium pt-1">
+                    <p className="text-xs sm:text-[13px] text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-medium pt-1">
                       {displayText}
                     </p>
 

@@ -2071,7 +2071,7 @@ export default function App() {
 
   const [translationsCache, setTranslationsCache] = useState<Record<string, Record<string, string>>>(() => {
     try {
-      const saved = localStorage.getItem('avocean_translations_cache');
+      const saved = localStorage.getItem('avocean_translations_cache_v2');
       if (saved) {
         const parsed = JSON.parse(saved);
         // Filter out any stale error strings like QUERY LENGTH LIMIT EXCEEDED
@@ -3916,7 +3916,7 @@ export default function App() {
         const next = { ...prev };
         delete next[newEvent.id];
         try {
-          localStorage.setItem('avocean_translations_cache', JSON.stringify(next));
+          localStorage.setItem('avocean_translations_cache_v2', JSON.stringify(next));
         } catch {}
         return next;
       });
@@ -3989,7 +3989,7 @@ export default function App() {
       const next = { ...prev };
       delete next[eventId];
       try {
-        localStorage.setItem('avocean_translations_cache', JSON.stringify(next));
+        localStorage.setItem('avocean_translations_cache_v2', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -4469,7 +4469,7 @@ export default function App() {
           }
         };
         try {
-          localStorage.setItem('avocean_translations_cache', JSON.stringify(next));
+          localStorage.setItem('avocean_translations_cache_v2', JSON.stringify(next));
         } catch {}
         return next;
       });
@@ -5785,7 +5785,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 text-xs sm:text-[13.5px] font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-line flex-1 flex flex-col justify-between">
+                    <div className="bg-slate-50/90 dark:bg-slate-800/90 rounded-[24px] p-5 shadow-2xs border border-slate-200/80 dark:border-slate-700/80 text-xs sm:text-[13.5px] font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-wrap flex-1 flex flex-col justify-between">
                       {isLongDescription && !isExpanded ? (
                         <div className="relative">
                           <div className="max-h-48 overflow-hidden">
@@ -13356,13 +13356,13 @@ export default function App() {
                         {/* Message / Description Body */}
                         {isThanks ? (
                           <div className="p-4 sm:p-5 rounded-2xl bg-white/85 dark:bg-slate-900/85 border border-rose-200/80 dark:border-rose-900/70 shadow-xs mb-3.5">
-                            <p className="text-sm sm:text-[15.5px] text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-line font-medium italic">
+                            <p className="text-sm sm:text-[15.5px] text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-wrap font-medium italic">
                               "{msg.message}"
                             </p>
                           </div>
                         ) : (
                           <div className="p-4 sm:p-5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-700/70 shadow-xs mb-3.5">
-                            <p className="text-sm sm:text-[15px] text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line font-medium">
+                            <p className="text-sm sm:text-[15px] text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-medium">
                               "{msg.message}"
                             </p>
                           </div>
@@ -14211,7 +14211,7 @@ export default function App() {
                 </div>
                 <div className="flex-1 w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 overflow-y-auto min-h-[380px]">
                   {formDescription.trim() ? (
-                    <div className="text-sm font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                    <div className="text-sm font-medium text-[#334155] dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
                       {renderDescriptionTextWithLinks(formDescription)}
                     </div>
                   ) : (
@@ -14650,7 +14650,7 @@ export default function App() {
                 )}
 
                 {/* Formatted Announcement Text with Clickable Links */}
-                <div className={`font-medium text-[#334155] dark:text-slate-200 whitespace-pre-line ${fontSizeClasses[descriptionModalFontSize]}`}>
+                <div className={`font-medium text-[#334155] dark:text-slate-200 whitespace-pre-wrap ${fontSizeClasses[descriptionModalFontSize]}`}>
                   {renderDescriptionTextWithLinks(currentDisplayDescription)}
                 </div>
 
