@@ -56,26 +56,35 @@ import { TRANSLATION_LANGUAGES, translateText } from '../lib/translateService';
 import { compressImageFile } from '../lib/imageCompression';
 import { OfficialHashtagPicker } from './OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './HashtagsDisplayCard';
+import { SocialPlatformIcon, OfficialPlatformSelect } from './SocialPlatformIcon';
 
 export const PROJECT_WATCH_PLATFORMS = [
-  { value: 'Trailer', label: 'Official Trailer', icon: '🎬' },
-  { value: 'Viki', label: 'Viki (Rakuten Viki)', icon: '🟣' },
-  { value: 'iQiyi', label: 'iQiyi', icon: '🟢' },
-  { value: 'Viu', label: 'Viu', icon: '🟡' },
-  { value: 'GagaOOLala', label: 'GagaOOLala', icon: '🌈' },
-  { value: 'YouTube', label: 'YouTube', icon: '▶️' },
-  { value: 'Netflix', label: 'Netflix', icon: '🍿' },
-  { value: 'GMMTV', label: 'GMMTV', icon: '🎬' },
-  { value: 'Disney+', label: 'Disney+ Hotstar', icon: '✨' },
-  { value: 'WeTV', label: 'WeTV', icon: '🟠' },
-  { value: 'TrueID', label: 'TrueID', icon: '🔴' },
-  { value: 'One31', label: 'oneD / One31', icon: '📺' },
-  { value: 'Spotify', label: 'Spotify', icon: '🟢' },
-  { value: 'Apple Music', label: 'Apple Music', icon: '🍎' },
-  { value: 'Instagram', label: 'Instagram', icon: '📸' },
-  { value: 'X', label: 'X / Twitter', icon: '🐦' },
-  { value: 'Shop', label: 'Shop / Merch', icon: '🛍️' },
-  { value: 'Website', label: 'Official Website', icon: '🌐' }
+  { value: 'Trailer', label: 'Official Trailer' },
+  { value: 'Viki', label: 'Viki (Rakuten Viki)' },
+  { value: 'iQiyi', label: 'iQIYI' },
+  { value: 'Viu', label: 'Viu' },
+  { value: 'GagaOOLala', label: 'GagaOOLala' },
+  { value: 'YouTube', label: 'YouTube' },
+  { value: 'Netflix', label: 'Netflix' },
+  { value: 'GMMTV', label: 'GMMTV' },
+  { value: 'Disney+', label: 'Disney+ Hotstar' },
+  { value: 'WeTV', label: 'WeTV' },
+  { value: 'TrueID', label: 'TrueID' },
+  { value: 'AIS PLAY', label: 'AIS PLAY' },
+  { value: 'One31', label: 'oneD / One31' },
+  { value: 'Bilibili', label: 'Bilibili' },
+  { value: 'Spotify', label: 'Spotify' },
+  { value: 'Apple Music', label: 'Apple Music' },
+  { value: 'Instagram', label: 'Instagram' },
+  { value: 'Threads', label: 'Threads' },
+  { value: 'X', label: 'X / Twitter' },
+  { value: 'TikTok', label: 'TikTok' },
+  { value: 'Facebook', label: 'Facebook' },
+  { value: 'LINE', label: 'LINE' },
+  { value: 'LINE OpenChat', label: 'LINE OpenChat' },
+  { value: 'Weibo', label: 'Weibo' },
+  { value: 'Shop', label: 'Shop / Merch' },
+  { value: 'Website', label: 'Official Website' }
 ];
 
 export function detectProjectWatchPlatform(url: string): { platform: string; label: string } | null {
@@ -85,7 +94,7 @@ export function detectProjectWatchPlatform(url: string): { platform: string; lab
     return { platform: 'Trailer', label: 'Official Trailer' };
   }
   if (u.includes('viki.com')) return { platform: 'Viki', label: 'Viki' };
-  if (u.includes('iqiyi.com') || u.includes('iq.com')) return { platform: 'iQiyi', label: 'iQiyi' };
+  if (u.includes('iqiyi.com') || u.includes('iq.com')) return { platform: 'iQiyi', label: 'iQIYI' };
   if (u.includes('viu.com')) return { platform: 'Viu', label: 'Viu' };
   if (u.includes('gagaoolala.com')) return { platform: 'GagaOOLala', label: 'GagaOOLala' };
   if (u.includes('youtube.com') || u.includes('youtu.be')) return { platform: 'YouTube', label: 'YouTube' };
@@ -93,12 +102,20 @@ export function detectProjectWatchPlatform(url: string): { platform: string; lab
   if (u.includes('wetv.vip') || u.includes('wetv.com')) return { platform: 'WeTV', label: 'WeTV' };
   if (u.includes('hotstar.com') || u.includes('disneyplus.com')) return { platform: 'Disney+', label: 'Disney+ Hotstar' };
   if (u.includes('trueid.net')) return { platform: 'TrueID', label: 'TrueID' };
+  if (u.includes('aisplay.ais.co.th') || u.includes('ais.th')) return { platform: 'AIS PLAY', label: 'AIS PLAY' };
   if (u.includes('oned.net') || u.includes('one31.net')) return { platform: 'One31', label: 'oneD' };
+  if (u.includes('bilibili.com') || u.includes('bilibili.tv')) return { platform: 'Bilibili', label: 'Bilibili' };
   if (u.includes('gmm-tv.com') || u.includes('gmmtv')) return { platform: 'GMMTV', label: 'GMMTV' };
   if (u.includes('spotify.com')) return { platform: 'Spotify', label: 'Spotify' };
   if (u.includes('apple.com') || u.includes('music.apple')) return { platform: 'Apple Music', label: 'Apple Music' };
+  if (u.includes('threads.net') || u.includes('threads.com')) return { platform: 'Threads', label: 'Threads' };
   if (u.includes('instagram.com')) return { platform: 'Instagram', label: 'Instagram' };
   if (u.includes('twitter.com') || u.includes('x.com')) return { platform: 'X', label: 'X / Twitter' };
+  if (u.includes('tiktok.com')) return { platform: 'TikTok', label: 'TikTok' };
+  if (u.includes('facebook.com') || u.includes('fb.watch') || u.includes('fb.com')) return { platform: 'Facebook', label: 'Facebook' };
+  if (u.includes('openchat') && u.includes('line.me')) return { platform: 'LINE OpenChat', label: 'LINE OpenChat' };
+  if (u.includes('line.me') || u.includes('lin.ee')) return { platform: 'LINE', label: 'LINE' };
+  if (u.includes('weibo.com') || u.includes('weibo.cn')) return { platform: 'Weibo', label: 'Weibo' };
   return null;
 }
 
@@ -1686,28 +1703,6 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     }
   };
 
-  const getPlatformIcon = (platformStr?: string) => {
-    const p = (platformStr || '').toLowerCase();
-    if (p.includes('trailer') || p.includes('teaser') || p.includes('pilot')) return '🎬';
-    if (p.includes('viki')) return '🟣';
-    if (p.includes('iqiyi') || p.includes('iq.com')) return '🟢';
-    if (p.includes('viu')) return '🟡';
-    if (p.includes('gagaoolala')) return '🌈';
-    if (p.includes('youtube')) return '▶️';
-    if (p.includes('spotify')) return '🟢';
-    if (p.includes('apple')) return '🍎';
-    if (p.includes('netflix')) return '🍿';
-    if (p.includes('gmmtv') || p.includes('gmm-tv')) return '🎬';
-    if (p.includes('disney') || p.includes('hotstar')) return '✨';
-    if (p.includes('wetv')) return '🟠';
-    if (p.includes('trueid')) return '🔴';
-    if (p.includes('one31') || p.includes('oned')) return '📺';
-    if (p.includes('instagram') || p.includes('ig')) return '📸';
-    if (p.includes('shop') || p.includes('merch') || p.includes('line shopping')) return '🛍️';
-    if (p.includes('x') || p.includes('twitter')) return '🐦';
-    return '🔗';
-  };
-
   return (
     <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 animate-in fade-in duration-200 pb-24`}>
       {/* ============================================================== */}
@@ -2212,7 +2207,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition-all cursor-pointer shadow-2xs"
                           title={site.label || site.url}
                         >
-                          <Globe className="w-3 h-3 text-purple-500" />
+                          <SocialPlatformIcon platform={site.label || 'web'} url={site.url} className="w-3.5 h-3.5 shrink-0" />
                           <span>{site.label || 'Website'}</span>
                           <ExternalLink className="w-2.5 h-2.5 opacity-70" />
                         </a>
@@ -2224,10 +2219,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         href={profile.instagramUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-pink-50 text-pink-700 hover:bg-pink-100 dark:bg-pink-950/70 dark:text-pink-300 border border-pink-200 dark:border-pink-800 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-pink-50 text-pink-700 hover:bg-pink-100 dark:bg-pink-950/70 dark:text-pink-300 border border-pink-200 dark:border-pink-800 transition-all cursor-pointer"
                         title="Instagram"
                       >
-                        <span>📸 IG</span>
+                        <SocialPlatformIcon platform="instagram" className="w-3.5 h-3.5 shrink-0" />
+                        <span>IG</span>
                         <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     )}
@@ -2236,10 +2232,10 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         href={profile.twitterUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-all cursor-pointer"
                         title="X / Twitter"
                       >
-                        <span>𝕏</span>
+                        <SocialPlatformIcon platform="x" className="w-3.5 h-3.5 shrink-0" />
                         <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     )}
@@ -2248,10 +2244,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                         href={profile.tiktokUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
                         title="TikTok"
                       >
-                        <span>🎵 TikTok</span>
+                        <SocialPlatformIcon platform="tiktok" className="w-3.5 h-3.5 shrink-0" />
+                        <span>TikTok</span>
                         <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     )}
@@ -3531,7 +3528,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs hover:border-purple-300 cursor-pointer"
                                 title="Official Show X / Twitter"
                               >
-                                <span>𝕏</span>
+                                <SocialPlatformIcon platform="x" className="w-3.5 h-3.5 shrink-0" />
                                 <span>Official X</span>
                                 <ExternalLink className="w-3 h-3 text-slate-400" />
                               </a>
@@ -3545,7 +3542,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-pink-50 dark:hover:bg-pink-950/50 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-900/70 transition-all shadow-2xs hover:border-pink-300 cursor-pointer"
                                 title="Official Show Instagram"
                               >
-                                <span>📸</span>
+                                <SocialPlatformIcon platform="instagram" className="w-3.5 h-3.5 shrink-0" />
                                 <span>Official IG</span>
                                 <ExternalLink className="w-3 h-3 text-pink-400" />
                               </a>
@@ -3559,7 +3556,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs hover:border-purple-300 cursor-pointer"
                                 title="Official Show Website"
                               >
-                                <Globe className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                <SocialPlatformIcon platform="web" url={proj.officialWebsiteUrl} className="w-3.5 h-3.5 shrink-0" />
                                 <span>Official Website</span>
                                 <ExternalLink className="w-3 h-3 text-slate-400" />
                               </a>
@@ -3576,7 +3573,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs hover:border-purple-300 cursor-pointer"
                                   title={site.label || site.url}
                                 >
-                                  <Globe className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                  <SocialPlatformIcon platform={site.label || 'web'} url={site.url} className="w-3.5 h-3.5 shrink-0" />
                                   <span className="truncate max-w-[170px]">{site.label || 'Website'}</span>
                                   <ExternalLink className="w-3 h-3 text-slate-400" />
                                 </a>
@@ -3616,7 +3613,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                       : 'bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-purple-300'
                                   } ${typo.buttons}`}
                                 >
-                                  <span>{getPlatformIcon(link.platform || link.label)}</span>
+                                  <SocialPlatformIcon
+                                    platform={link.platform || link.label}
+                                    url={link.url}
+                                    className="w-4 h-4 shrink-0"
+                                  />
                                   <span className="truncate max-w-[170px]">{link.label}</span>
                                   {isTrailer && (
                                     <span className="text-[9.5px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 uppercase tracking-wider">
@@ -5598,17 +5599,12 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                       key={idx}
                       className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
                     >
-                      <select
+                      <OfficialPlatformSelect
                         value={link.platform || 'Viki'}
-                        onChange={(e) => handleUpdateWatchLink(idx, 'platform', e.target.value)}
-                        className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white shrink-0"
-                      >
-                        {PROJECT_WATCH_PLATFORMS.map((p) => (
-                          <option key={p.value} value={p.value}>
-                            {p.icon} {p.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={PROJECT_WATCH_PLATFORMS}
+                        onChange={(val) => handleUpdateWatchLink(idx, 'platform', val)}
+                        minWidthClass="min-w-[164px]"
+                      />
 
                       <input
                         type="text"
@@ -5655,7 +5651,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                      <span>𝕏 Official Show Twitter / X</span>
+                      <SocialPlatformIcon platform="x" className="w-3.5 h-3.5 shrink-0" />
+                      <span>Official Show Twitter / X</span>
                     </label>
                     <input
                       type="text"
@@ -5668,7 +5665,8 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                      <span>📸 Official Show Instagram</span>
+                      <SocialPlatformIcon platform="instagram" className="w-3.5 h-3.5 shrink-0" />
+                      <span>Official Show Instagram</span>
                     </label>
                     <input
                       type="text"
@@ -6667,31 +6665,34 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     Social Media Handles:
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
+                    <div className="relative flex items-center">
+                      <SocialPlatformIcon platform="instagram" className="w-4 h-4 shrink-0 absolute left-2.5 pointer-events-none" />
                       <input
                         type="url"
                         value={actorFormInstagramUrl}
                         onChange={(e) => setActorFormInstagramUrl(e.target.value)}
-                        placeholder="📸 Instagram URL"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                        placeholder="Instagram URL"
+                        className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
                       />
                     </div>
-                    <div>
+                    <div className="relative flex items-center">
+                      <SocialPlatformIcon platform="x" className="w-4 h-4 shrink-0 absolute left-2.5 pointer-events-none" />
                       <input
                         type="url"
                         value={actorFormTwitterUrl}
                         onChange={(e) => setActorFormTwitterUrl(e.target.value)}
-                        placeholder="𝕏 / Twitter URL"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                        placeholder="X / Twitter URL"
+                        className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
                       />
                     </div>
-                    <div>
+                    <div className="relative flex items-center">
+                      <SocialPlatformIcon platform="tiktok" className="w-4 h-4 shrink-0 absolute left-2.5 pointer-events-none" />
                       <input
                         type="url"
                         value={actorFormTiktokUrl}
                         onChange={(e) => setActorFormTiktokUrl(e.target.value)}
-                        placeholder="🎵 TikTok URL (optional)"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                        placeholder="TikTok URL (optional)"
+                        className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-500"
                       />
                     </div>
                   </div>

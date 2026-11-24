@@ -22,9 +22,13 @@ export type ClubCategory =
 export type SocialPlatform =
   | 'x'
   | 'instagram'
+  | 'threads'
   | 'tiktok'
   | 'facebook'
   | 'line'
+  | 'line_openchat'
+  | 'whatsapp'
+  | 'telegram'
   | 'discord'
   | 'youtube'
   | 'weibo'

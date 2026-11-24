@@ -79,6 +79,12 @@ import {
 import { OfficialHashtagPicker } from './OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './HashtagsDisplayCard';
 import { CountryFlagImage, detectCountryDetails } from '../utils/countryFlags';
+import {
+  SocialPlatformIcon,
+  SocialPlatformSelect,
+  getSocialPlatformLabel,
+  resolveOfficialPlatformKey
+} from './SocialPlatformIcon';
 
 interface CountryOptionItem {
   code: string;
@@ -806,17 +812,29 @@ export const FanHub: React.FC<FanHubProps> = ({
     return norm === filter.toLowerCase();
   };
 
+  // Normalize legacy category values (e.g. 'jimmysea' -> 'duo') so <select> always matches the real stored value
+  const normalizeCategoryForSelect = (actor?: string): ClubCategory => {
+    const norm = (actor || '').toLowerCase();
+    if (norm === 'jimmysea' || norm === 'duo') return 'duo';
+    if (norm === 'jimmy_avocean' || norm === 'duo_jimmy_avocean') return 'jimmy_avocean';
+    if (norm === 'sea_avocean' || norm === 'duo_sea_avocean') return 'sea_avocean';
+    if (norm === 'jimmy') return 'jimmy';
+    if (norm === 'sea') return 'sea';
+    if (norm === 'avocean') return 'avocean';
+    return 'everyone';
+  };
+
   // Category badge with original member icons:
-  // Everyone: 🥑🌊💚 | Duo: 🥑🌊, 🥑💚, 🌊💚 | Jimmy: 🥑 | Sea: 🌊 | Avocean: 💚
+  // Everyone (JimmySeaAvocean): 🥑🌊💚 | Duo: 🥑🌊, 🥑💚, 🌊💚 | Jimmy: 🥑 | Sea: 🌊 | Avocean: 💚
   const renderCategoryBadge = (actor: string) => {
     const norm = (actor || '').toLowerCase();
 
-    // Everyone: 🥑🌊💚
+    // Everyone (Jimmy + Sea + Avocean): 🥑🌊💚 with purple -> blue -> green gradient
     if (norm === 'everyone') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xs tracking-wider border border-white/20">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold text-white bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 shadow-xs tracking-wide border border-white/20">
           <span className="tracking-tight text-xs">🥑🌊💚</span>
-          <span>EVERYONE</span>
+          <span>JimmySeaAvocean</span>
         </span>
       );
     }
@@ -881,11 +899,11 @@ export const FanHub: React.FC<FanHubProps> = ({
       );
     }
 
-    // Default fallback: Everyone 🥑🌊💚
+    // Default fallback: Everyone (JimmySeaAvocean) 🥑🌊💚
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white bg-gradient-to-r from-purple-600 via-sky-500 to-emerald-500 shadow-xs tracking-wider border border-white/20">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold text-white bg-gradient-to-r from-purple-600 via-blue-500 to-emerald-500 shadow-xs tracking-wide border border-white/20">
         <span className="tracking-tight text-xs">🥑🌊💚</span>
-        <span>EVERYONE</span>
+        <span>JimmySeaAvocean</span>
       </span>
     );
   };
@@ -1211,22 +1229,11 @@ export const FanHub: React.FC<FanHubProps> = ({
       return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
     });
 
-  // Platform icon helper
+  // Platform icon helper (official brand SVGs)
   const renderPlatformBadge = (platform: SocialPlatform, url: string, label?: string) => {
-    const icons: Record<string, string> = {
-      x: '𝕏',
-      instagram: '📷',
-      tiktok: '🎵',
-      facebook: '📘',
-      email: '✉️',
-      line: '💬',
-      discord: '👾',
-      youtube: '▶️',
-      weibo: '🔴',
-      web: '🌐'
-    };
     const isEmail = platform === 'email';
     const href = isEmail && !url.startsWith('mailto:') ? `mailto:${url}` : url;
+    const displayLabel = label || getSocialPlatformLabel(platform);
     return (
       <a
         key={url + platform}
@@ -1234,10 +1241,10 @@ export const FanHub: React.FC<FanHubProps> = ({
         target={isEmail ? '_self' : '_blank'}
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-xs font-bold text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-purple-300 dark:hover:border-purple-600 transition-all shadow-2xs group cursor-pointer"
-        title={label || (isEmail ? `Send email to ${url}` : `Visit ${platform.toUpperCase()}`)}
+        title={label || (isEmail ? `Send email to ${url}` : `Visit ${displayLabel}`)}
       >
-        <span>{icons[platform] || '🔗'}</span>
-        <span className="capitalize">{label || (isEmail ? 'Official Email' : platform)}</span>
+        <SocialPlatformIcon platform={platform} className="w-4 h-4 shrink-0" />
+        <span>{displayLabel}</span>
         {isEmail ? (
           <Mail className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity text-purple-600 dark:text-purple-400" />
         ) : (
@@ -1478,7 +1485,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                     setEditingClub({
                       id: `fc-${Date.now()}`,
                       name: '',
-                      actor: 'jimmysea',
+                      actor: 'everyone',
                       countryCode: 'TH',
                       countryName: 'Thailand',
                       flagEmoji: '🇹🇭',
@@ -2186,10 +2193,10 @@ export const FanHub: React.FC<FanHubProps> = ({
                                     href={getGoogleCalendarUrl(ev, club.name)}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline py-1"
+                                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline py-1"
                                     title="Add this fan club event to your Google Calendar"
                                   >
-                                    <CalendarPlus className="w-3.5 h-3.5" />
+                                    <SocialPlatformIcon platform="google_calendar" className="w-4 h-4 shrink-0" />
                                     <span>Add to Calendar</span>
                                   </a>
 
@@ -2202,7 +2209,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-2xs transition-all"
                                         title="Open donation / support drive form or link"
                                       >
-                                        <Heart className="w-3 h-3 text-rose-200 fill-rose-200" />
+                                        {resolveOfficialPlatformKey('', ev.donationUrl) !== 'web' ? (
+                                          <SocialPlatformIcon platform="" url={ev.donationUrl} className="w-3.5 h-3.5 shrink-0 rounded-[4px]" />
+                                        ) : (
+                                          <Heart className="w-3 h-3 text-rose-200 fill-rose-200" />
+                                        )}
                                         <span>Donation Link</span>
                                         <ExternalLink className="w-3 h-3" />
                                       </a>
@@ -2213,8 +2224,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                                         href={ev.link}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-2xs transition-all"
                                       >
+                                        {resolveOfficialPlatformKey('', ev.link) !== 'web' && (
+                                          <SocialPlatformIcon platform="" url={ev.link} className="w-3.5 h-3.5 shrink-0 rounded-[4px]" />
+                                        )}
                                         <span>Event Info / RSVP</span>
                                         <ExternalLink className="w-3 h-3" />
                                       </a>
@@ -2331,7 +2345,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                     setEditingProject({
                       id: `proj-${Date.now()}`,
                       title: '',
-                      actor: 'jimmysea',
+                      actor: 'everyone',
                       supportType: 'food_truck',
                       status: 'open',
                       eventName: '',
@@ -2466,8 +2480,10 @@ export const FanHub: React.FC<FanHubProps> = ({
                               href={proj.organizerContactUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-purple-600 dark:text-purple-400 hover:underline"
+                              className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:opacity-85 transition-opacity"
+                              title={proj.organizerContactUrl}
                             >
+                              <SocialPlatformIcon platform="" url={proj.organizerContactUrl} className="w-4 h-4 shrink-0" />
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           )}
@@ -2784,7 +2800,12 @@ export const FanHub: React.FC<FanHubProps> = ({
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold text-[#1A3668] dark:text-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs"
                           >
-                            <span>View on 𝕏</span>
+                            <SocialPlatformIcon
+                              platform={resolveOfficialPlatformKey('', proj.announcementUrl) === 'web' ? 'x' : ''}
+                              url={proj.announcementUrl}
+                              className="w-4 h-4 shrink-0"
+                            />
+                            <span>Official Post</span>
                             <ExternalLink className="w-2.5 h-2.5" />
                           </a>
                         )}
@@ -2900,11 +2921,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                     Category / Representation *
                   </label>
                   <select
-                    value={editingClub.actor}
+                    value={normalizeCategoryForSelect(editingClub.actor)}
                     onChange={(e) => setEditingClub({ ...editingClub, actor: e.target.value as any })}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
                   >
-                    <option value="everyone">🥑🌊💚 Everyone (Jimmy + Sea + Avocean)</option>
+                    <option value="everyone">🥑🌊💚 Everyone (JimmySeaAvocean)</option>
                     <option value="duo">🥑🌊 Duo — JimmySea (Jimmy + Sea)</option>
                     <option value="jimmy_avocean">🥑💚 Duo — Jimmy + Avocean</option>
                     <option value="sea_avocean">🌊💚 Duo — Sea + Avocean</option>
@@ -3360,27 +3381,19 @@ export const FanHub: React.FC<FanHubProps> = ({
                           </button>
                         </div>
 
-                        {/* Platform Select */}
-                        <select
+                        {/* Platform Select with Official Brand Icons */}
+                        <SocialPlatformSelect
                           value={soc.platform}
-                          onChange={(e) => {
+                          onChange={(newPlatform) => {
                             const next = [...editingClub.socials];
-                            next[sIdx].platform = e.target.value as any;
+                            next[sIdx] = {
+                              ...next[sIdx],
+                              platform: newPlatform,
+                              label: undefined
+                            };
                             setEditingClub({ ...editingClub, socials: next });
                           }}
-                          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none shrink-0"
-                        >
-                          <option value="x">𝕏 Twitter / X</option>
-                          <option value="email">✉️ Official Email</option>
-                          <option value="instagram">📷 Instagram</option>
-                          <option value="tiktok">🎵 TikTok</option>
-                          <option value="facebook">📘 Facebook</option>
-                          <option value="line">💬 Line</option>
-                          <option value="discord">👾 Discord</option>
-                          <option value="youtube">▶️ YouTube</option>
-                          <option value="weibo">🔴 Weibo</option>
-                          <option value="web">🌐 Website</option>
-                        </select>
+                        />
 
                         {/* URL or Email Input */}
                         <input
@@ -4020,11 +4033,11 @@ export const FanHub: React.FC<FanHubProps> = ({
                     Category *
                   </label>
                   <select
-                    value={editingProject.actor}
+                    value={normalizeCategoryForSelect(editingProject.actor)}
                     onChange={(e) => setEditingProject({ ...editingProject, actor: e.target.value as any })}
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-[#1A3668] dark:text-white focus:outline-none"
                   >
-                    <option value="everyone">🥑🌊💚 Everyone (Jimmy + Sea + Avocean)</option>
+                    <option value="everyone">🥑🌊💚 Everyone (JimmySeaAvocean)</option>
                     <option value="duo">🥑🌊 Duo — JimmySea (Jimmy + Sea)</option>
                     <option value="jimmy_avocean">🥑💚 Duo — Jimmy + Avocean</option>
                     <option value="sea_avocean">🌊💚 Duo — Sea + Avocean</option>

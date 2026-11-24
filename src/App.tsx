@@ -140,6 +140,7 @@ import { INITIAL_CAREER_PROJECTS } from './data/initialProjects';
 import { AppreciationWall } from './components/AppreciationWall';
 import { OfficialHashtagPicker } from './components/OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './components/HashtagsDisplayCard';
+import { SocialPlatformIcon, resolveOfficialPlatformKey } from './components/SocialPlatformIcon';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -5217,7 +5218,7 @@ export default function App() {
                     style={{ backgroundColor: currentAccent.colorHex }}
                     className="w-full py-3.5 px-4 rounded-[20px] text-white font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer hover:opacity-90"
                   >
-                    <Navigation className="w-4 h-4 fill-white" />
+                    <SocialPlatformIcon platform="google_maps" className="w-4 h-4 shrink-0 rounded-[4px] shadow-2xs" />
                     <span>Directions in Google Maps</span>
                   </a>
                 </div>
@@ -5244,13 +5245,11 @@ export default function App() {
                           className="p-3.5 flex items-center justify-between hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
                         >
                           <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-xl ${
-                              isTrailer
-                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 group-hover:bg-amber-200 dark:group-hover:bg-amber-900'
-                                : 'bg-slate-200/80 dark:bg-slate-700 group-hover:bg-purple-100 dark:group-hover:bg-purple-900 text-[#1A3668] dark:text-white'
-                            } flex items-center justify-center shrink-0 transition-colors`}>
-                              {isTrailer ? <Film className="w-4 h-4" /> : <Tv className="w-4 h-4" />}
-                            </div>
+                            <SocialPlatformIcon
+                              platform={wp.platform || wp.name}
+                              url={wp.url}
+                              className="w-8 h-8 shrink-0 rounded-xl shadow-2xs"
+                            />
                             <div className="flex flex-col">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-sm font-bold text-[#1A3668] dark:text-white leading-tight">
@@ -5413,6 +5412,9 @@ export default function App() {
                               : 'bg-slate-700 hover:bg-slate-800'
                           }`}
                         >
+                          {resolveOfficialPlatformKey('', ev.registrationUrl) !== 'web' && (
+                            <SocialPlatformIcon platform="" url={ev.registrationUrl} className="w-4 h-4 shrink-0 rounded-[4px]" />
+                          )}
                           <span>{regInfo.status === 'open' ? 'Register / Get Tickets Now' : 'Registration Link'}</span>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -5510,6 +5512,9 @@ export default function App() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-95 shadow-xs transition-all cursor-pointer"
                         >
+                          {resolveOfficialPlatformKey('', ev.purchasingUrl) !== 'web' && (
+                            <SocialPlatformIcon platform="" url={ev.purchasingUrl} className="w-4 h-4 shrink-0 rounded-[4px]" />
+                          )}
                           <span>Shop / Join Campaign</span>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -5607,6 +5612,9 @@ export default function App() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-yellow-600 hover:bg-yellow-700 active:scale-95 shadow-xs transition-all cursor-pointer"
                         >
+                          {resolveOfficialPlatformKey('', ev.winnerAnnouncementUrl) !== 'web' && (
+                            <SocialPlatformIcon platform="" url={ev.winnerAnnouncementUrl} className="w-4 h-4 shrink-0 rounded-[4px]" />
+                          )}
                           <span>Check Winners List</span>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -5871,8 +5879,9 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="w-full py-3 px-4 rounded-[20px] bg-white dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[#1A3668] dark:text-white font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
-                    <ExternalLink className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <SocialPlatformIcon platform="" url={ev.link} className="w-4 h-4 shrink-0" />
                     <span>Open event details</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
                   </a>
                 </div>
               )}
@@ -7813,7 +7822,7 @@ export default function App() {
                       onClick={() => handleSaveReminder('calendar', `Google Calendar (${reminderConversion?.milestone.badgeLabel || 'Event'})`)}
                       className="py-3 px-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 hover:bg-purple-50/50 shadow-xs flex items-center gap-2.5 font-bold text-xs text-[#1A3668] dark:text-white transition-all cursor-pointer"
                     >
-                      <CalendarIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      <SocialPlatformIcon platform="google_calendar" className="w-5 h-5 shrink-0" />
                       <span>Google Calendar</span>
                       <ExternalLink className="w-3 h-3 text-slate-400 ml-auto" />
                     </a>
@@ -7826,7 +7835,7 @@ export default function App() {
                       }}
                       className="py-3 px-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 hover:bg-purple-50/50 shadow-xs flex items-center gap-2.5 font-bold text-xs text-[#1A3668] dark:text-white transition-all cursor-pointer"
                     >
-                      <Download className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                      <SocialPlatformIcon platform="apple_calendar" className="w-5 h-5 shrink-0" />
                       <span>Apple iCal / Outlook (.ics)</span>
                     </button>
                   </div>
@@ -7917,7 +7926,7 @@ export default function App() {
                       onClick={() => handleSaveReminder('whatsapp', 'WhatsApp Alert')}
                       className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <MessageCircle className="w-3.5 h-3.5" />
+                      <SocialPlatformIcon platform="whatsapp" className="w-4 h-4 shrink-0" />
                       <span>WhatsApp Alert</span>
                     </a>
                   </div>
@@ -9001,13 +9010,14 @@ export default function App() {
                           setNewPlatformType(p.platform);
                           setNewPlatformUrl(p.defaultUrl);
                         }}
-                        className={`text-[10.5px] font-bold px-2 py-0.5 rounded-md border cursor-pointer transition-colors shadow-2xs ${
+                        className={`inline-flex items-center gap-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-md border cursor-pointer transition-colors shadow-2xs ${
                           isTrailerPreset
                             ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100'
                             : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-[#1A3668] dark:text-white hover:bg-purple-50 dark:hover:bg-purple-950/60'
                         }`}
                       >
-                        {isTrailerPreset ? '🎬 ' : ''}{p.name === 'Official Trailer' ? 'Official Trailer' : `${p.name} ${p.platform}`}
+                        <SocialPlatformIcon platform={p.platform} url={p.defaultUrl} className="w-3.5 h-3.5 shrink-0" />
+                        <span>{p.name === 'Official Trailer' ? 'Official Trailer' : `${p.name} ${p.platform}`}</span>
                       </button>
                     );
                   })}
@@ -9019,7 +9029,7 @@ export default function App() {
                   return (
                     <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-[11px] text-purple-700 dark:text-purple-300 animate-in fade-in duration-150">
                       <div className="flex items-center gap-1.5 min-w-0 truncate">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                        <SocialPlatformIcon platform={detected.platform} url={newPlatformUrl} className="w-4 h-4 shrink-0" />
                         <span className="truncate">
                           Auto-detected website: <strong>{detected.platform}</strong> · Channel: <strong>{detected.name}</strong>
                         </span>
@@ -9099,11 +9109,11 @@ export default function App() {
                           }`}
                         >
                           <div className="flex items-center gap-2 truncate">
-                            {isTrailer ? (
-                              <Film className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                            ) : (
-                              <Tv className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-                            )}
+                            <SocialPlatformIcon
+                              platform={wp.platform || wp.name}
+                              url={wp.url}
+                              className="w-4 h-4 shrink-0"
+                            />
                             <span className="font-bold text-[#1A3668] dark:text-white">{wp.name}</span>
                             <span className="text-slate-400">·</span>
                             <span className="text-[#607494] dark:text-slate-300">{wp.platform}</span>
@@ -14490,6 +14500,9 @@ export default function App() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs shrink-0 cursor-pointer"
                           >
+                            {resolveOfficialPlatformKey('', ev.registrationUrl) !== 'web' && (
+                              <SocialPlatformIcon platform="" url={ev.registrationUrl} className="w-4 h-4 shrink-0 rounded-[4px]" />
+                            )}
                             <span>Open Official Registration</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -14556,6 +14569,9 @@ export default function App() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs shrink-0 cursor-pointer"
                           >
+                            {resolveOfficialPlatformKey('', ev.purchasingUrl) !== 'web' && (
+                              <SocialPlatformIcon platform="" url={ev.purchasingUrl} className="w-4 h-4 shrink-0 rounded-[4px]" />
+                            )}
                             <span>Shop / Join Campaign</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -14622,6 +14638,9 @@ export default function App() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-yellow-600 hover:bg-yellow-700 shadow-xs shrink-0 cursor-pointer"
                           >
+                            {resolveOfficialPlatformKey('', ev.winnerAnnouncementUrl) !== 'web' && (
+                              <SocialPlatformIcon platform="" url={ev.winnerAnnouncementUrl} className="w-4 h-4 shrink-0 rounded-[4px]" />
+                            )}
                             <span>Check Winners List</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -14681,8 +14700,9 @@ export default function App() {
                       href={ev.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:underline px-3 py-1.5 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-purple-600 dark:text-purple-400 hover:underline px-3 py-1.5 cursor-pointer"
                     >
+                      <SocialPlatformIcon platform="" url={ev.link} className="w-3.5 h-3.5 shrink-0" />
                       <span>Official Source Link</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
