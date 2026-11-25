@@ -5966,7 +5966,7 @@ export default function App() {
               className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 sm:px-3.5 rounded-full bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-700 text-[#1A3668] dark:text-slate-200 shadow-xs border border-slate-200/80 dark:border-slate-700 cursor-pointer transition-all active:scale-95 shrink-0"
               title={
                 activeTab === 'projects'
-                  ? 'Suggest a series, movie, MV, or endorsement project for Jimmy & Sea'
+                  ? 'Suggest a series, movie, MV, or endorsement project for Jimmy, Sea, or Avocean'
                   : activeTab === 'fanhub'
                   ? 'Submit a Fan Club directory listing or Food Support project'
                   : 'Know about an event we missed? Leave a note for Admins & Owner'
@@ -5994,7 +5994,7 @@ export default function App() {
             <button
               onClick={() => openLeaveMessageModal('thanks')}
               className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 sm:px-3.5 rounded-full bg-rose-50/90 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 shadow-2xs border border-rose-200/80 dark:border-rose-800 cursor-pointer transition-all active:scale-95 shrink-0"
-              title="Wanna say thanks? Leave a heartfelt note of appreciation for Jimmy, Sea, or the admins"
+              title="Wanna say thanks? Leave a heartfelt note of appreciation for Jimmy, Sea, Avocean, or the admins"
             >
               <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
               <span>Wanna say thanks?</span>
@@ -12420,9 +12420,9 @@ export default function App() {
                   </h3>
                   <p className="text-xs sm:text-sm font-semibold text-[#607494] dark:text-slate-400 mt-0.5">
                     {msgCategory === 'thanks'
-                      ? 'Send your love, heartfelt appreciation, or cheering message to Jimmy, Sea, or the admins!'
+                      ? 'Send your love, heartfelt appreciation, or cheering message to Jimmy, Sea, Avocean, or the admins!'
                       : msgCategory === 'project'
-                      ? 'Propose a drama, movie, MV, or endorsement for Jimmy & Sea'
+                      ? 'Propose a drama, movie, MV, or endorsement for Jimmy, Sea, or Avocean'
                       : msgCategory === 'fanclub'
                       ? 'Submit your fan club for the global Avocean directory'
                       : msgCategory === 'foodsupport'
@@ -12544,13 +12544,13 @@ export default function App() {
                   }`}
                 >
                   {msgCategory === 'thanks'
-                    ? '💖 Wanna say thanks? Share what Jimmy, Sea, or this hub means to you! Leave cheering words, thank the creators, or send love to the fandom—no links required!'
+                    ? '💖 Wanna say thanks? Share what Jimmy, Sea, Avocean, or this hub means to you! Leave cheering words, thank the creators, or send love to the fandom—no links required!'
                     : msgCategory === 'project'
                     ? '🎬 Missing a drama, movie, music video, brand endorsement or owned brand? Suggest it below and include character names (e.g. Jimmy as Pongpeun, Sea as Pepper)!'
                     : msgCategory === 'fanclub'
                     ? '🌍 Want your country, city, or regional fan club listed in the global Avocean directory? Share your handle and links below!'
                     : msgCategory === 'foodsupport'
-                    ? '🍱 Running or organizing food support, a catering truck, or fan gifts for Jimmy & Sea? Propose details and donation link below!'
+                    ? '🍱 Running or organizing food support, a catering truck, or fan gifts for Jimmy, Sea, or Avocean? Propose details and donation link below!'
                     : '📅 Did we forget to list an upcoming schedule, interview, or appearance? Let us know below so we can keep the calendar complete!'}
                 </div>
 
@@ -13023,7 +13023,7 @@ export default function App() {
                         type="text"
                         value={msgEventTitle}
                         onChange={(e) => setMsgEventTitle(e.target.value)}
-                        placeholder="e.g. Thank you for this schedule! or Always cheering for Jimmy & Sea"
+                        placeholder="e.g. Thank you for this schedule! or Always cheering for Jimmy, Sea & Avocean"
                         className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-[#1A3668] dark:text-white focus:outline-none focus:border-rose-400"
                       />
                     </div>
