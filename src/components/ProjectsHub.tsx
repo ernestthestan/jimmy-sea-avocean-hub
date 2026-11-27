@@ -57,6 +57,7 @@ import { compressImageFile } from '../lib/imageCompression';
 import { OfficialHashtagPicker } from './OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './HashtagsDisplayCard';
 import { SocialPlatformIcon, OfficialPlatformSelect } from './SocialPlatformIcon';
+import { FreezeWhileModalOpen, useModalPerformanceLock } from './FreezeWhileModalOpen';
 
 export const PROJECT_WATCH_PLATFORMS = [
   { value: 'Trailer', label: 'Official Trailer' },
@@ -1703,8 +1704,15 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
     }
   };
 
+  const isAnyProjectsModalOpen = Boolean(
+    (isModalOpen && canEdit) || lightboxImageUrl || editingActorProfile
+  );
+
+  useModalPerformanceLock(isAnyProjectsModalOpen);
+
   return (
-    <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 animate-in fade-in duration-200 pb-24`}>
+    <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 pb-24`}>
+      <FreezeWhileModalOpen frozen={isAnyProjectsModalOpen}>
       {/* ============================================================== */}
       {/* 1. ACTOR & COMMUNITY PROFILES (JIMMY · AVOCEAN · SEA)          */}
       {/* Left: Jimmy | Middle: Avocean | Right: Sea                     */}
@@ -1920,7 +1928,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                             {/* Multi-Photo Counter Badge */}
                             {allAvatarPhotos.length > 1 && (
-                              <div className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/70 text-white text-[10px] font-black backdrop-blur-xs shadow-xs">
+                              <div className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/70 text-white text-[10px] font-black shadow-xs">
                                 <ImageIcon className="w-2.5 h-2.5 text-purple-300" />
                                 <span>{currentAvatarIdx + 1}/{allAvatarPhotos.length}</span>
                               </div>
@@ -1936,7 +1944,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     const nextIdx = (currentAvatarIdx - 1 + allAvatarPhotos.length) % allAvatarPhotos.length;
                                     setActiveAvatarIndex((prev) => ({ ...prev, [key]: nextIdx }));
                                   }}
-                                  className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-80 group-hover/avatar:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
+                                  className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all opacity-80 group-hover/avatar:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
                                   title="Previous avatar photo"
                                 >
                                   <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -1948,7 +1956,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     const nextIdx = (currentAvatarIdx + 1) % allAvatarPhotos.length;
                                     setActiveAvatarIndex((prev) => ({ ...prev, [key]: nextIdx }));
                                   }}
-                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-80 group-hover/avatar:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
+                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all opacity-80 group-hover/avatar:opacity-100 shadow-md z-10 cursor-pointer active:scale-95"
                                   title="Next avatar photo"
                                 >
                                   <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -2279,7 +2287,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
               {/* Duo Connector Badge */}
               <div className="flex items-center justify-center -my-2 relative z-10">
-                <div className="px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 backdrop-blur-md">
+                <div className="px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300">
                   <span>🥑 Jimmy</span>
                   <span className="text-purple-500 font-black">+</span>
                   <span>🌊 Sea</span>
@@ -2443,7 +2451,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         {/* LEFT SIDEBAR: STICKY CATEGORY NAVIGATION (Visible when scrolling!) */}
         {/* ============================================================== */}
         <aside className="w-full lg:w-64 md:landscape:w-60 shrink-0 lg:sticky md:landscape:sticky lg:top-20 md:landscape:top-20 z-20 self-start">
-          <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-3 shadow-xs border border-slate-200/80 dark:border-slate-800 backdrop-blur-md space-y-2">
+          <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] p-3 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-2">
             <div className="flex items-center justify-between px-3 py-1">
               <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 Categories
@@ -3091,7 +3099,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                             {/* Hover expand overlay indicator cue */}
                             <div className="absolute inset-0 z-20 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                              <span className="px-3.5 py-1.5 rounded-full bg-black/75 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-xl border border-white/20 transform scale-95 group-hover:scale-100 transition-transform">
+                              <span className="px-3.5 py-1.5 rounded-full bg-black/75 text-white text-xs font-bold flex items-center gap-1.5 shadow-xl border border-white/20 transform scale-95 group-hover:scale-100 transition-transform">
                                 <Maximize2 className="w-3.5 h-3.5 text-purple-300" />
                                 <span>{isBrand ? 'Click to Enlarge Banner' : 'Click to Expand'}</span>
                               </span>
@@ -3100,7 +3108,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             {/* Top Right Actions: Photo Counter (for TV shows) + Expand */}
                             <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
                               {!isBrand && mediaList.length > 1 && (
-                                <span className="px-2 py-0.5 rounded-full text-[9.5px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20 shadow-xs pointer-events-none">
+                                <span className="px-2 py-0.5 rounded-full text-[9.5px] font-black bg-black/60 text-white border border-white/20 shadow-xs pointer-events-none">
                                   📷 {activeMediaIdx + 1}/{mediaList.length}
                                 </span>
                               )}
@@ -3119,7 +3127,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     currentIndex: isBrand ? 0 : activeMediaIdx
                                   });
                                 }}
-                                className="opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-md cursor-pointer shadow-md"
+                                className="opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white hover:bg-black/80 cursor-pointer shadow-md"
                                 title={isBrand ? "Expand Banner in Full Resolution" : "Expand Full Resolution"}
                               >
                                 <Maximize2 className="w-3.5 h-3.5" />
@@ -3138,7 +3146,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                       [proj.id]: (activeMediaIdx - 1 + mediaList.length) % mediaList.length
                                     }));
                                   }}
-                                  className="absolute left-2 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-1.5 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-md opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110 active:scale-95"
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-1.5 rounded-full bg-black/70 hover:bg-black/90 text-white opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110 active:scale-95"
                                   title="Previous Photo (← Left Arrow)"
                                   aria-label="Previous Photo"
                                 >
@@ -3153,7 +3161,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                       [proj.id]: (activeMediaIdx + 1) % mediaList.length
                                     }));
                                   }}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-1.5 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-md opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110 active:scale-95"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 z-30 p-2 sm:p-1.5 rounded-full bg-black/70 hover:bg-black/90 text-white opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-md hover:scale-110 active:scale-95"
                                   title="Next Photo (→ Right Arrow)"
                                   aria-label="Next Photo"
                                 >
@@ -3828,6 +3836,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           )}
         </main>
       </div>
+      </FreezeWhileModalOpen>
 
       {/* ============================================================== */}
       {/* 3. EXTENDED ADD / EDIT PROJECT MODAL                           */}
@@ -3837,11 +3846,11 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
           role="dialog"
           aria-modal="true"
           onClick={() => setIsModalOpen(false)}
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4 cursor-pointer"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 cursor-default"
+            className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto overscroll-contain border border-slate-100 dark:border-slate-800 cursor-default"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
@@ -4528,7 +4537,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                               {/* Top Badges (Category & Artist) */}
                               <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
-                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider backdrop-blur-md ${getCategoryBadgeStyle(formCategory)}`}>
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider ${getCategoryBadgeStyle(formCategory)}`}>
                                   {getCategoryIcon(formCategory)}
                                   <span>{getCategoryBadge(formCategory)}</span>
                                 </span>
@@ -4536,7 +4545,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 {(() => {
                                   const artistInfo = getArtistLabel(formArtist);
                                   return (
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${artistInfo.bg}`}>
                                       <span>{artistInfo.emoji}</span>
                                       <span>{artistInfo.label}</span>
                                     </span>
@@ -4556,7 +4565,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                       currentIndex: 0
                                     })
                                   }
-                                  className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
+                                  className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 shadow-md cursor-pointer transition-transform hover:scale-110"
                                   title="View Full Resolution Banner in Lightbox"
                                 >
                                   <Maximize2 className="w-3.5 h-3.5" />
@@ -4572,7 +4581,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                   {(() => {
                                     const statusObj = getStatusBadge(formStatus, formCategory);
                                     return (
-                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider ${statusObj.color}`}>
                                         {statusObj.label}
                                       </span>
                                     );
@@ -5192,7 +5201,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
 
                             {/* Top Badges (Category & Artist) */}
                             <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider backdrop-blur-md ${getCategoryBadgeStyle(formCategory)}`}>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider ${getCategoryBadgeStyle(formCategory)}`}>
                                 {getCategoryIcon(formCategory)}
                                 <span>{getCategoryBadge(formCategory)}</span>
                               </span>
@@ -5200,7 +5209,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                               {(() => {
                                 const artistInfo = getArtistLabel(formArtist);
                                 return (
-                                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border backdrop-blur-md ${artistInfo.bg}`}>
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${artistInfo.bg}`}>
                                     <span>{artistInfo.emoji}</span>
                                     <span>{artistInfo.label}</span>
                                   </span>
@@ -5211,7 +5220,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                             {/* Top Right Actions: Lightbox + Photo Counter */}
                             <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
                               {formMediaPhotos.length > 1 && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-black/60 text-white backdrop-blur-md border border-white/20">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-black/60 text-white border border-white/20">
                                   📷 {formActiveMediaIndex + 1} / {formMediaPhotos.length}
                                 </span>
                               )}
@@ -5229,7 +5238,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     currentIndex: formActiveMediaIndex
                                   })
                                 }
-                                className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-md shadow-md cursor-pointer transition-transform hover:scale-110"
+                                className="p-2 rounded-full bg-black/60 text-white hover:bg-black/90 shadow-md cursor-pointer transition-transform hover:scale-110"
                                 title="View Full Resolution in Lightbox"
                               >
                                 <Maximize2 className="w-3.5 h-3.5" />
@@ -5245,7 +5254,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     e.stopPropagation();
                                     setFormActiveMediaIndex((prev) => (prev - 1 + formMediaPhotos.length) % formMediaPhotos.length);
                                   }}
-                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
+                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white shadow-md cursor-pointer transition-all hover:scale-110"
                                   title="Previous Media Photo"
                                 >
                                   <ChevronLeft className="w-4 h-4" />
@@ -5256,7 +5265,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                     e.stopPropagation();
                                     setFormActiveMediaIndex((prev) => (prev + 1) % formMediaPhotos.length);
                                   }}
-                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md shadow-md cursor-pointer transition-all hover:scale-110"
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 z-30 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white shadow-md cursor-pointer transition-all hover:scale-110"
                                   title="Next Media Photo"
                                 >
                                   <ChevronRight className="w-4 h-4" />
@@ -5273,7 +5282,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                                 {(() => {
                                   const statusObj = getStatusBadge(formStatus, formCategory);
                                   return (
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider backdrop-blur-md ${statusObj.color}`}>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider ${statusObj.color}`}>
                                       {statusObj.label}
                                     </span>
                                   );
@@ -5788,7 +5797,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
             aria-modal="true"
             aria-label="Photo Lightbox Gallery"
             onClick={() => setLightboxImageUrl(null)}
-            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 select-none animate-in fade-in duration-200"
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col justify-between p-3 sm:p-5 select-none animate-in fade-in duration-200"
           >
             {/* Top Bar: Title, Counter, Close Button */}
             <div
@@ -5800,7 +5809,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                   {lightboxImageUrl.title}
                 </h3>
                 {hasMultiple && (
-                  <span className="shrink-0 px-2.5 py-0.5 rounded-full text-xs font-black bg-white/15 text-white border border-white/20 backdrop-blur-md">
+                  <span className="shrink-0 px-2.5 py-0.5 rounded-full text-xs font-black bg-white/15 text-white border border-white/20">
                     📷 {curIdx + 1} / {photos.length}
                   </span>
                 )}
@@ -5829,7 +5838,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     e.stopPropagation();
                     navigateLightbox('prev');
                   }}
-                  className="absolute left-2 sm:left-4 z-20 p-2.5 sm:p-3.5 rounded-full bg-black/75 hover:bg-black/95 text-white border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer hover:scale-110 active:scale-95"
+                  className="absolute left-2 sm:left-4 z-20 p-2.5 sm:p-3.5 rounded-full bg-black/75 hover:bg-black/95 text-white border border-white/20 shadow-2xl transition-all cursor-pointer hover:scale-110 active:scale-95"
                   title="Previous Photo (← Left Arrow)"
                   aria-label="Previous Photo"
                 >
@@ -5858,7 +5867,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                     e.stopPropagation();
                     navigateLightbox('next');
                   }}
-                  className="absolute right-2 sm:right-4 z-20 p-2.5 sm:p-3.5 rounded-full bg-black/75 hover:bg-black/95 text-white border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer hover:scale-110 active:scale-95"
+                  className="absolute right-2 sm:right-4 z-20 p-2.5 sm:p-3.5 rounded-full bg-black/75 hover:bg-black/95 text-white border border-white/20 shadow-2xl transition-all cursor-pointer hover:scale-110 active:scale-95"
                   title="Next Photo (→ Right Arrow)"
                   aria-label="Next Photo"
                 >
@@ -5932,7 +5941,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -6231,7 +6240,7 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
                           🥑🌊
                         </div>
                       )}
-                      <span className="absolute bottom-1 inset-x-1 text-[9px] font-black uppercase text-center bg-black/70 text-white rounded-md py-0.5 backdrop-blur-xs">
+                      <span className="absolute bottom-1 inset-x-1 text-[9px] font-black uppercase text-center bg-black/70 text-white rounded-md py-0.5">
                         Live Preview
                       </span>
                     </div>

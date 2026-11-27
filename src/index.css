@@ -1,3 +1,15 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Pause continuous background CSS animations & lock page scroll while modals are open
+   so editing forms never triggers 60 FPS GPU recompositing or external video lag */
+body.avocean-modal-open {
+  overflow: hidden;
+}
+
+body.avocean-modal-open .animate-pulse,
+body.avocean-modal-open .animate-bounce {
+  animation-play-state: paused !important;
+}
+

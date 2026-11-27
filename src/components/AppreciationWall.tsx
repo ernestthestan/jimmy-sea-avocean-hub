@@ -275,7 +275,7 @@ export const AppreciationWall: React.FC<AppreciationWallProps> = ({
   return (
     <div className={`space-y-6 ${containerWidthClass} mx-auto transition-all`}>
       {/* 1. HERO BANNER */}
-      <div className="relative overflow-hidden rounded-[32px] p-6 sm:p-8 bg-gradient-to-br from-rose-500/10 via-purple-500/10 to-sky-500/10 dark:from-rose-950/40 dark:via-purple-950/30 dark:to-sky-950/30 border border-rose-200/80 dark:border-rose-900/60 shadow-sm backdrop-blur-md">
+      <div className="relative overflow-hidden rounded-[32px] p-6 sm:p-8 bg-gradient-to-br from-rose-500/10 via-purple-500/10 to-sky-500/10 dark:from-rose-950/40 dark:via-purple-950/30 dark:to-sky-950/30 border border-rose-200/80 dark:border-rose-900/60 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-rose-500 text-white shadow-xs">

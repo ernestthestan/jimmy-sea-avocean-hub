@@ -85,6 +85,7 @@ import {
   getSocialPlatformLabel,
   resolveOfficialPlatformKey
 } from './SocialPlatformIcon';
+import { FreezeWhileModalOpen, useModalPerformanceLock } from './FreezeWhileModalOpen';
 
 interface CountryOptionItem {
   code: string;
@@ -1272,8 +1273,18 @@ export const FanHub: React.FC<FanHubProps> = ({
     }
   };
 
+  const isAnyFanHubModalOpen = Boolean(
+    (isClubModalOpen && editingClub) ||
+      (isProjectModalOpen && editingProject) ||
+      donationModalProject ||
+      (lightboxGallery && lightboxGallery.items.length > 0)
+  );
+
+  useModalPerformanceLock(isAnyFanHubModalOpen);
+
   return (
-    <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 animate-in fade-in duration-200 pb-12`}>
+    <div className={`w-full ${containerWidthClass || 'max-w-[1780px] 2xl:max-w-[1920px] 3xl:max-w-[2160px] px-3 sm:px-6 md:px-8 xl:px-10 mx-auto'} flex flex-col gap-6 pb-12`}>
+      <FreezeWhileModalOpen frozen={isAnyFanHubModalOpen}>
       {/* ============================================================== */}
       {/* TOP HEADER & DUAL-TAB NAVIGATION                               */}
       {/* ============================================================== */}
@@ -1646,7 +1657,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                             {/* View Banner Hover Indicator */}
                             {club.bannerUrl && (
                               <div className="absolute inset-0 bg-black/0 group-hover/banner:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10">
-                                <span className="opacity-0 group-hover/banner:opacity-100 transition-opacity px-3.5 py-1.5 rounded-full bg-black/80 text-white text-xs font-bold backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+                                <span className="opacity-0 group-hover/banner:opacity-100 transition-opacity px-3.5 py-1.5 rounded-full bg-black/80 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
                                   <Maximize2 className="w-3.5 h-3.5 text-purple-300" />
                                   <span>Click to Enlarge Banner</span>
                                 </span>
@@ -1660,7 +1671,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                               return (
                                 <div
                                   onClick={(e) => e.stopPropagation()}
-                                  className="absolute top-3 right-3 z-20 flex items-center gap-0.5 bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/25 shadow-sm"
+                                  className="absolute top-3 right-3 z-20 flex items-center gap-0.5 bg-black/60 rounded-full p-1 border border-white/25 shadow-sm"
                                 >
                                   <button
                                     type="button"
@@ -1916,7 +1927,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                         <div className="rounded-2xl p-3 sm:p-3.5 bg-gradient-to-br from-purple-50/90 via-indigo-50/30 to-sky-50/70 dark:from-purple-950/40 dark:via-slate-800 dark:to-sky-950/30 border border-purple-200/90 dark:border-purple-800/80 shadow-2xs space-y-2.5">
                           <div className="flex items-center justify-between gap-1.5 flex-wrap">
                             <span className="inline-flex items-center gap-1.5 text-xs font-black text-purple-700 dark:text-purple-300">
-                              <PartyPopper className="w-3.5 h-3.5 text-purple-600 animate-bounce" />
+                              <PartyPopper className="w-3.5 h-3.5 text-purple-600" />
                               <span>Upcoming Club Events</span>
                             </span>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-200/70 dark:bg-purple-900/80 text-purple-800 dark:text-purple-200 border border-purple-300/60 dark:border-purple-700/60">
@@ -2048,7 +2059,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                                               onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
                                             />
                                             <div className="absolute inset-0 bg-black/15 group-hover/poster:bg-black/40 flex items-center justify-center transition-colors">
-                                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 text-white text-[11px] font-bold backdrop-blur-xs opacity-0 group-hover/poster:opacity-100 transition-opacity">
+                                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/75 text-white text-[11px] font-bold opacity-0 group-hover/poster:opacity-100 transition-opacity">
                                                 <Maximize2 className="w-3 h-3" />
                                                 <span>View Graphic</span>
                                               </span>
@@ -2864,13 +2875,14 @@ export const FanHub: React.FC<FanHubProps> = ({
         )}
       </div>
     )}
+      </FreezeWhileModalOpen>
 
       {/* ============================================================== */}
       {/* MODAL: ADD / EDIT FAN CLUB                                     */}
       {/* ============================================================== */}
       {isClubModalOpen && editingClub && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto overscroll-contain border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div className="flex items-center gap-2">
                 <Globe className="w-5 h-5 text-purple-600" />
@@ -3981,8 +3993,8 @@ export const FanHub: React.FC<FanHubProps> = ({
       {/* MODAL: ADD / EDIT FOOD SUPPORT PROJECT                         */}
       {/* ============================================================== */}
       {isProjectModalOpen && editingProject && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-2xl lg:max-w-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto overscroll-contain border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
               <div className="flex items-center gap-2">
                 <Truck className="w-5 h-5 text-purple-600" />
@@ -4546,7 +4558,7 @@ export const FanHub: React.FC<FanHubProps> = ({
       {/* QUICK DONATION / FUNDS UPDATE MODAL                            */}
       {/* ============================================================== */}
       {donationModalProject && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-5 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-base font-bold text-[#1A3668] dark:text-white">
@@ -4682,13 +4694,13 @@ export const FanHub: React.FC<FanHubProps> = ({
       {/* ============================================================== */}
       {lightboxGallery && lightboxGallery.items.length > 0 && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150 select-none"
+          className="fixed inset-0 z-50 bg-black/92 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150 select-none"
           onClick={() => setLightboxGallery(null)}
         >
           {/* Top Bar: Counter & Close Button */}
           <div className="absolute top-4 inset-x-4 sm:inset-x-8 flex items-center justify-between z-30 pointer-events-none">
             {lightboxGallery.items.length > 1 ? (
-              <div className="pointer-events-auto px-3.5 py-1.5 rounded-full bg-black/70 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg">
+              <div className="pointer-events-auto px-3.5 py-1.5 rounded-full bg-black/70 text-white text-xs font-bold border border-white/20 shadow-lg">
                 Photo {lightboxGallery.currentIndex + 1} of {lightboxGallery.items.length}
               </div>
             ) : (
@@ -4721,7 +4733,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                     : null
                 );
               }}
-              className="absolute left-2 sm:left-6 z-30 p-2.5 sm:p-3.5 rounded-full bg-black/65 hover:bg-black/95 text-white hover:text-purple-300 border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer transform hover:scale-110 active:scale-95"
+              className="absolute left-2 sm:left-6 z-30 p-2.5 sm:p-3.5 rounded-full bg-black/65 hover:bg-black/95 text-white hover:text-purple-300 border border-white/20 shadow-2xl transition-all cursor-pointer transform hover:scale-110 active:scale-95"
               title="Previous photo (← Arrow Left)"
             >
               <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
@@ -4743,7 +4755,7 @@ export const FanHub: React.FC<FanHubProps> = ({
                     : null
                 );
               }}
-              className="absolute right-2 sm:right-6 z-30 p-2.5 sm:p-3.5 rounded-full bg-black/65 hover:bg-black/95 text-white hover:text-purple-300 border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer transform hover:scale-110 active:scale-95"
+              className="absolute right-2 sm:right-6 z-30 p-2.5 sm:p-3.5 rounded-full bg-black/65 hover:bg-black/95 text-white hover:text-purple-300 border border-white/20 shadow-2xl transition-all cursor-pointer transform hover:scale-110 active:scale-95"
               title="Next photo (→ Arrow Right)"
             >
               <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
@@ -4765,7 +4777,7 @@ export const FanHub: React.FC<FanHubProps> = ({
 
             {/* Caption */}
             {lightboxGallery.items[lightboxGallery.currentIndex].caption && (
-              <div className="mt-3 text-center px-4 py-2 rounded-full bg-black/70 text-white text-xs font-semibold backdrop-blur-md border border-white/15 max-w-xl truncate shadow-lg">
+              <div className="mt-3 text-center px-4 py-2 rounded-full bg-black/70 text-white text-xs font-semibold border border-white/15 max-w-xl truncate shadow-lg">
                 {lightboxGallery.items[lightboxGallery.currentIndex].caption}
               </div>
             )}

@@ -141,6 +141,7 @@ import { AppreciationWall } from './components/AppreciationWall';
 import { OfficialHashtagPicker } from './components/OfficialHashtagPicker';
 import { HashtagsDisplayCard } from './components/HashtagsDisplayCard';
 import { SocialPlatformIcon, resolveOfficialPlatformKey } from './components/SocialPlatformIcon';
+import { FreezeWhileModalOpen, useModalPerformanceLock } from './components/FreezeWhileModalOpen';
 
 // --- Type Definitions ---
 export type UserRole = 'visitor' | 'admin' | 'owner';
@@ -2684,10 +2685,11 @@ export default function App() {
     return [];
   }, [settings.bannerPhotos, settings.bannerImageUrl]);
 
-  // Rotate banner photos automatically throughout the day / every 8 seconds if multiple
+  // Rotate banner photos automatically every 8 seconds (paused while modals are open or tab is hidden to save GPU/CPU)
   useEffect(() => {
     if (activeBannerPhotos.length <= 1) return;
     const interval = setInterval(() => {
+      if (document.hidden || document.body.classList.contains('avocean-modal-open')) return;
       setCurrentBannerIndex((prev) => (prev + 1) % activeBannerPhotos.length);
     }, 8000);
     return () => clearInterval(interval);
@@ -5054,7 +5056,7 @@ export default function App() {
 
                       {/* Multi-photo badge & counter at top-left */}
                       {allPosters.length > 1 && (
-                        <div className="absolute top-2.5 left-2.5 z-20 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-xs font-bold backdrop-blur-xs shadow-sm">
+                        <div className="absolute top-2.5 left-2.5 z-20 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-xs font-bold shadow-sm">
                           <ImageIcon className="w-3.5 h-3.5 text-purple-300" />
                           <span>{currentIdx + 1} / {allPosters.length}</span>
                         </div>
@@ -5072,7 +5074,7 @@ export default function App() {
                                 [ev.id]: (currentIdx - 1 + allPosters.length) % allPosters.length
                               }));
                             }}
-                            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-20 cursor-pointer active:scale-95"
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all opacity-85 group-hover:opacity-100 shadow-md z-20 cursor-pointer active:scale-95"
                             title="Previous photo"
                           >
                             <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
@@ -5087,7 +5089,7 @@ export default function App() {
                                 [ev.id]: (currentIdx + 1) % allPosters.length
                               }));
                             }}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-85 group-hover:opacity-100 shadow-md z-20 cursor-pointer active:scale-95"
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all opacity-85 group-hover:opacity-100 shadow-md z-20 cursor-pointer active:scale-95"
                             title="Next photo"
                           >
                             <ChevronRight className="w-4 h-4 stroke-[2.5]" />
@@ -5097,7 +5099,7 @@ export default function App() {
 
                       {/* Hover Overlay with Enlarge Badge */}
                       <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">
-                        <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/80 text-white text-xs font-bold backdrop-blur-xs shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-transform">
+                        <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/80 text-white text-xs font-bold shadow-lg transform translate-y-1 group-hover:translate-y-0 transition-transform">
                           <Maximize2 className="w-3.5 h-3.5" />
                           <span>Click to view full photo</span>
                         </span>
@@ -5132,7 +5134,7 @@ export default function App() {
                               showToast(nextFit === 'contain' ? 'Viewing in Auto Fit mode' : 'Viewing in Fill Card mode');
                             }
                           }}
-                          className="px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/90 text-white backdrop-blur-xs flex items-center gap-1 text-[11px] font-bold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                          className="px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/90 text-white flex items-center gap-1 text-[11px] font-bold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
                           title={isFit ? 'Switch to Fill Card' : 'Switch to Auto Fit (full uncropped poster)'}
                         >
                           {isFit ? (
@@ -5159,7 +5161,7 @@ export default function App() {
                               currentIndex: currentIdx
                             });
                           }}
-                          className="p-1.5 rounded-full bg-black/60 hover:bg-black/85 text-white backdrop-blur-xs shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                          className="p-1.5 rounded-full bg-black/60 hover:bg-black/85 text-white shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
                           title="Click to view full photo"
                         >
                           <Maximize2 className="w-3.5 h-3.5" />
@@ -5901,6 +5903,27 @@ export default function App() {
     );
   };
 
+  const isAnyAppModalOpen = Boolean(
+    eventModalOpen ||
+      reminderModalOpen ||
+      myRemindersModalOpen ||
+      loginModalOpen ||
+      changePasswordModalOpen ||
+      adminAccountsModalOpen ||
+      auditModalOpen ||
+      settingsModalOpen ||
+      backupModalOpen ||
+      leaveMessageModalOpen ||
+      inboxModalOpen ||
+      bannerPhotosModalOpen ||
+      bannerGalleryViewOpen ||
+      enlargedPhoto ||
+      showFullDescEditorModal ||
+      descriptionModalEvent
+  );
+
+  useModalPerformanceLock(isAnyAppModalOpen);
+
   return (
     <div
       className={`min-h-screen w-full flex flex-col items-center pb-32 sm:pb-36 md:pb-40 landscape:pb-28 md:landscape:pb-36 lg:landscape:pb-40 px-2.5 sm:px-6 lg:px-8 pt-3 sm:pt-5 landscape:pt-3 select-none sm:select-auto relative transition-colors duration-300 ${
@@ -5923,7 +5946,7 @@ export default function App() {
 
       {/* Cloud Quota Notice Banner (if Firestore free daily quota is exceeded) */}
       {isQuotaExceeded && showQuotaBanner && (
-        <div className={`${containerWidthClass} mb-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-2xs backdrop-blur-md`}>
+        <div className={`${containerWidthClass} mb-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-2xs`}>
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[11px] shrink-0">
               ☁️ Cloud Quota Notice
@@ -5953,6 +5976,7 @@ export default function App() {
       )}
 
       {/* TOP TOOLBAR: BALANCED RESPONSIVE LAYOUT FOR FOLDABLE, TABLET & DESKTOP */}
+      <FreezeWhileModalOpen frozen={isAnyAppModalOpen}>
       <div className={`${containerWidthClass} flex flex-col gap-2 sm:gap-2.5 mb-3 sm:mb-4`}>
         {/* ROW 1: Engagement & Stats on Left, User Display Preferences & Logins on Right */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 w-full">
@@ -6425,7 +6449,7 @@ export default function App() {
               {/* Hover Cue to Enlarge */}
               {activePhoto && (
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors pointer-events-none flex items-center justify-center">
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity px-3.5 py-1.5 rounded-full bg-black/75 text-white text-xs font-bold backdrop-blur-xs flex items-center gap-1.5 shadow-lg">
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity px-3.5 py-1.5 rounded-full bg-black/75 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
                     <Maximize2 className="w-3.5 h-3.5 text-purple-300" />
                     <span>Click to Enlarge</span>
                   </span>
@@ -6443,7 +6467,7 @@ export default function App() {
                         prev === 0 ? activeBannerPhotos.length - 1 : prev - 1
                       );
                     }}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs transition-all cursor-pointer"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all cursor-pointer"
                     title="Previous Photo"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -6456,7 +6480,7 @@ export default function App() {
                         (prev + 1) % activeBannerPhotos.length
                       );
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs transition-all cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all cursor-pointer"
                     title="Next Photo"
                   >
                     <ChevronRight className="w-5 h-5" />
@@ -6465,7 +6489,7 @@ export default function App() {
                   {/* Dot Indicators */}
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-xs"
+                    className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40"
                   >
                     {activeBannerPhotos.map((_, idx) => (
                       <button
@@ -6497,7 +6521,7 @@ export default function App() {
                       e.stopPropagation();
                       setBannerGalleryViewOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-black/65 hover:bg-black/90 text-white text-xs font-extrabold shadow-md backdrop-blur-md cursor-pointer border border-white/30 transition-all hover:scale-105 active:scale-95 group/btn"
+                    className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-black/65 hover:bg-black/90 text-white text-xs font-extrabold shadow-md cursor-pointer border border-white/30 transition-all hover:scale-105 active:scale-95 group/btn"
                     title={`View Banner Photos Gallery (${activeBannerPhotos.length} ${activeBannerPhotos.length === 1 ? 'photo' : 'photos'})`}
                   >
                     <Images className="w-3.5 h-3.5 text-purple-300 group-hover/btn:text-purple-200" />
@@ -6516,7 +6540,7 @@ export default function App() {
                       e.stopPropagation();
                       setBannerPhotosModalOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/90 hover:bg-white text-[#1A3668] dark:text-white text-xs font-bold shadow-md backdrop-blur-xs cursor-pointer border border-white/60 dark:border-slate-700 transition-all active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/90 hover:bg-white text-[#1A3668] dark:text-white text-xs font-bold shadow-md cursor-pointer border border-white/60 dark:border-slate-700 transition-all active:scale-95"
                     title="Adjust Photo Sizing, Fit & Add/Remove Banner Photos (Admin & Owner)"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
@@ -6535,7 +6559,7 @@ export default function App() {
       {/* 2. SEPARATED HUB HEADER CARD WITH INTEGRATED MEMBER FILTERS     */}
       {/* ============================================================== */}
       <div className={`${containerWidthClass} mb-3 sm:mb-5 lg:mb-6 landscape:mb-2.5 lg:landscape:mb-6`}>
-        <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-6 lg:p-7 landscape:p-3 sm:landscape:p-4 lg:landscape:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-2.5 sm:gap-4">
+        <div className="bg-white/95 dark:bg-slate-900/90 rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-6 lg:p-7 landscape:p-3 sm:landscape:p-4 lg:landscape:p-7 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col gap-2.5 sm:gap-4">
           {/* Top Row: Title, Badges, Greeting & Owner Quick Actions */}
           <div className={`flex flex-col md:flex-row gap-2.5 sm:gap-4 ${
             (settings.headerAlignment || 'left') === 'center'
@@ -6695,7 +6719,7 @@ export default function App() {
           {/* LEFT COLUMN: Calendar Card (Exactly 50% on desktop, full width on tablet/mobile) */}
           <div className="w-full min-w-0 flex flex-col gap-5 self-start order-1">
             {/* Calendar Header with Navigation */}
-            <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-[28px] sm:rounded-[32px] p-4 sm:p-8 md:p-9 lg:p-10 pb-8 sm:pb-10 md:pb-12 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
+            <div className="bg-white/95 dark:bg-slate-900/90 rounded-[28px] sm:rounded-[32px] p-4 sm:p-8 md:p-9 lg:p-10 pb-8 sm:pb-10 md:pb-12 shadow-xs border border-slate-200/80 dark:border-slate-800 flex flex-col h-auto">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
@@ -7228,7 +7252,7 @@ export default function App() {
       {/* ============================================================== */}
       <nav
         aria-label="Mobile Navigation"
-        className="fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-slate-800 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.4)] pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-1 px-2 block sm:hidden select-none"
+        className="fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 border-t border-slate-200/90 dark:border-slate-800 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.4)] pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-1 px-2 block sm:hidden select-none"
       >
         <div className="grid grid-cols-4 items-center justify-around max-w-md mx-auto">
           {/* TAB 1: Schedule (Calendar & List) */}
@@ -7408,7 +7432,7 @@ export default function App() {
           {/* Bubble 1: Schedule Navigation (Calendar / List) with Purple, Blue & Green Gradient */}
           <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
             <div
-              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
                 isDarkMode
                   ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
                   : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
@@ -7448,7 +7472,7 @@ export default function App() {
           {/* Bubble 2: Projects Navigation with Purple, Blue & Green Gradient */}
           <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
             <div
-              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
                 isDarkMode
                   ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
                   : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
@@ -7474,7 +7498,7 @@ export default function App() {
           {/* Bubble 3: Fan Hub Navigation (Fan Clubs / Food Support) with Purple, Blue & Green Gradient */}
           <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-sky-500 to-emerald-400 shadow-xl shadow-purple-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
             <div
-              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
                 isDarkMode
                   ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-emerald-950/80 border border-purple-500/30 shadow-lg'
                   : 'bg-gradient-to-r from-purple-50/95 via-sky-50/95 to-emerald-50/95 border border-white/90 shadow-lg shadow-purple-500/15'
@@ -7520,7 +7544,7 @@ export default function App() {
           {/* Bubble 4: Appreciation Wall Navigation Bubble */}
           <div className="p-[2.5px] rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-400 shadow-xl shadow-pink-500/20 pointer-events-auto shrink-0 transition-transform hover:scale-[1.02]">
             <div
-              className={`backdrop-blur-xl p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
+              className={`p-1 sm:p-1.5 rounded-full flex items-center gap-1 transition-colors ${
                 isDarkMode
                   ? 'bg-gradient-to-r from-purple-950/80 via-slate-900/95 to-rose-950/80 border border-pink-500/30 shadow-lg'
                   : 'bg-gradient-to-r from-purple-50/95 via-pink-50/95 to-rose-50/95 border border-white/90 shadow-lg shadow-pink-500/15'
@@ -7552,6 +7576,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      </FreezeWhileModalOpen>
 
 
 
@@ -7559,7 +7584,7 @@ export default function App() {
       {/* MODAL: EVENT REMINDER (CALENDAR, EMAIL, SMS, TIMEZONE CONVERT) */}
       {/* ============================================================== */}
       {reminderModalOpen && reminderEvent && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-lg p-5 sm:p-6 my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
@@ -7973,7 +7998,7 @@ export default function App() {
       {/* MODAL: MY SAVED REMINDERS LIST                                 */}
       {/* ============================================================== */}
       {myRemindersModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-6 max-h-[85vh] overflow-y-auto border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -8039,8 +8064,8 @@ export default function App() {
       {/* MODAL 1: ADD / EDIT EVENT FORM                                 */}
       {/* ============================================================== */}
       {eventModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className={`bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full ${isExtendedDescEditor ? 'max-w-3xl lg:max-w-4xl' : 'max-w-2xl lg:max-w-3xl'} p-5 sm:p-7 transition-all duration-200 animate-in fade-in zoom-in-95 max-h-[92vh] overflow-y-auto border border-slate-100 dark:border-slate-800`}>
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-3 sm:p-4">
+          <div className={`bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full ${isExtendedDescEditor ? 'max-w-3xl lg:max-w-4xl' : 'max-w-2xl lg:max-w-3xl'} p-5 sm:p-7 max-h-[92vh] overflow-y-auto overscroll-contain border border-slate-100 dark:border-slate-800`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-[#1A3668] dark:text-white">
                 {editingEvent ? 'Edit Schedule Event' : 'Add Schedule Event'}
@@ -9945,7 +9970,7 @@ export default function App() {
             setRegPasswordInput('');
             setRegConfirmPasswordInput('');
           }}
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4 cursor-pointer"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -10453,7 +10478,7 @@ export default function App() {
       {/* MODAL: CHANGE PASSWORD (ADMIN & OWNER)                         */}
       {/* ============================================================== */}
       {changePasswordModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
@@ -10584,7 +10609,7 @@ export default function App() {
       {/* MODAL: REGISTERED ADMIN ACCOUNTS MANAGEMENT (OWNER ONLY)       */}
       {/* ============================================================== */}
       {adminAccountsModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
@@ -11383,7 +11408,7 @@ export default function App() {
       {/* MODAL: LOG IN & ACTIVITY AUDIT HISTORY (OWNER & ADMIN)         */}
       {/* ============================================================== */}
       {auditModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
@@ -11567,7 +11592,7 @@ export default function App() {
       {settingsModalOpen && (
         <div
           onClick={() => setSettingsModalOpen(false)}
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4 cursor-pointer"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -12304,7 +12329,7 @@ export default function App() {
       {/* MODAL 3: BACKUP / EXPORT / IMPORT JSON                         */}
       {/* ============================================================== */}
       {backupModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-bold text-[#1A3668] dark:text-white">
@@ -12370,7 +12395,7 @@ export default function App() {
       {leaveMessageModalOpen && (
         <div
           onClick={() => setLeaveMessageModalOpen(false)}
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4 cursor-pointer"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -13093,7 +13118,7 @@ export default function App() {
       {inboxModalOpen && canEditEvents && (
         <div
           onClick={() => setInboxModalOpen(false)}
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4 cursor-pointer"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -13516,7 +13541,7 @@ export default function App() {
       {/* MODAL 6: BANNER PHOTOS & SIZING MANAGER (ADMIN & OWNER)         */}
       {/* ============================================================== */}
       {bannerPhotosModalOpen && canEditEvents && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/65 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150 border border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
@@ -13760,7 +13785,7 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
           onClick={() => setBannerGalleryViewOpen(false)}
         >
           <div
@@ -13842,7 +13867,7 @@ export default function App() {
 
                             {/* Hover Overlay with Enlarge badge */}
                             <div className="absolute inset-0 bg-black/30 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 text-slate-900 text-xs font-bold shadow-lg backdrop-blur-xs scale-90 group-hover:scale-100 transition-transform">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 text-slate-900 text-xs font-bold shadow-lg scale-90 group-hover:scale-100 transition-transform">
                                 <Maximize2 className="w-3.5 h-3.5 text-purple-600" />
                                 <span>Click to Enlarge</span>
                               </span>
@@ -13850,11 +13875,11 @@ export default function App() {
 
                             {/* Top Badges */}
                             <div className="absolute top-2 left-2 flex items-center gap-1">
-                              <span className="px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-mono font-bold backdrop-blur-xs">
+                              <span className="px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-mono font-bold">
                                 #{idx + 1}
                               </span>
                               {isActive && (
-                                <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-[10px] font-bold backdrop-blur-xs flex items-center gap-1 shadow-xs">
+                                <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-[10px] font-bold flex items-center gap-1 shadow-xs">
                                   <span>Active Now</span>
                                 </span>
                               )}
@@ -13922,7 +13947,7 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-5 animate-in fade-in duration-200 select-none"
+          className="fixed inset-0 z-[70] bg-black/92 flex flex-col items-center justify-between p-3 sm:p-5 animate-in fade-in duration-200 select-none"
           onClick={() => setEnlargedPhoto(null)}
         >
           {/* Top Bar: Title, Multi-photo counter, Open Original & Close */}
@@ -13985,7 +14010,7 @@ export default function App() {
                     currentIndex: prev
                   });
                 }}
-                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition-all shadow-xl z-20 cursor-pointer active:scale-95"
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center border border-white/20 transition-all shadow-xl z-20 cursor-pointer active:scale-95"
                 title="Previous photo (←)"
               >
                 <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
@@ -14012,7 +14037,7 @@ export default function App() {
                     currentIndex: next
                   });
                 }}
-                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition-all shadow-xl z-20 cursor-pointer active:scale-95"
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center border border-white/20 transition-all shadow-xl z-20 cursor-pointer active:scale-95"
                 title="Next photo (→)"
               >
                 <ChevronRight className="w-6 h-6 stroke-[2.5]" />
@@ -14026,7 +14051,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             {enlargedPhoto.photos && enlargedPhoto.photos.length > 1 && (
-              <div className="flex items-center gap-2 overflow-x-auto max-w-full px-2 py-1 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10">
+              <div className="flex items-center gap-2 overflow-x-auto max-w-full px-2 py-1 bg-black/40 rounded-2xl border border-white/10">
                 {enlargedPhoto.photos.map((pUrl, pIdx) => (
                   <button
                     key={pIdx}
@@ -14085,7 +14110,7 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200"
           onClick={() => setShowFullDescEditorModal(false)}
         >
           <div
@@ -14284,7 +14309,7 @@ export default function App() {
           <div
             role="dialog"
             aria-modal="true"
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+            className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
             onClick={() => setDescriptionModalEvent(null)}
           >
             <div
